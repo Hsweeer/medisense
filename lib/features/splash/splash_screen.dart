@@ -1,0 +1,157 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../core/widgets/shared_widgets.dart';
+import '../auth/login_screen.dart';
+
+/// Animated brand splash — deep teal gradient, breathing pulse logo,
+/// wordmark reveal, then auto-advance to the login experience.
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with TickerProviderStateMixin {
+  late final AnimationController _intro = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..forward();
+  late final AnimationController _breathe = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600))
+    ..repeat(reverse: true);
+
+  @override
+  void initState() {
+    super.initState();
+    Timer(const Duration(milliseconds: 2800), () {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 550),
+        pageBuilder: (_, a, secondary) => FadeTransition(
+            opacity: a, child: const LoginScreen()),
+      ));
+    });
+  }
+
+  @override
+  void dispose() {
+    _intro.dispose();
+    _breathe.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fade = CurvedAnimation(parent: _intro, curve: Curves.easeOutCubic);
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF06413A), Color(0xFF0C8577), Color(0xFF0FA090)],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const Spacer(flex: 3),
+              // Breathing logo with soft halo rings.
+              AnimatedBuilder(
+                animation: _breathe,
+                builder: (_, child) {
+                  final t = Curves.easeInOut.transform(_breathe.value);
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      for (var ring = 0; ring < 2; ring++)
+                        Container(
+                          width: 130 + ring * 46 + t * 14,
+                          height: 130 + ring * 46 + t * 14,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white
+                                  .withValues(alpha: .16 - ring * .07),
+                              width: 1.4,
+                            ),
+                          ),
+                        ),
+                      ScaleTransition(
+                        scale: Tween(begin: .7, end: 1.0).animate(fade),
+                        child: FadeTransition(
+                          opacity: fade,
+                          child: const LogoMark(size: 96, onDark: true),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 34),
+              FadeTransition(
+                opacity: fade,
+                child: SlideTransition(
+                  position: Tween(
+                          begin: const Offset(0, .35), end: Offset.zero)
+                      .animate(fade),
+                  child: Column(
+                    children: [
+                      Text('MediSense',
+                          style: GoogleFonts.sora(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              letterSpacing: -.5)),
+                      const SizedBox(height: 8),
+                      Text('Smart care. Anywhere.',
+                          style: GoogleFonts.ibmPlexSans(
+                              fontSize: 15,
+                              color: Colors.white.withValues(alpha: .82),
+                              letterSpacing: .4)),
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(flex: 3),
+              // Indeterminate shimmer bar.
+              AnimatedBuilder(
+                animation: _breathe,
+                builder: (_, child) => Container(
+                  width: 132,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .18),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Align(
+                    alignment:
+                        Alignment(-1 + 2 * _breathe.value, 0),
+                    child: Container(
+                      width: 48,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 26),
+              Text('HIPAA-conscious design · Your data stays yours',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: Colors.white.withValues(alpha: .55))),
+              const SizedBox(height: 22),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
