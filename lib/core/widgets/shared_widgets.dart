@@ -31,7 +31,7 @@ class PrimaryButton extends StatelessWidget {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(
               fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: .3),
         ),
@@ -109,10 +109,10 @@ class MCard extends StatelessWidget {
 class MChip extends StatelessWidget {
   const MChip(this.label,
       {super.key,
-      this.background = AppColors.paper,
-      this.foreground = AppColors.muted,
-      this.icon,
-      this.onTap});
+        this.background = AppColors.paper,
+        this.foreground = AppColors.muted,
+        this.icon,
+        this.onTap});
 
   final String label;
   final Color background;
@@ -165,7 +165,7 @@ class SectionHeader extends StatelessWidget {
         children: [
           Expanded(
               child:
-                  Text(title, style: Theme.of(context).textTheme.titleMedium)),
+              Text(title, style: Theme.of(context).textTheme.titleMedium)),
           if (action != null)
             GestureDetector(
               onTap: onAction,
@@ -181,16 +181,40 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// Circular initials avatar.
+/// Circular avatar. Shows the user's photo when [imageUrl] is provided,
+/// otherwise falls back to a gradient initials badge.
 class InitialsAvatar extends StatelessWidget {
-  const InitialsAvatar(this.name, {super.key, this.size = 46, this.color});
+  const InitialsAvatar(this.name,
+      {super.key, this.size = 46, this.color, this.imageUrl});
 
   final String name;
   final double size;
   final Color? color;
 
+  /// Optional network image URL (e.g. Firebase Storage download URL).
+  /// When null or empty, the initials fallback is shown instead.
+  final String? imageUrl;
+
   @override
   Widget build(BuildContext context) {
+    if (imageUrl != null && imageUrl!.isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          imageUrl!,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          // If the URL fails to load, fall back to initials rather than
+          // showing a broken-image icon.
+          errorBuilder: (context, error, stackTrace) =>
+              _initialsBadge(context),
+        ),
+      );
+    }
+    return _initialsBadge(context);
+  }
+
+  Widget _initialsBadge(BuildContext context) {
     final c = color ?? AppColors.primary;
     final initials = name
         .trim()

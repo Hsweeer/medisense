@@ -112,14 +112,32 @@ class Reminder {
 
 class EmergencyContact {
   const EmergencyContact({
+    this.id,
     required this.name,
     required this.relation,
     required this.phone,
   });
 
+  /// Firestore document id — null until it's been saved.
+  final String? id;
   final String name;
   final String relation;
   final String phone;
+
+  factory EmergencyContact.fromMap(Map<String, dynamic> map, String id) {
+    return EmergencyContact(
+      id: id,
+      name: map['name'] ?? '',
+      relation: map['relation'] ?? 'Contact',
+      phone: map['phone'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'relation': relation,
+    'phone': phone,
+  };
 }
 
 class HealthProfile {
@@ -132,6 +150,7 @@ class HealthProfile {
     required this.allergies,
     required this.conditions,
     required this.medications,
+    this.imageUrl,
   });
 
   final String name;
@@ -143,5 +162,84 @@ class HealthProfile {
   final List<String> conditions;
   final List<String> medications;
 
+  /// Download URL of the user's profile photo in Firebase Storage.
+  /// Null (or empty) means no photo has been set — UI falls back to
+  /// initials avatar in that case.
+  final String? imageUrl;
+
   String get heightLabel => "${heightIn ~/ 12}'${heightIn % 12}\"";
+
+  /// Used while data is still loading, or before Firestore has anything.
+  factory HealthProfile.empty() => const HealthProfile(
+    name: '',
+    dob: '',
+    bloodType: '—',
+    heightIn: 0,
+    weightLb: 0,
+    allergies: [],
+    conditions: [],
+    medications: [],
+    imageUrl: null,
+  );
+
+  /// Written once, the first time a new user's profile doc is created.
+  factory HealthProfile.starter({required String name}) => HealthProfile(
+    name: name,
+    dob: '',
+    bloodType: '—',
+    heightIn: 0,
+    weightLb: 0,
+    allergies: const [],
+    conditions: const [],
+    medications: const [],
+    imageUrl: null,
+  );
+
+  factory HealthProfile.fromMap(Map<String, dynamic> map) => HealthProfile(
+    name: map['name'] ?? '',
+    dob: map['dob'] ?? '',
+    bloodType: map['bloodType'] ?? '—',
+    heightIn: map['heightIn'] ?? 0,
+    weightLb: map['weightLb'] ?? 0,
+    allergies: List<String>.from(map['allergies'] ?? const []),
+    conditions: List<String>.from(map['conditions'] ?? const []),
+    medications: List<String>.from(map['medications'] ?? const []),
+    imageUrl: map['profileImage'] as String?,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'dob': dob,
+    'bloodType': bloodType,
+    'heightIn': heightIn,
+    'weightLb': weightLb,
+    'allergies': allergies,
+    'conditions': conditions,
+    'medications': medications,
+    'profileImage': imageUrl,
+  };
+
+  HealthProfile copyWith({
+    String? name,
+    String? dob,
+    String? bloodType,
+    int? heightIn,
+    int? weightLb,
+    List<String>? allergies,
+    List<String>? conditions,
+    List<String>? medications,
+    String? imageUrl,
+  }) {
+    return HealthProfile(
+      name: name ?? this.name,
+      dob: dob ?? this.dob,
+      bloodType: bloodType ?? this.bloodType,
+      heightIn: heightIn ?? this.heightIn,
+      weightLb: weightLb ?? this.weightLb,
+      allergies: allergies ?? this.allergies,
+      conditions: conditions ?? this.conditions,
+      medications: medications ?? this.medications,
+      imageUrl: imageUrl ?? this.imageUrl,
+    );
+  }
 }

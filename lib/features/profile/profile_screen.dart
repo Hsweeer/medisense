@@ -4,10 +4,11 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
-import '../../data/mock/mock_data.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../auth/login_screen.dart';
+import 'edit_health_profile_sheet.dart';
+import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -16,35 +17,64 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<ProfileProvider>();
+
+    if (prov.isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final p = prov.profile;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          Row(
-            children: [
-              InitialsAvatar(p.name, size: 62),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(p.name,
-                        style: GoogleFonts.sora(
-                            fontSize: 20, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 3),
-                    const Text('${MockData.userPhone} · ${MockData.userLocationLabel}',
-                        style: TextStyle(
-                            fontSize: 12.5, color: AppColors.muted)),
-                  ],
+          MCard(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+            ),
+            child: Row(
+              children: [
+                InitialsAvatar(p.name, size: 56, imageUrl: p.imageUrl),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                          p.name.isEmpty ? 'Complete your profile' : p.name,
+                          style: GoogleFonts.sora(
+                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 3),
+                      Text(
+                          FirebaseAuthEmail(context),
+                          style: const TextStyle(
+                              fontSize: 12.5, color: AppColors.muted)),
+                      if (p.dob.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                            p.dob,
+                            style: const TextStyle(
+                                fontSize: 12, color: AppColors.muted)),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.muted),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
-          const SectionHeader('Health profile'),
+          SectionHeader(
+            'Health profile',
+            action: 'Edit',
+            onAction: () => showEditHealthProfileSheet(context),
+          ),
           MCard(
             child: Column(
               children: [
@@ -54,7 +84,9 @@ class ProfileScreen extends StatelessWidget {
                     _Vital(label: 'Blood', value: p.bloodType),
                     _Vital(label: 'Height', value: p.heightLabel),
                     _Vital(label: 'Weight', value: '${p.weightLb} lb'),
-                    _Vital(label: 'Born', value: p.dob.split(',').first),
+                    _Vital(
+                        label: 'Born',
+                        value: p.dob.isEmpty ? '—' : p.dob.split(',').first),
                   ],
                 ),
                 const Divider(height: 24),
@@ -90,7 +122,7 @@ class ProfileScreen extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'MedAI personalizes every answer using this profile — '
-                    'keep it current for sharper guidance.',
+                        'keep it current for sharper guidance.',
                     style: TextStyle(
                         fontSize: 12.5,
                         height: 1.4,
@@ -164,10 +196,11 @@ class ProfileScreen extends StatelessWidget {
                   color: AppColors.danger,
                   onTap: () {
                     context.read<AuthProvider>().logout();
+                    context.read<ProfileProvider>().refreshForCurrentUser();
                     Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
                             builder: (_) => const LoginScreen()),
-                        (_) => false);
+                            (_) => false);
                   },
                 ),
               ],
@@ -177,6 +210,12 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Small helper so the profile card shows the signed-in email without
+/// importing FirebaseAuth directly into every widget below.
+String FirebaseAuthEmail(BuildContext context) {
+  return context.read<AuthProvider>().currentEmail;
 }
 
 class _Vital extends StatelessWidget {
@@ -229,7 +268,10 @@ class _ChipRow extends StatelessWidget {
                       fontSize: 12.5, color: AppColors.muted)),
             )),
         Expanded(
-          child: Wrap(
+          child: values.isEmpty
+              ? const Text('Not set yet',
+              style: TextStyle(fontSize: 12.5, color: AppColors.muted))
+              : Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
@@ -260,7 +302,9 @@ class _SettingTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       onTap: onTap,
-      leading: Icon(icon, color: color == AppColors.ink ? AppColors.inkSoft : color, size: 22),
+      leading: Icon(icon,
+          color: color == AppColors.ink ? AppColors.inkSoft : color,
+          size: 22),
       title: Text(label,
           style: TextStyle(
               fontSize: 14, fontWeight: FontWeight.w600, color: color)),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "248593836318",
+    "project_id": "medisense-7144b",
+    "storage_bucket": "medisense-7144b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:248593836318:android:f48e585f0bb8a21cde810f",
+        "android_client_info": {
+          "package_name": "com.medisense.medisense_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3O-aMxP5sJTtsxeBJkv0a-p6QeJ-RWwY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,13 +1,16 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/widgets/shared_widgets.dart';
 import '../auth/login_screen.dart';
+import '../shell/patient_shell.dart';
 
 /// Animated brand splash — deep teal gradient, breathing pulse logo,
-/// wordmark reveal, then auto-advance to the login experience.
+/// wordmark reveal, then auto-advance to Home (if already logged in)
+/// or the login experience (if not).
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -29,10 +32,18 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     Timer(const Duration(milliseconds: 2800), () {
       if (!mounted) return;
+
+      // Firebase keeps the session persisted locally, so this tells us
+      // whether the user was already logged in the last time they used
+      // the app — no extra network call needed.
+      final user = FirebaseAuth.instance.currentUser;
+
       Navigator.of(context).pushReplacement(PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 550),
         pageBuilder: (_, a, secondary) => FadeTransition(
-            opacity: a, child: const LoginScreen()),
+          opacity: a,
+          child: user != null ? const PatientShell() : const LoginScreen(),
+        ),
       ));
     });
   }
@@ -49,6 +60,8 @@ class _SplashScreenState extends State<SplashScreen>
     final fade = CurvedAnimation(parent: _intro, curve: Curves.easeOutCubic);
     return Scaffold(
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -97,7 +110,7 @@ class _SplashScreenState extends State<SplashScreen>
                 opacity: fade,
                 child: SlideTransition(
                   position: Tween(
-                          begin: const Offset(0, .35), end: Offset.zero)
+                      begin: const Offset(0, .35), end: Offset.zero)
                       .animate(fade),
                   child: Column(
                     children: [
@@ -130,7 +143,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   child: Align(
                     alignment:
-                        Alignment(-1 + 2 * _breathe.value, 0),
+                    Alignment(-1 + 2 * _breathe.value, 0),
                     child: Container(
                       width: 48,
                       height: 4,
