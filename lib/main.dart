@@ -8,6 +8,7 @@ import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
+import 'providers/password_reset_provider.dart';
 import 'providers/profile_provider.dart';
 import 'providers/reminder_provider.dart';
 import 'providers/sos_provider.dart';
@@ -31,6 +32,7 @@ class MediSenseApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider(create: (_) => PasswordResetProvider()),
         ChangeNotifierProvider(create: (_) => ReminderProvider()),
         ChangeNotifierProvider(
             create: (ctx) =>

@@ -9,6 +9,7 @@ import '../../core/widgets/shared_widgets.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../shell/patient_shell.dart';
+import 'forgot_password_screen.dart';
 import 'signup_screen.dart';
 
 // import 'otp_screen.dart'; // kept for when phone login is re-enabled
@@ -286,7 +287,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: _submitting
+                        ? null
+                        : () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const ForgotPasswordScreen())),
+                    child: const Text('Forgot password?',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(height: 6),
                 PrimaryButton(
                   label: _submitting ? 'Please wait…' : 'Sign in',
                   icon: Icons.arrow_forward_rounded,
