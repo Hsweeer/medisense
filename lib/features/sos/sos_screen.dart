@@ -250,21 +250,24 @@ class _ActiveSosView extends StatelessWidget {
           MCard(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: sos.notifyContacts,
-              activeThumbColor: AppColors.danger,
-              onChanged: (v) =>
-                  context.read<SosProvider>().toggleNotifyContacts(v),
-              title: const Text('Auto-text emergency contacts',
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600)),
-              subtitle: Text(
-                  contactNames.isEmpty
-                      ? 'No contacts yet — add one below'
-                      : '$contactNames — live tracking link',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.muted)),
+            child: Material(
+              color: Colors.transparent,
+              child: SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: sos.notifyContacts,
+                activeThumbColor: AppColors.danger,
+                onChanged: (v) =>
+                    context.read<SosProvider>().toggleNotifyContacts(v),
+                title: const Text('Auto-text emergency contacts',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                    contactNames.isEmpty
+                        ? 'No contacts yet — add one below'
+                        : '$contactNames — live tracking link',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.muted)),
+              ),
             ),
           ),
           const SizedBox(height: 10),

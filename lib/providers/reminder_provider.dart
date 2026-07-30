@@ -2,11 +2,20 @@ import 'package:flutter/foundation.dart';
 
 import '../data/mock/mock_data.dart';
 import '../data/models/models.dart';
+import '../services/notification_service.dart';
 
 /// Full reminder engine: per-dose status (taken / snoozed / skipped),
 /// 10-minute snooze, streaks, adherence, and MedAI-created reminders.
 class ReminderProvider extends ChangeNotifier {
   final List<Reminder> reminders = [...MockData.reminders];
+
+  ReminderProvider() {
+    // Arm native alarms for whatever reminders already exist (mock/seed
+    // data) so notifications work from a cold start too.
+    for (final r in reminders) {
+      NotificationService.instance.scheduleReminder(r);
+    }
+  }
 
   int get takenCount =>
       reminders.where((r) => r.status == DoseStatus.taken).length;
@@ -66,12 +75,16 @@ class ReminderProvider extends ChangeNotifier {
 
   void add(Reminder r) {
     reminders.add(r);
+    NotificationService.instance.scheduleReminder(r);
     notifyListeners();
   }
 
   /// Used by MedAI after scanning a prescription — returns how many landed.
   int addAll(List<Reminder> newOnes) {
     reminders.addAll(newOnes);
+    for (final r in newOnes) {
+      NotificationService.instance.scheduleReminder(r);
+    }
     notifyListeners();
     return newOnes.length;
   }
@@ -82,11 +95,15 @@ class ReminderProvider extends ChangeNotifier {
     if (time != null && time.isNotEmpty) r.time = time;
     if (schedule != null && schedule.isNotEmpty) r.schedule = schedule;
     if (instructions != null) r.instructions = instructions;
+    // Title (the scheduling key) is locked at creation, so this always
+    // reschedules the same alarm slot with the new time/schedule.
+    NotificationService.instance.scheduleReminder(r);
     notifyListeners();
   }
 
   void remove(Reminder r) {
     reminders.remove(r);
+    NotificationService.instance.cancelForReminder(r);
     notifyListeners();
   }
 }

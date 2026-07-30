@@ -284,19 +284,22 @@ class EmergencyRideScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
             for (final h in MockData.hospitals)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.local_hospital_rounded,
-                    color: AppColors.danger),
-                title: Text(h.name),
-                subtitle:
-                    Text('${h.distanceMiles} mi · ETA ${h.etaMinutes} min'),
-                onTap: () {
-                  sos.selectHospital(h);
-                  Navigator.pop(sheetCtx);
-                  showToast(context,
-                      "Driver's navigation updated → ${h.name}");
-                },
+              Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.local_hospital_rounded,
+                      color: AppColors.danger),
+                  title: Text(h.name),
+                  subtitle:
+                      Text('${h.distanceMiles} mi · ETA ${h.etaMinutes} min'),
+                  onTap: () {
+                    sos.selectHospital(h);
+                    Navigator.pop(sheetCtx);
+                    showToast(context,
+                        "Driver's navigation updated → ${h.name}");
+                  },
+                ),
               ),
           ],
         ),

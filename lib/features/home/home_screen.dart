@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/mock/mock_data.dart';
+import '../../providers/notification_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/reminder_provider.dart';
 import '../nearby/nearby_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../reminders/reminders_screen.dart';
 
@@ -38,10 +40,12 @@ class HomeScreen extends StatelessWidget {
                         style: Theme.of(context).textTheme.headlineSmall),
                     const Text(MockData.userLocationLabel,
                         style:
-                            TextStyle(color: AppColors.muted, fontSize: 13)),
+                        TextStyle(color: AppColors.muted, fontSize: 13)),
                   ],
                 ),
               ),
+              const _NotificationBell(),
+              const SizedBox(width: 10),
               InitialsAvatar(displayName, imageUrl: profile.imageUrl),
             ],
           ),
@@ -132,51 +136,51 @@ class HomeScreen extends StatelessWidget {
           Row(children: [
             Expanded(
                 child: _QuickTile(
-              icon: Icons.local_hospital_rounded,
-              label: 'Hospitals near me',
-              sub: 'ER open · directions',
-              color: AppColors.primary,
-              soft: AppColors.soft,
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
+                  icon: Icons.local_hospital_rounded,
+                  label: 'Hospitals near me',
+                  sub: 'ER open · directions',
+                  color: AppColors.primary,
+                  soft: AppColors.soft,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
                       const NearbyScreen(initialType: 1, showBack: true))),
-            )),
+                )),
             const SizedBox(width: 12),
             Expanded(
                 child: _QuickTile(
-              icon: Icons.local_pharmacy_rounded,
-              label: 'Pharmacies near me',
-              sub: '2 open 24 hrs',
-              color: AppColors.warning,
-              soft: AppColors.warningSoft,
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
+                  icon: Icons.local_pharmacy_rounded,
+                  label: 'Pharmacies near me',
+                  sub: '2 open 24 hrs',
+                  color: AppColors.warning,
+                  soft: AppColors.warningSoft,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
                       const NearbyScreen(initialType: 2, showBack: true))),
-            )),
+                )),
           ]),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
                 child: _QuickTile(
-              icon: Icons.alarm_rounded,
-              label: 'My reminders',
-              sub: '${reminders.reminders.length} active',
-              color: AppColors.primary,
-              soft: AppColors.soft,
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const RemindersScreen())),
-            )),
+                  icon: Icons.alarm_rounded,
+                  label: 'My reminders',
+                  sub: '${reminders.reminders.length} active',
+                  color: AppColors.primary,
+                  soft: AppColors.soft,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const RemindersScreen())),
+                )),
             const SizedBox(width: 12),
             Expanded(
                 child: _QuickTile(
-              icon: Icons.contact_emergency_rounded,
-              label: 'Emergency contacts',
-              sub: 'Alerted during SOS',
-              color: AppColors.danger,
-              soft: AppColors.dangerSoft,
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const EmergencyContactsScreen())),
-            )),
+                  icon: Icons.contact_emergency_rounded,
+                  label: 'Emergency contacts',
+                  sub: 'Alerted during SOS',
+                  color: AppColors.danger,
+                  soft: AppColors.dangerSoft,
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const EmergencyContactsScreen())),
+                )),
           ]),
           const SizedBox(height: 20),
           // One AI insight — kept light.
@@ -220,6 +224,59 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/// Bell icon with an unread-count badge, matching the app's rounded
+/// icon-badge language used elsewhere (see _QuickTile below).
+class _NotificationBell extends StatelessWidget {
+  const _NotificationBell();
+
+  @override
+  Widget build(BuildContext context) {
+    final unread = context.watch<NotificationProvider>().unreadCount;
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.soft,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.notifications_none_rounded,
+                color: AppColors.primary, size: 22),
+          ),
+          if (unread > 0)
+            Positioned(
+              top: -3,
+              right: -3,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                constraints: const BoxConstraints(minWidth: 18),
+                decoration: BoxDecoration(
+                  color: AppColors.danger,
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(color: AppColors.paper, width: 1.5),
+                ),
+                child: Text(
+                  unread > 9 ? '9+' : '$unread',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _QuickTile extends StatelessWidget {
   const _QuickTile({
     required this.icon,
@@ -257,7 +314,7 @@ class _QuickTile extends StatelessWidget {
           const SizedBox(height: 10),
           Text(label,
               style:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           Text(sub,
               style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
