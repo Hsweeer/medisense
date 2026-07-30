@@ -68,84 +68,97 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
     return Scaffold(
       appBar: AppBar(),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: AppColors.soft,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Icon(Icons.mark_email_read_rounded,
-                    color: AppColors.primary, size: 34),
-              ),
-              const SizedBox(height: 24),
-              Text('Check your email',
-                  style: GoogleFonts.sora(
-                      fontSize: 28, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              Text.rich(
-                TextSpan(
-                  text: 'If an account exists for ',
-                  style: const TextStyle(
-                      fontSize: 14.5, color: AppColors.muted, height: 1.5),
-                  children: [
-                    TextSpan(
-                      text: widget.email,
-                      style: const TextStyle(
-                          color: AppColors.ink, fontWeight: FontWeight.w700),
-                    ),
-                    const TextSpan(
-                        text: ', we\'ve sent a link to reset the password. '
-                            'Open it on this device to set a new one.'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              MCard(
-                color: AppColors.paper,
-                border: Border.all(color: AppColors.line),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.info_outline_rounded,
-                        color: AppColors.muted, size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Don\'t see it? Check spam/junk — it can take a '
-                        'minute or two to arrive.',
-                        style: TextStyle(
-                            fontSize: 12.5,
-                            color: AppColors.muted.withValues(alpha: .95),
-                            height: 1.4),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: AppColors.soft,
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: const Icon(Icons.mark_email_read_rounded,
+                            color: AppColors.primary, size: 34),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: _cooldown > 0
-                    ? Text('Resend link in ${_cooldown}s',
-                        style: const TextStyle(
-                            fontSize: 13, color: AppColors.muted))
-                    : GestureDetector(
-                        onTap: _resending ? null : _resend,
-                        child: Text(
-                          _resending ? 'Sending…' : 'Resend link',
+                      const SizedBox(height: 24),
+                      Text('Check your email',
+                          style: GoogleFonts.sora(
+                              fontSize: 28, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 10),
+                      Text.rich(
+                        TextSpan(
+                          text: 'If an account exists for ',
                           style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w700),
+                              fontSize: 14.5,
+                              color: AppColors.muted,
+                              height: 1.5),
+                          children: [
+                            TextSpan(
+                              text: widget.email,
+                              style: const TextStyle(
+                                  color: AppColors.ink,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                            const TextSpan(
+                                text: ', we\'ve sent a link to reset the '
+                                    'password. Open it on this device to '
+                                    'set a new one.'),
+                          ],
                         ),
                       ),
+                      const SizedBox(height: 20),
+                      MCard(
+                        color: AppColors.paper,
+                        border: Border.all(color: AppColors.line),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline_rounded,
+                                color: AppColors.muted, size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Don\'t see it? Check spam/junk — it can '
+                                'take a minute or two to arrive.',
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color:
+                                        AppColors.muted.withValues(alpha: .95),
+                                    height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Center(
+                        child: _cooldown > 0
+                            ? Text('Resend link in ${_cooldown}s',
+                                style: const TextStyle(
+                                    fontSize: 13, color: AppColors.muted))
+                            : GestureDetector(
+                                onTap: _resending ? null : _resend,
+                                child: Text(
+                                  _resending ? 'Sending…' : 'Resend link',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
               PrimaryButton(
                 label: 'Back to sign in',
                 icon: Icons.arrow_back_rounded,
