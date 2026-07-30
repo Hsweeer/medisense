@@ -9,12 +9,13 @@ import '../../core/widgets/shared_widgets.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../shell/patient_shell.dart';
+import 'signup_screen.dart';
 
 // import 'otp_screen.dart'; // kept for when phone login is re-enabled
 
 /// Login with built-in marketing: rotating value-prop hero, trust strip,
-/// then email/password sign-in (creates an account automatically if one
-/// doesn't exist yet). Everything is static content — zero running cost.
+/// then email/password sign-in for existing accounts. New users are sent
+/// to [SignupScreen] via the link below the form.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -89,21 +90,24 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _submitting = true);
-    final error =
-    await context.read<AuthProvider>().signInOrSignUp(email, password);
-    if (!mounted) return;
-    setState(() => _submitting = false);
+    try {
+      await context.read<AuthProvider>().signIn(email, password);
 
-    if (error != null) {
-      showToast(context, error, color: AppColors.danger);
-      return;
+      if (!mounted) return;
+
+      context.read<ProfileProvider>().refreshForCurrentUser();
+
+      Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const PatientShell()),
+          (_) => false);
+    } catch (error) {
+      if (!mounted) return;
+      showToast(context, error.toString(), color: AppColors.danger);
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
     }
-
-    context.read<ProfileProvider>().refreshForCurrentUser();
-
-    Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const PatientShell()),
-            (_) => false);
   }
 
   @override
@@ -185,12 +189,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(s.$2,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.sora(
                                           fontSize: 16.5,
                                           fontWeight: FontWeight.w700,
                                           color: Colors.white)),
                                   const SizedBox(height: 5),
                                   Text(s.$3,
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                           fontSize: 12.5,
                                           height: 1.35,
@@ -244,6 +252,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text('Sign in with your email',
                     style:
                     TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                const Text(
+                  'Enter the email and password for your existing account.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+                ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _email,
@@ -273,16 +286,36 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  'New here? Just enter an email + password to create your account.',
-                  style: TextStyle(fontSize: 11.5, color: AppColors.muted),
-                ),
                 const SizedBox(height: 14),
                 PrimaryButton(
-                  label: _submitting ? 'Please wait…' : 'Continue',
+                  label: _submitting ? 'Please wait…' : 'Sign in',
                   icon: Icons.arrow_forward_rounded,
                   onPressed: _submitting ? null : _continue,
+                ),
+                const SizedBox(height: 14),
+                Center(
+                  child: GestureDetector(
+                    onTap: _submitting
+                        ? null
+                        : () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const SignupScreen())),
+                    child: Text.rich(
+                      TextSpan(
+                        text: "New here? ",
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.muted),
+                        children: [
+                          TextSpan(
+                            text: 'Create an account',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
 
                 // ---------------------------------------------------------

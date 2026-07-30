@@ -9,8 +9,7 @@ import '../auth/login_screen.dart';
 import '../shell/patient_shell.dart';
 
 /// Animated brand splash — deep teal gradient, breathing pulse logo,
-/// wordmark reveal, then auto-advance to Home (if already logged in)
-/// or the login experience (if not).
+/// wordmark reveal, then auto-advance to the login experience.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -32,18 +31,16 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     Timer(const Duration(milliseconds: 2800), () {
       if (!mounted) return;
-
-      // Firebase keeps the session persisted locally, so this tells us
-      // whether the user was already logged in the last time they used
-      // the app — no extra network call needed.
-      final user = FirebaseAuth.instance.currentUser;
-
+      // Firebase persists the session across app restarts. If there's
+      // already a signed-in user, skip Login/Signup entirely and go
+      // straight to Home. Otherwise, start the Login flow.
+      final alreadySignedIn = FirebaseAuth.instance.currentUser != null;
+      final destination =
+          alreadySignedIn ? const PatientShell() : const LoginScreen();
       Navigator.of(context).pushReplacement(PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 550),
-        pageBuilder: (_, a, secondary) => FadeTransition(
-          opacity: a,
-          child: user != null ? const PatientShell() : const LoginScreen(),
-        ),
+        pageBuilder: (_, a, secondary) =>
+            FadeTransition(opacity: a, child: destination),
       ));
     });
   }
@@ -110,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen>
                 opacity: fade,
                 child: SlideTransition(
                   position: Tween(
-                      begin: const Offset(0, .35), end: Offset.zero)
+                          begin: const Offset(0, .35), end: Offset.zero)
                       .animate(fade),
                   child: Column(
                     children: [
@@ -143,7 +140,7 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                   child: Align(
                     alignment:
-                    Alignment(-1 + 2 * _breathe.value, 0),
+                        Alignment(-1 + 2 * _breathe.value, 0),
                     child: Container(
                       width: 48,
                       height: 4,
