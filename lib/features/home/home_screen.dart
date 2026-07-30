@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/mock/mock_data.dart';
+import '../../providers/profile_provider.dart';
 import '../../providers/reminder_provider.dart';
 import '../nearby/nearby_screen.dart';
 import '../profile/emergency_contacts_screen.dart';
@@ -17,8 +18,10 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reminders = context.watch<ReminderProvider>();
+    final profile = context.watch<ProfileProvider>().profile;
     final next = reminders.nextDose;
-    final firstName = MockData.userName.split(' ').first;
+    final displayName = profile.name.trim();
+    final firstName = displayName.isEmpty ? 'there' : displayName.split(' ').first;
 
     return SafeArea(
       child: ListView(
@@ -39,7 +42,7 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              const InitialsAvatar(MockData.userName),
+              InitialsAvatar(displayName, imageUrl: profile.imageUrl),
             ],
           ),
           const SizedBox(height: 16),
