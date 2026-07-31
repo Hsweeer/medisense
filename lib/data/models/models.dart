@@ -1,3 +1,4 @@
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 // ── Chat ────────────────────────────────────────────────────────────────
@@ -76,6 +77,19 @@ class Facility {
   final bool isOpen;
   final List<String> tags; // "ER", "Trauma Center", "Drive-thru"…
   final String phone;
+
+  /// Real straight-line distance in miles from [from] (the user's actual
+  /// GPS position) to this facility — used instead of the seeded
+  /// [distanceMiles] whenever we have a live location fix.
+  double milesFrom(LatLng from) {
+    final meters = Geolocator.distanceBetween(
+      from.latitude,
+      from.longitude,
+      position.latitude,
+      position.longitude,
+    );
+    return meters / 1609.344;
+  }
 }
 
 // ── Reminders ───────────────────────────────────────────────────────────

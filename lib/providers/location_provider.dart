@@ -1,0 +1,126 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../core/services/location_service.dart';
+import '../data/mock/mock_data.dart';
+
+export '../core/services/location_service.dart' show LocationAccess;
+
+enum LocationLoadState { initial, loading, ready, error }
+
+/// App-wide source of truth for the user's real device location.
+///
+/// Screens that need "near me" behavior watch this instead of touching
+/// `geolocator` directly. It exposes:
+/// - [access] — the permission/service state, so UI can show the right
+///   prompt (ask / open settings / etc.) instead of failing silently.
+/// - [position] — the last known real GPS fix, or null if we don't have one.
+/// - [positionOrFallback] — safe value to hand to a map that always needs
+///   *some* coordinate to center on.
+/// - [label] — human-readable "City, ST" for display, e.g. on the home
+///   screen greeting.
+class LocationProvider extends ChangeNotifier {
+  LocationAccess _access = LocationAccess.denied;
+  LocationLoadState _state = LocationLoadState.initial;
+  LatLng? _position;
+  String? _label;
+  bool _requestInFlight = false;
+
+  LocationAccess get access => _access;
+  LocationLoadState get state => _state;
+  LatLng? get position => _position;
+  String? get label => _label;
+
+  bool get isGranted => _access == LocationAccess.granted;
+  bool get isLoading => _state == LocationLoadState.loading;
+
+  /// Real position when we have one; otherwise the app's seed location so
+  /// map widgets never crash on a null center. Screens should still check
+  /// [isGranted] before presenting distances as accurate.
+  LatLng get positionOrFallback => _position ?? MockData.userLocation;
+
+  /// What to show next to a pin/greeting while we figure things out.
+  String get displayLabel {
+    if (_state == LocationLoadState.loading) return 'Locating…';
+    if (isGranted && _label != null) return _label!;
+    if (isGranted && _position != null) return 'Current location';
+    if (_access == LocationAccess.serviceDisabled) return 'Location services off';
+    return 'Location off · tap to enable';
+  }
+
+  /// Call once when the patient shell first loads. Prompts the native
+  /// permission dialog only while the user has not made a decision yet.
+  Future<void> requestAccess() async {
+    if (_requestInFlight) return;
+    _requestInFlight = true;
+    _state = LocationLoadState.loading;
+    notifyListeners();
+
+    try {
+      final access = await LocationService.instance.requestAccess();
+      _access = access;
+      if (access == LocationAccess.granted) {
+        await _loadPosition();
+      } else {
+        _state = LocationLoadState.error;
+      }
+    } catch (_) {
+      _state = LocationLoadState.error;
+    } finally {
+      _requestInFlight = false;
+      notifyListeners();
+    }
+  }
+
+  /// Re-reads permission status without prompting — cheap, safe to call
+  /// from `didChangeAppLifecycleState` when the user comes back from
+  /// Settings after enabling location.
+  Future<void> refreshAccessSilently() async {
+    final access = await LocationService.instance.currentAccess();
+    if (access == _access) return;
+    _access = access;
+    if (access == LocationAccess.granted && _position == null) {
+      await _loadPosition();
+    }
+    notifyListeners();
+  }
+
+  /// Force a fresh GPS fix (e.g. user tapped a "recenter" button).
+  Future<void> refreshPosition() async {
+    if (!isGranted) return;
+    _state = LocationLoadState.loading;
+    notifyListeners();
+    await _loadPosition();
+    notifyListeners();
+  }
+
+  Future<void> _loadPosition() async {
+    try {
+      final pos = await LocationService.instance.currentPosition();
+      _position = LatLng(pos.latitude, pos.longitude);
+      _state = LocationLoadState.ready;
+      // Reverse geocoding is best-effort — never block the position update on it.
+      unawaited(_loadLabel());
+    } catch (_) {
+      _state = LocationLoadState.error;
+    }
+  }
+
+  Future<void> _loadLabel() async {
+    final pos = _position;
+    if (pos == null) return;
+    final label =
+        await LocationService.instance.labelFor(pos.latitude, pos.longitude);
+    if (label == null) return;
+    _label = label;
+    notifyListeners();
+  }
+
+  Future<void> openSettings() {
+    return _access == LocationAccess.serviceDisabled
+        ? LocationService.instance.openLocationSettings()
+        : LocationService.instance.openAppSettings();
+  }
+}
