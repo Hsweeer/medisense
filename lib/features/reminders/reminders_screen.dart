@@ -26,34 +26,73 @@ class RemindersScreen extends StatelessWidget {
         label: const Text('Add reminder',
             style: TextStyle(fontWeight: FontWeight.w700)),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 90),
-        children: [
-          // Stats header: done · streak · adherence
-          MCard(
-            color: AppColors.soft,
-            border: Border.all(color: AppColors.primary.withValues(alpha: .3)),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            child: Row(
-              children: [
-                _Stat(
-                    value:
-                        '${prov.takenCount}/${prov.reminders.length}',
-                    label: 'Done today'),
-                _statDivider(),
-                _Stat(value: '${prov.bestStreak} days', label: 'Best streak'),
-                _statDivider(),
-                _Stat(value: '${prov.adherencePct}%', label: 'This week'),
-              ],
+      body: prov.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : prov.reminders.isEmpty
+              ? _buildEmptyState(context)
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 90),
+                  children: [
+                    // Stats header: done · streak · adherence
+                    MCard(
+                      color: AppColors.soft,
+                      border: Border.all(
+                          color: AppColors.primary.withValues(alpha: .3)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 14),
+                      child: Row(
+                        children: [
+                          _Stat(
+                              value:
+                                  '${prov.takenCount}/${prov.reminders.length}',
+                              label: 'Done today'),
+                          _statDivider(),
+                          _Stat(
+                              value: '${prov.bestStreak} days',
+                              label: 'Best streak'),
+                          _statDivider(),
+                          _Stat(
+                              value: '${prov.adherencePct}%',
+                              label: 'This week'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    for (final r in prov.reminders)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ReminderCard(reminder: r),
+                      ),
+                  ],
+                ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_alert_rounded,
+                size: 64, color: AppColors.muted.withValues(alpha: .5)),
+            const SizedBox(height: 20),
+            Text('No reminders yet',
+                style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            const Text(
+              'Create your first reminder to get started.\nGet notified when it\'s time to take your medication.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.muted, height: 1.5),
             ),
-          ),
-          const SizedBox(height: 16),
-          for (final r in prov.reminders)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _ReminderCard(reminder: r),
+            const SizedBox(height: 20),
+            PrimaryButton(
+              label: 'Create reminder',
+              onPressed: () => _showEditSheet(context),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -327,9 +366,10 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                 ),
                 if (reminder != null)
                   IconButton(
-                    onPressed: () {
-                      sheetCtx.read<ReminderProvider>().remove(reminder);
-                      Navigator.of(sheetCtx).pop();
+                    onPressed: () async {
+                      final prov = sheetCtx.read<ReminderProvider>();
+                      await prov.remove(reminder);
+                      if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
                     },
                     icon: const Icon(Icons.delete_outline_rounded,
                         color: AppColors.danger),
@@ -373,11 +413,11 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
             const SizedBox(height: 16),
             PrimaryButton(
               label: reminder == null ? 'Save reminder' : 'Save changes',
-              onPressed: () {
+              onPressed: () async {
                 final prov = sheetCtx.read<ReminderProvider>();
                 if (reminder == null) {
                   if (title.text.trim().isEmpty) return;
-                  prov.add(Reminder(
+                  await prov.add(Reminder(
                     title: title.text.trim(),
                     dose: dose.text.trim().isEmpty
                         ? '1 dose'
@@ -389,13 +429,13 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                     instructions: instructions.text.trim(),
                   ));
                 } else {
-                  prov.update(reminder,
+                  await prov.update(reminder,
                       dose: dose.text.trim(),
                       time: time.text.trim(),
                       schedule: schedule,
                       instructions: instructions.text.trim());
                 }
-                Navigator.of(sheetCtx).pop();
+                if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
               },
             ),
           ],

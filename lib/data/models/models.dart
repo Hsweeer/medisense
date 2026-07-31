@@ -98,6 +98,7 @@ enum DoseStatus { pending, taken, snoozed, skipped }
 
 class Reminder {
   Reminder({
+    this.id, // Firestore document ID, null until saved
     required this.title,
     required this.dose,
     required this.time,
@@ -107,8 +108,10 @@ class Reminder {
     this.status = DoseStatus.pending,
     this.snoozeLabel,
     this.streakDays = 0,
+    this.enabled = true,
   });
 
+  String? id; // Firestore document ID
   final String title;
   String dose;
   String time; // display string, e.g. "8:00 AM"
@@ -118,8 +121,40 @@ class Reminder {
   DoseStatus status;
   String? snoozeLabel; // "rings again 9:10 AM"
   int streakDays;
+  bool enabled; // controls whether alarm is scheduled
 
   bool get taken => status == DoseStatus.taken;
+
+  factory Reminder.fromMap(Map<String, dynamic> map, String id) {
+    return Reminder(
+      id: id,
+      title: map['title'] ?? '',
+      dose: map['dose'] ?? '',
+      time: map['time'] ?? '9:00 AM',
+      schedule: map['schedule'] ?? 'Daily',
+      instructions: map['instructions'] ?? '',
+      addedBy: map['addedBy'] ?? 'you',
+      status: DoseStatus.values.firstWhere(
+        (e) => e.toString() == 'DoseStatus.${map['status'] ?? 'pending'}',
+        orElse: () => DoseStatus.pending,
+      ),
+      snoozeLabel: map['snoozeLabel'],
+      streakDays: map['streakDays'] ?? 0,
+      enabled: map['enabled'] ?? true,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'title': title,
+    'dose': dose,
+    'time': time,
+    'schedule': schedule,
+    'instructions': instructions,
+    'addedBy': addedBy,
+    'status': status.toString().split('.').last,
+    'streakDays': streakDays,
+    'enabled': enabled,
+  };
 }
 
 // ── Profile / emergency ─────────────────────────────────────────────────

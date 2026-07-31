@@ -1,20 +1,55 @@
 import 'package:flutter/foundation.dart';
 
-import '../data/mock/mock_data.dart';
 import '../data/models/models.dart';
 import '../services/notification_service.dart';
+import '../services/reminder_firestore_service.dart';
 
 /// Full reminder engine: per-dose status (taken / snoozed / skipped),
 /// 10-minute snooze, streaks, adherence, and MedAI-created reminders.
+/// All reminders are persisted to Firestore.
 class ReminderProvider extends ChangeNotifier {
-  final List<Reminder> reminders = [...MockData.reminders];
+  final List<Reminder> reminders = [];
+  final ReminderFirestoreService _firestoreService =
+      ReminderFirestoreService.instance;
+  bool isLoading = false;
+  bool _initialized = false;
 
   ReminderProvider() {
-    // Arm native alarms for whatever reminders already exist (mock/seed
-    // data) so notifications work from a cold start too.
-    for (final r in reminders) {
-      NotificationService.instance.scheduleReminder(r);
+    _initializeReminders();
+  }
+
+  /// Load reminders from Firestore on app startup.
+  Future<void> _initializeReminders() async {
+    if (_initialized) return;
+    isLoading = true;
+    notifyListeners();
+
+    try {
+      final loaded = await _firestoreService.fetchReminders();
+      reminders.clear();
+      reminders.addAll(loaded);
+      debugPrint(
+          '[ReminderProvider] initialized with ${reminders.length} reminders from Firestore');
+
+      // Reschedule alarms for all enabled reminders (cold start recovery)
+      for (final r in reminders) {
+        if (r.enabled) {
+          NotificationService.instance.scheduleReminder(r);
+        }
+      }
+    } catch (e) {
+      debugPrint('[ReminderProvider] _initializeReminders: error — $e');
     }
+
+    _initialized = true;
+    isLoading = false;
+    notifyListeners();
+  }
+
+  /// Force a refresh from Firestore (useful after auth state changes).
+  Future<void> refresh() async {
+    _initialized = false;
+    await _initializeReminders();
   }
 
   int get takenCount =>
@@ -50,6 +85,7 @@ class ReminderProvider extends ChangeNotifier {
     r.status = DoseStatus.taken;
     r.snoozeLabel = null;
     r.streakDays++;
+    _persist(r);
     notifyListeners();
   }
 
@@ -57,12 +93,14 @@ class ReminderProvider extends ChangeNotifier {
   void untake(Reminder r) {
     r.status = DoseStatus.pending;
     r.streakDays = (r.streakDays - 1).clamp(0, 9999);
+    _persist(r);
     notifyListeners();
   }
 
   void snooze(Reminder r, {int minutes = 10}) {
     r.status = DoseStatus.snoozed;
     r.snoozeLabel = 'rings again in $minutes min';
+    _persist(r);
     notifyListeners();
   }
 
@@ -70,40 +108,88 @@ class ReminderProvider extends ChangeNotifier {
     r.status = DoseStatus.skipped;
     r.snoozeLabel = null;
     r.streakDays = 0;
+    _persist(r);
     notifyListeners();
   }
 
-  void add(Reminder r) {
-    reminders.add(r);
-    NotificationService.instance.scheduleReminder(r);
-    notifyListeners();
+  /// Add a new reminder: save to Firestore, schedule alarm, and update UI.
+  Future<void> add(Reminder r) async {
+    final saved = await _firestoreService.createReminder(r);
+    if (saved != null) {
+      reminders.add(saved);
+      NotificationService.instance.scheduleReminder(saved);
+      notifyListeners();
+    }
   }
 
   /// Used by MedAI after scanning a prescription — returns how many landed.
-  int addAll(List<Reminder> newOnes) {
-    reminders.addAll(newOnes);
+  Future<int> addAll(List<Reminder> newOnes) async {
+    int count = 0;
     for (final r in newOnes) {
-      NotificationService.instance.scheduleReminder(r);
+      final saved = await _firestoreService.createReminder(r);
+      if (saved != null) {
+        reminders.add(saved);
+        NotificationService.instance.scheduleReminder(saved);
+        count++;
+      }
     }
     notifyListeners();
-    return newOnes.length;
+    return count;
   }
 
-  void update(Reminder r,
-      {String? dose, String? time, String? schedule, String? instructions}) {
+  /// Update a reminder: save to Firestore, reschedule alarm, and update UI.
+  Future<void> update(Reminder r,
+      {String? dose, String? time, String? schedule, String? instructions}) async {
     if (dose != null && dose.isNotEmpty) r.dose = dose;
     if (time != null && time.isNotEmpty) r.time = time;
     if (schedule != null && schedule.isNotEmpty) r.schedule = schedule;
     if (instructions != null) r.instructions = instructions;
-    // Title (the scheduling key) is locked at creation, so this always
-    // reschedules the same alarm slot with the new time/schedule.
-    NotificationService.instance.scheduleReminder(r);
-    notifyListeners();
+
+    final updated = await _firestoreService.updateReminder(r);
+    if (updated) {
+      // Reschedule the alarm with new time/schedule
+      NotificationService.instance.scheduleReminder(r);
+      notifyListeners();
+    }
   }
 
-  void remove(Reminder r) {
-    reminders.remove(r);
-    NotificationService.instance.cancelForReminder(r);
-    notifyListeners();
+  /// Delete a reminder: remove from Firestore, cancel alarm, and update UI.
+  Future<void> remove(Reminder r) async {
+    if (r.id == null) return;
+
+    final deleted = await _firestoreService.deleteReminder(r.id!);
+    if (deleted) {
+      reminders.remove(r);
+      NotificationService.instance.cancelForReminder(r);
+      notifyListeners();
+    }
+  }
+
+  /// Enable a reminder: reschedule its alarm.
+  Future<void> enable(Reminder r) async {
+    r.enabled = true;
+    final updated = await _firestoreService.updateReminder(r);
+    if (updated) {
+      NotificationService.instance.scheduleReminder(r);
+      notifyListeners();
+    }
+  }
+
+  /// Disable a reminder: cancel its alarm.
+  Future<void> disable(Reminder r) async {
+    r.enabled = false;
+    final updated = await _firestoreService.updateReminder(r);
+    if (updated) {
+      NotificationService.instance.cancelForReminder(r);
+      notifyListeners();
+    }
+  }
+
+  /// Internal: persist status changes to Firestore without triggering
+  /// alarm rescheduling (used for take/untake/snooze/skip).
+  void _persist(Reminder r) {
+    if (r.id != null) {
+      _firestoreService.updateReminder(r);
+    }
   }
 }
