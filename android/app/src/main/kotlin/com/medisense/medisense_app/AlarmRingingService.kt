@@ -1,5 +1,6 @@
 package com.medisense.medisense_app
 
+import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -77,7 +78,7 @@ class AlarmRingingService : Service() {
         currentDisplayTime = intent?.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""
 
         acquireWakeLock()
-        
+
         val notification = buildForegroundNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -85,9 +86,25 @@ class AlarmRingingService : Service() {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification)
         }
 
-        launchAlarmActivity()
+        // Exactly ONE of these two ever opens AlarmActivity for a given ring —
+        // never both. When the device is locked, Android auto-promotes the
+        // notification's full-screen intent (below) to a full-screen launch
+        // on its own; calling startActivity() ourselves at the same moment
+        // raced it and produced two overlapping copies of the alarm screen.
+        // When unlocked, Android only ever shows that same intent as a
+        // heads-up banner (never auto-launches it), so we open the screen
+        // ourselves instead.
+        if (!isDeviceLocked()) {
+            launchAlarmActivity()
+        }
+
         startSound()
         startVibration()
+    }
+
+    private fun isDeviceLocked(): Boolean {
+        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        return keyguardManager.isKeyguardLocked
     }
 
     private fun acquireWakeLock() {

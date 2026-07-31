@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -175,6 +176,37 @@ class NotificationService {
     );
 
     final weekdays = _weekdaysFor(reminder.schedule);
+
+    // The native alarm owns Android's visible alarm notification. Do not also
+    // schedule flutter_local_notifications here: two independent Android
+    // schedulers firing together produce two notifications for one reminder.
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      if (weekdays == null) {
+        await NativeAlarmBridge.instance.scheduleAlarm(
+          reminderId: reminder.id ?? reminder.title,
+          title: reminder.title,
+          dose: reminder.dose,
+          displayTime: reminder.time,
+          hour: time.hour,
+          minute: time.minute,
+          repeatType: 'daily',
+        );
+      } else {
+        for (final weekday in weekdays) {
+          await NativeAlarmBridge.instance.scheduleAlarm(
+            reminderId: reminder.id ?? reminder.title,
+            title: reminder.title,
+            dose: reminder.dose,
+            displayTime: reminder.time,
+            hour: time.hour,
+            minute: time.minute,
+            repeatType: 'weekly',
+            weekday: weekday,
+          );
+        }
+      }
+      return;
+    }
 
     if (weekdays == null) {
       // "Daily" (and "Custom", as a sane fallback) — repeats every day.

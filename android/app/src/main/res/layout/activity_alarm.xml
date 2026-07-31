@@ -1,32 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_alarm_gradient"
-    android:padding="28dp">
+    android:paddingStart="28dp"
+    android:paddingEnd="28dp"
+    android:paddingTop="28dp"
+    android:paddingBottom="24dp">
 
-    <!-- Current time, top -->
+    <!-- اوپر موجودہ وقت (Current Time) -->
     <TextView
         android:id="@+id/tvCurrentTime"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="28dp"
         android:textColor="#FFFFFF"
         android:textSize="16sp"
         android:alpha="0.85"
         android:fontFamily="sans-serif-medium"
-        tools:text="8:00 AM" />
+        tools:text="8:00 AM"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Pulsing icon badge, vertically centered -->
+    <!-- بیچ میں دھڑکتا ہوا آئیکن (Pulsing Icon) -->
+    <!-- Snooze button ke top se aur tvCurrentTime ke bottom se chain hoga,
+         taake yeh dono ke darmiyan hamesha centered rahe aur kabhi overlap na ho -->
     <FrameLayout
         android:id="@+id/iconArea"
         android:layout_width="220dp"
         android:layout_height="220dp"
-        android:layout_centerInParent="true"
-        android:layout_marginBottom="140dp">
+        app:layout_constraintTop_toBottomOf="@id/tvCurrentTime"
+        app:layout_constraintBottom_toTopOf="@id/tvTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0.5"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="24dp">
 
         <View
             android:id="@+id/pulseOuter"
@@ -42,101 +54,93 @@
             android:layout_gravity="center"
             android:background="@drawable/bg_pulse_circle" />
 
-        <View
-            android:layout_width="112dp"
-            android:layout_height="112dp"
-            android:layout_gravity="center"
-            android:background="@drawable/bg_icon_badge" />
-
         <ImageView
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:layout_gravity="center"
-            android:src="@drawable/ic_medicine"
-            android:contentDescription="@null" />
+            android:src="@drawable/ic_medicine" />
     </FrameLayout>
 
-    <!-- Medicine name / dose / time, below the icon -->
-    <LinearLayout
-        android:layout_width="match_parent"
+    <!-- میڈیسن کا نام -->
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_below="@id/iconArea"
+        android:textColor="#FFFFFF"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end"
+        tools:text="Metformin"
+        app:layout_constraintTop_toBottomOf="@id/iconArea"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- میڈیسن کی خوراک -->
+    <TextView
+        android:id="@+id/tvDose"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:textColor="#FFFFFF"
+        android:alpha="0.9"
+        android:textSize="16sp"
+        android:gravity="center"
+        tools:text="500 mg · 1 tablet"
+        app:layout_constraintTop_toBottomOf="@id/tvTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-        <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
-            android:textSize="26sp"
-            android:textStyle="bold"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center"
-            android:maxLines="2"
-            android:ellipsize="end"
-            tools:text="Metformin" />
-
-        <TextView
-            android:id="@+id/tvDose"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="#FFFFFF"
-            android:alpha="0.9"
-            android:textSize="16sp"
-            android:gravity="center"
-            tools:text="500 mg · 1 tablet" />
-
-        <TextView
-            android:id="@+id/tvReminderTime"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="7dp"
-            android:background="@drawable/bg_button_snooze"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            tools:text="Scheduled for 8:00 AM" />
-    </LinearLayout>
-
-    <!-- Stop / Snooze, bottom -->
-    <LinearLayout
-        android:layout_width="match_parent"
+    <!-- شیڈیول ٹائم (اگر ہو) -->
+    <TextView
+        android:id="@+id/tvScheduledTime"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_marginBottom="12dp"
-        android:orientation="vertical">
+        android:layout_marginTop="8dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:textColor="#FFFFFF"
+        android:alpha="0.85"
+        android:textSize="14sp"
+        android:background="@drawable/bg_pill_outline"
+        tools:text="Scheduled for 2:32 AM"
+        app:layout_constraintTop_toBottomOf="@id/tvDose"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-        <Button
-            android:id="@+id/btnStop"
-            android:layout_width="match_parent"
-            android:layout_height="64dp"
-            android:layout_marginBottom="14dp"
-            android:background="@drawable/bg_button_stop"
-            android:text="Stop"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:stateListAnimator="@null"
-            android:elevation="0dp" />
+    <!-- Stop Button -->
+    <Button
+        android:id="@+id/btnStop"
+        android:layout_width="0dp"
+        android:layout_height="64dp"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/bg_button_stop"
+        android:text="Stop"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/tvScheduledTime"
+        app:layout_constraintBottom_toTopOf="@id/btnSnooze"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="1" />
 
-        <Button
-            android:id="@+id/btnSnooze"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:background="@drawable/bg_button_snooze"
-            android:text="Snooze 10 min"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:stateListAnimator="@null"
-            android:elevation="0dp" />
-    </LinearLayout>
+    <!-- Snooze Button -->
+    <Button
+        android:id="@+id/btnSnooze"
+        android:layout_width="0dp"
+        android:layout_height="60dp"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_button_snooze"
+        android:text="Snooze 10 min"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        app:layout_constraintTop_toBottomOf="@id/btnStop"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-</RelativeLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

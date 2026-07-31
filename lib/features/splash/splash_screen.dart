@@ -11,7 +11,11 @@ import '../shell/patient_shell.dart';
 /// Animated brand splash — deep teal gradient, breathing pulse logo,
 /// wordmark reveal, then auto-advance to the login experience.
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({super.key, this.isSignedIn});
+
+  /// Overrides the Firebase session lookup when a caller supplies it.
+  /// This keeps the splash route testable without requiring Firebase plugins.
+  final bool Function()? isSignedIn;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -34,7 +38,8 @@ class _SplashScreenState extends State<SplashScreen>
       // Firebase persists the session across app restarts. If there's
       // already a signed-in user, skip Login/Signup entirely and go
       // straight to Home. Otherwise, start the Login flow.
-      final alreadySignedIn = FirebaseAuth.instance.currentUser != null;
+      final alreadySignedIn =
+          widget.isSignedIn?.call() ?? FirebaseAuth.instance.currentUser != null;
       final destination =
           alreadySignedIn ? const PatientShell() : const LoginScreen();
       Navigator.of(context).pushReplacement(PageRouteBuilder(

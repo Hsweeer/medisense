@@ -35,14 +35,7 @@ class AlarmActivity : Activity() {
         showOverLockScreen()
         setContentView(R.layout.activity_alarm)
 
-        val title = intent.getStringExtra(AlarmScheduler.EXTRA_TITLE) ?: "Medicine Reminder"
-        val dose = intent.getStringExtra(AlarmScheduler.EXTRA_DOSE) ?: ""
-        val displayTime = intent.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""
-
-        findViewById<TextView>(R.id.tvTitle).text = title
-        findViewById<TextView>(R.id.tvDose).text = dose
-        findViewById<TextView>(R.id.tvReminderTime).text =
-            if (displayTime.isBlank()) "Medicine time" else "Scheduled for $displayTime"
+        applyIntentExtras(intent)
 
         startClock()
         startPulse()
@@ -55,6 +48,30 @@ class AlarmActivity : Activity() {
             sendServiceAction(AlarmRingingService.ACTION_SNOOZE)
             finishAndRemoveTask()
         }
+    }
+
+    /**
+     * singleInstance means a second alarm (e.g. the original reminder firing
+     * again right as a snooze from it comes due) is delivered here instead
+     * of creating a new screen. Without this override that second intent
+     * would be silently dropped and the screen would keep showing stale
+     * medicine info — so refresh the displayed content from it instead.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyIntentExtras(intent)
+    }
+
+    private fun applyIntentExtras(intent: Intent) {
+        val title = intent.getStringExtra(AlarmScheduler.EXTRA_TITLE) ?: "Medicine Reminder"
+        val dose = intent.getStringExtra(AlarmScheduler.EXTRA_DOSE) ?: ""
+        val displayTime = intent.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""
+
+        findViewById<TextView>(R.id.tvTitle).text = title
+        findViewById<TextView>(R.id.tvDose).text = dose
+        findViewById<TextView>(R.id.tvScheduledTime).text =
+            if (displayTime.isBlank()) "Medicine time" else "Scheduled for $displayTime"
     }
 
     /** Wakes the device, shows over the lock screen, and keeps the screen on — same as a real alarm clock. */
