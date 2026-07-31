@@ -259,7 +259,7 @@ class NotificationService {
   TimeOfDay? _parseTimeOfDay(String input) {
     final text = input.trim().toUpperCase();
     final match =
-    RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(text);
+    RegExp(r'^(\d{1,2}):(\d{1,2})\s*(AM|PM)?$').firstMatch(text);
     if (match == null) return null;
     var hour = int.parse(match.group(1)!);
     final minute = int.parse(match.group(2)!);

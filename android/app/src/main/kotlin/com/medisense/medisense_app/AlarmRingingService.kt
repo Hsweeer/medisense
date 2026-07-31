@@ -80,7 +80,7 @@ class AlarmRingingService : Service() {
         
         val notification = buildForegroundNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
+            startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification)
         }
@@ -155,7 +155,7 @@ class AlarmRingingService : Service() {
             .setContentTitle("Medicine Alarm")
             .setContentText(message)
             .setSubText(currentDisplayTime)
-            .setSmallIcon(applicationInfo.icon)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreenPendingIntent, true)
