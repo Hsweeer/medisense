@@ -10,8 +10,7 @@ import 'reminder_provider.dart';
 /// itself — every read/write is delegated to [NotificationService], this
 /// just keeps `notifications` in sync and calls `notifyListeners()`.
 class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
-  NotificationProvider({required ReminderProvider reminderProvider})
-      : _reminderProvider = reminderProvider {
+  NotificationProvider({required this._reminderProvider}) {
     debugPrint('[NotificationProvider] constructor — wiring onHistoryChanged');
     WidgetsBinding.instance.addObserver(this);
     NotificationService.onHistoryChanged = refresh;
