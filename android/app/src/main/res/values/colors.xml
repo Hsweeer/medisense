@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Mirrors lib/core/theme/app_colors.dart so the native full-screen alarm
+  screen looks like part of the same app rather than a bolted-on system
+  dialog. Keep these in sync if the Flutter palette changes.
+-->
+<resources>
+    <color name="ms_primary">#0C8577</color>
+    <color name="ms_primary_dark">#085F55</color>
+    <color name="ms_gradient_end">#15A392</color>
+
+    <color name="ms_ink">#122430</color>
+    <color name="ms_ink_soft">#32454E</color>
+    <color name="ms_muted">#5E7179</color>
+    <color name="ms_line">#E1E9E7</color>
+    <color name="ms_paper">#F6F9F8</color>
+    <color name="ms_card">#FFFFFF</color>
+
+    <color name="ms_success">#1FA05C</color>
+    <color name="ms_warning">#C07A12</color>
+    <color name="ms_danger">#D03A30</color>
+
+    <color name="ms_white_soft_20">#33FFFFFF</color>
+    <color name="ms_white_soft_12">#1FFFFFFF</color>
+</resources>
