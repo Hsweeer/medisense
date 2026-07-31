@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../providers/location_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../chat/ai_chat_screen.dart';
 import '../home/home_screen.dart';
@@ -19,7 +20,8 @@ class PatientShell extends StatefulWidget {
   State<PatientShell> createState() => _PatientShellState();
 }
 
-class _PatientShellState extends State<PatientShell> {
+class _PatientShellState extends State<PatientShell>
+    with WidgetsBindingObserver {
   int index = 0;
 
   static const _tabs = [
@@ -28,6 +30,33 @@ class _PatientShellState extends State<PatientShell> {
     NearbyScreen(),
     ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Ask for real location right when the patient reaches the main app —
+    // this is what powers "Hospitals near me" / "Pharmacies near me" and
+    // the home-screen location label. The system permission dialog carries
+    // its own rationale (see Info.plist / AndroidManifest copy).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<LocationProvider>().requestAccess();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Catches the user coming back from Settings after enabling location.
+    if (state == AppLifecycleState.resumed) {
+      context.read<LocationProvider>().refreshAccessSilently();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

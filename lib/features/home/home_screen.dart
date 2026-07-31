@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/mock/mock_data.dart';
+import '../../providers/location_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/reminder_provider.dart';
@@ -38,9 +39,7 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     Text('Good morning, $firstName 👋',
                         style: Theme.of(context).textTheme.headlineSmall),
-                    const Text(MockData.userLocationLabel,
-                        style:
-                        TextStyle(color: AppColors.muted, fontSize: 13)),
+                    const _LocationLabel(),
                   ],
                 ),
               ),
@@ -218,6 +217,45 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows the user's real location once granted; while off, doubles as the
+/// control to (re)request it — no separate settings screen needed.
+class _LocationLabel extends StatelessWidget {
+  const _LocationLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    final loc = context.watch<LocationProvider>();
+    final showsPin = loc.isGranted || loc.isLoading;
+
+    return GestureDetector(
+      onTap: loc.isLoading
+          ? null
+          : () {
+              if (loc.access == LocationAccess.granted) return;
+              if (loc.access == LocationAccess.deniedForever ||
+                  loc.access == LocationAccess.serviceDisabled) {
+                loc.openSettings();
+              } else {
+                loc.requestAccess();
+              }
+            },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            showsPin ? Icons.location_on_rounded : Icons.location_off_rounded,
+            size: 13,
+            color: AppColors.muted,
+          ),
+          const SizedBox(width: 3),
+          Text(loc.displayLabel,
+              style: const TextStyle(color: AppColors.muted, fontSize: 13)),
         ],
       ),
     );

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/mock/mock_data.dart';
 import '../../data/models/models.dart';
+import '../../providers/location_provider.dart';
 
 /// Nearby care — Google-Maps-style basemap (free CARTO Voyager raster
 /// tiles), every hospital + pharmacy pinned at once, and turn-by-turn
@@ -26,6 +28,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   late int _filter = widget.initialType;
   final _map = MapController();
   Facility? _selected;
+  String? _lastCenteredLocation;
 
   List<Facility> get _facilities => switch (_filter) {
         1 => MockData.hospitals,
@@ -39,6 +42,16 @@ class _NearbyScreenState extends State<NearbyScreen> {
   static IconData _iconOf(Facility f) => f.type == FacilityType.hospital
       ? Icons.local_hospital_rounded
       : Icons.local_pharmacy_rounded;
+
+  double _distanceFor(Facility facility, LocationProvider location) {
+    final position = location.position;
+    return position == null
+        ? facility.distanceMiles
+        : facility.milesFrom(position);
+  }
+
+  String _distanceLabel(Facility facility, LocationProvider location) =>
+      '${_distanceFor(facility, location).toStringAsFixed(1)} mi';
 
   Future<void> _openDirections(Facility f) async {
     final dest = '${f.position.latitude},${f.position.longitude}';
@@ -59,17 +72,30 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final location = context.watch<LocationProvider>();
+    final userPosition = location.positionOrFallback;
     final sorted = [..._facilities]
-      ..sort((a, b) => a.distanceMiles.compareTo(b.distanceMiles));
+      ..sort((a, b) =>
+          _distanceFor(a, location).compareTo(_distanceFor(b, location)));
+
+    // FlutterMap reads initialCenter once. Recenter when the first real GPS
+    // fix arrives, without overriding a facility selection later.
+    final locationKey = '${userPosition.latitude},${userPosition.longitude}';
+    if (location.position != null && _lastCenteredLocation != locationKey) {
+      _lastCenteredLocation = locationKey;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _map.move(userPosition, 13.2);
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nearby care'),
         automaticallyImplyLeading: widget.showBack,
-        actions: const [
+        actions: [
           Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: MChip(MockData.userLocationLabel,
+            padding: const EdgeInsets.only(right: 16),
+            child: MChip(location.displayLabel,
                 icon: Icons.my_location_rounded,
                 background: AppColors.soft,
                 foreground: AppColors.onSoft),
@@ -111,8 +137,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 borderRadius: BorderRadius.circular(18),
                 child: FlutterMap(
                   mapController: _map,
-                  options: const MapOptions(
-                    initialCenter: MockData.userLocation,
+                  options: MapOptions(
+                    initialCenter: userPosition,
                     initialZoom: 13.2,
                   ),
                   children: [
@@ -123,8 +149,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     ),
                     MarkerLayer(
                       markers: [
-                        const Marker(
-                          point: MockData.userLocation,
+                        Marker(
+                          point: userPosition,
                           width: 26,
                           height: 26,
                           child: _UserDot(),
@@ -160,6 +186,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 ? _FacilityDetail(
                     facility: _selected!,
                     accent: _accentOf(_selected!),
+                    distanceLabel: _distanceLabel(_selected!, location),
                     onDirections: () => _openDirections(_selected!),
                     onCall: () => _call(_selected!),
                     onClose: () => setState(() => _selected = null),
@@ -206,7 +233,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                             fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 2),
                                     Text(
-                                        '${f.distanceMiles} mi · '
+                                        '${_distanceLabel(f, location)} · '
                                         '★ ${f.rating} · ${f.openLabel}',
                                         style: const TextStyle(
                                             fontSize: 12,
@@ -337,6 +364,7 @@ class _FacilityDetail extends StatelessWidget {
   const _FacilityDetail({
     required this.facility,
     required this.accent,
+    required this.distanceLabel,
     required this.onDirections,
     required this.onCall,
     required this.onClose,
@@ -344,6 +372,7 @@ class _FacilityDetail extends StatelessWidget {
 
   final Facility facility;
   final Color accent;
+  final String distanceLabel;
   final VoidCallback onDirections;
   final VoidCallback onCall;
   final VoidCallback onClose;
@@ -379,7 +408,7 @@ class _FacilityDetail extends StatelessWidget {
               spacing: 6,
               runSpacing: 6,
               children: [
-                MChip('${facility.distanceMiles} mi away',
+                MChip('$distanceLabel away',
                     icon: Icons.near_me_rounded,
                     background: AppColors.paper,
                     foreground: AppColors.inkSoft),
