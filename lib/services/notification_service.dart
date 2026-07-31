@@ -8,6 +8,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../data/models/models.dart';
 import '../data/models/notification_model.dart';
+import 'native_alarm_bridge.dart';
 import 'notification_storage_helper.dart';
 
 /// Fires when a notification ACTION is tapped while the app is fully
@@ -101,6 +102,10 @@ class NotificationService {
     await iosImpl?.requestPermissions(
         alert: true, badge: true, sound: true);
 
+    // ── Native Alarm Permissions ──────────────────────────────────────
+    await NativeAlarmBridge.instance.ensureFullScreenIntentPermission();
+    await NativeAlarmBridge.instance.requestIgnoreBatteryOptimizations();
+
     // ── Cold-launch tap handling ──────────────────────────────────────
     //
     // THE FIX: if the app was fully terminated when the reminder fired,
@@ -186,6 +191,17 @@ class NotificationService {
       );
       debugPrint(
           '[NotificationService] scheduled id=$baseId (daily) next=$when');
+
+      // ── Native Alarm Bridge ──────────────────────────────────────────
+      await NativeAlarmBridge.instance.scheduleAlarm(
+        reminderId: reminder.id ?? reminder.title,
+        title: reminder.title,
+        dose: reminder.dose,
+        displayTime: reminder.time,
+        hour: time.hour,
+        minute: time.minute,
+        repeatType: 'daily',
+      );
     } else {
       // "Weekdays" or "Mon · Wed · Fri" — one recurring alarm per weekday.
       for (final weekday in weekdays) {
@@ -202,6 +218,18 @@ class NotificationService {
         );
         debugPrint(
             '[NotificationService] scheduled id=${baseId + weekday} (weekday=$weekday) next=$when');
+
+        // ── Native Alarm Bridge ──────────────────────────────────────────
+        await NativeAlarmBridge.instance.scheduleAlarm(
+          reminderId: reminder.id ?? reminder.title,
+          title: reminder.title,
+          dose: reminder.dose,
+          displayTime: reminder.time,
+          hour: time.hour,
+          minute: time.minute,
+          repeatType: 'weekly',
+          weekday: weekday,
+        );
       }
     }
   }
@@ -214,9 +242,14 @@ class NotificationService {
     for (var weekday = 1; weekday <= 7; weekday++) {
       await _plugin.cancel(baseId + weekday);
     }
+    // ── Native Alarm Bridge ────────────────────────────────────────────
+    await NativeAlarmBridge.instance.cancelAlarm(reminder.id ?? reminder.title);
   }
 
-  Future<void> cancelAll() => _plugin.cancelAll();
+  Future<void> cancelAll() async {
+    await _plugin.cancelAll();
+    await NativeAlarmBridge.instance.cancelAllAlarms();
+  }
 
   /// A stable id derived from the reminder's title. Titles are locked
   /// once a reminder is created (see reminders_screen.dart), so this stays
