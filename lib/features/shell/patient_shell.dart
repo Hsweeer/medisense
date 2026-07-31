@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -67,11 +68,14 @@ class _PatientShellState extends State<PatientShell>
               heroTag: 'med-ai',
               backgroundColor: AppColors.ai,
               foregroundColor: Colors.white,
-              onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiChatScreen())),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const AiChatScreen())),
               icon: const Icon(Icons.psychology_alt_rounded),
-              label: const Text('MedAI',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              label: const Text(
+                'MedAI',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             )
           : null,
       bottomNavigationBar: Container(
@@ -80,12 +84,14 @@ class _PatientShellState extends State<PatientShell>
           border: const Border(top: BorderSide(color: AppColors.line)),
           boxShadow: [
             BoxShadow(
-                color: AppColors.ink.withValues(alpha: .05), blurRadius: 12),
+              color: AppColors.ink.withValues(alpha: .05),
+              blurRadius: 12,
+            ),
           ],
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
             child: Row(
               children: [
                 _navItem(0, Icons.home_rounded, 'Home'),
@@ -111,24 +117,26 @@ class _PatientShellState extends State<PatientShell>
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 5.h),
               decoration: BoxDecoration(
                 color: selected ? AppColors.soft : Colors.transparent,
-                borderRadius: BorderRadius.circular(99),
+                borderRadius: BorderRadius.circular(99.r),
               ),
-              child: Icon(icon,
-                  size: 24,
-                  color: selected ? AppColors.primary : AppColors.muted),
+              child: Icon(
+                icon,
+                size: 24.sp,
+                color: selected ? AppColors.primary : AppColors.muted,
+              ),
             ),
-            const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight:
-                        selected ? FontWeight.w700 : FontWeight.w500,
-                    color:
-                        selected ? AppColors.primary : AppColors.muted)),
+            SizedBox(height: 2.h),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.sp,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? AppColors.primary : AppColors.muted,
+              ),
+            ),
           ],
         ),
       ),
@@ -142,42 +150,51 @@ class _PatientShellState extends State<PatientShell>
         behavior: HitTestBehavior.opaque,
         onTap: () => ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(const SnackBar(
-            backgroundColor: AppColors.danger,
-            content: Text('Hold for 2 seconds to trigger SOS',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-          )),
+          ..showSnackBar(
+            const SnackBar(
+              backgroundColor: AppColors.danger,
+              content: Text(
+                'Hold for 2 seconds to trigger SOS',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
         onLongPress: () {
           context.read<SosProvider>().trigger();
-          Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const SosScreen()));
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const SosScreen()));
         },
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: 44.w,
+              height: 44.w,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                    colors: [AppColors.danger, Color(0xFFE0554B)]),
+                  colors: [AppColors.danger, Color(0xFFE0554B)],
+                ),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                      color: AppColors.danger.withValues(alpha: .4),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3)),
+                    color: AppColors.danger.withValues(alpha: .4),
+                    blurRadius: 10.r,
+                    offset: Offset(0, 3.h),
+                  ),
                 ],
               ),
-              child: const Icon(Icons.sos_rounded,
-                  color: Colors.white, size: 24),
+              child: Icon(Icons.sos_rounded, color: Colors.white, size: 24.sp),
             ),
-            const SizedBox(height: 2),
-            const Text('Hold 2s',
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.danger)),
+            SizedBox(height: 2.h),
+            Text(
+              'Hold 2s',
+              style: TextStyle(
+                fontSize: 10.sp,
+                fontWeight: FontWeight.w600,
+                color: AppColors.danger,
+              ),
+            ),
           ],
         ),
       ),

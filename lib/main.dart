@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
@@ -17,9 +18,7 @@ import 'services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.instance.initialize();
   runApp(const MediSenseApp());
 }
@@ -29,26 +28,34 @@ class MediSenseApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => LocationProvider()),
-        ChangeNotifierProvider(create: (_) => ProfileProvider()),
-        ChangeNotifierProvider(create: (_) => PasswordResetProvider()),
-        ChangeNotifierProvider(create: (_) => ReminderProvider()),
-        ChangeNotifierProvider(
+    return ScreenUtilInit(
+      designSize: const Size(390, 844),
+      minTextAdapt: true,
+      splitScreenMode: true,
+      builder: (context, child) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          ChangeNotifierProvider(create: (_) => LocationProvider()),
+          ChangeNotifierProvider(create: (_) => ProfileProvider()),
+          ChangeNotifierProvider(create: (_) => PasswordResetProvider()),
+          ChangeNotifierProvider(create: (_) => ReminderProvider()),
+          ChangeNotifierProvider(
             create: (ctx) =>
-                ChatProvider(reminderEngine: ctx.read<ReminderProvider>())),
-        ChangeNotifierProvider(create: (_) => SosProvider()),
-        ChangeNotifierProvider(
+                ChatProvider(reminderEngine: ctx.read<ReminderProvider>()),
+          ),
+          ChangeNotifierProvider(create: (_) => SosProvider()),
+          ChangeNotifierProvider(
             create: (ctx) => NotificationProvider(
-                reminderProvider: ctx.read<ReminderProvider>())),
-      ],
-      child: MaterialApp(
-        title: 'MediSense',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        home: const SplashScreen(),
+              reminderProvider: ctx.read<ReminderProvider>(),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          title: 'MediSense',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          home: const SplashScreen(),
+        ),
       ),
     );
   }

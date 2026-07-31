@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medisense_app/features/splash/splash_screen.dart';
 
 void main() {
   testWidgets('MediSense boots to splash then login', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
-      MaterialApp(home: SplashScreen(isSignedIn: () => false)),
+      ScreenUtilInit(
+        designSize: const Size(390, 844),
+        useInheritedMediaQuery: true,
+        builder: (_, child) =>
+            MaterialApp(home: SplashScreen(isSignedIn: () => false)),
+      ),
     );
     await tester.pump(const Duration(milliseconds: 100));
 
