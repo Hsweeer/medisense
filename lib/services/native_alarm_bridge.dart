@@ -31,6 +31,7 @@ class NativeAlarmBridge {
     required int hour,
     required int minute,
     required String repeatType, // 'daily' | 'weekly'
+    String? soundRawResName,
     int? weekday,
   }) async {
     if (!_supported) return;
@@ -43,6 +44,9 @@ class NativeAlarmBridge {
         'hour': hour,
         'minute': minute,
         'repeatType': repeatType,
+        'soundRawResName': soundRawResName?.isEmpty ?? true
+            ? null
+            : soundRawResName,
         'weekday': weekday,
       });
     } catch (e) {

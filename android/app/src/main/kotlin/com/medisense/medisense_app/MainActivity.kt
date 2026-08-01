@@ -26,6 +26,7 @@ class MainActivity : FlutterActivity() {
                         val minute = call.argument<Int>("minute")
                         val repeatType = call.argument<String>("repeatType") ?: "daily"
                         val weekday = call.argument<Int>("weekday") ?: 0
+                        val soundRawResName = call.argument<String>("soundRawResName") ?: ""
 
                         if (reminderId != null && title != null && hour != null && minute != null) {
                             val entry = AlarmStore.AlarmEntry(
@@ -37,7 +38,8 @@ class MainActivity : FlutterActivity() {
                                 hour = hour,
                                 minute = minute,
                                 repeatType = repeatType,
-                                weekday = weekday
+                                weekday = weekday,
+                                soundRawResName = soundRawResName,
                             )
                             AlarmScheduler.schedule(this, entry)
                             result.success(null)

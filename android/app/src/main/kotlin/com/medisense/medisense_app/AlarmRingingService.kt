@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -51,6 +52,7 @@ class AlarmRingingService : Service() {
     private var currentTitle: String = ""
     private var currentDose: String = ""
     private var currentDisplayTime: String = ""
+    private var currentSoundRawResName: String = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -76,6 +78,7 @@ class AlarmRingingService : Service() {
         currentTitle = intent?.getStringExtra(AlarmScheduler.EXTRA_TITLE) ?: "Medicine Reminder"
         currentDose = intent?.getStringExtra(AlarmScheduler.EXTRA_DOSE) ?: ""
         currentDisplayTime = intent?.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""
+        currentSoundRawResName = intent?.getStringExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME) ?: ""
 
         acquireWakeLock()
 
@@ -128,6 +131,7 @@ class AlarmRingingService : Service() {
             putExtra(AlarmScheduler.EXTRA_TITLE, currentTitle)
             putExtra(AlarmScheduler.EXTRA_DOSE, currentDose)
             putExtra(AlarmScheduler.EXTRA_DISPLAY_TIME, currentDisplayTime)
+            putExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME, currentSoundRawResName)
         }
         startActivity(activityIntent)
     }
@@ -154,6 +158,7 @@ class AlarmRingingService : Service() {
             putExtra(AlarmScheduler.EXTRA_TITLE, currentTitle)
             putExtra(AlarmScheduler.EXTRA_DOSE, currentDose)
             putExtra(AlarmScheduler.EXTRA_DISPLAY_TIME, currentDisplayTime)
+            putExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME, currentSoundRawResName)
         }
         val fullScreenPendingIntent = PendingIntent.getActivity(
             this,
@@ -184,7 +189,7 @@ class AlarmRingingService : Service() {
 
     private fun startSound() {
         try {
-            val alarmUri = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
+            val alarmUri = selectedSoundUri()
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
@@ -202,6 +207,24 @@ class AlarmRingingService : Service() {
         } catch (_: Exception) {
             // Device has no accessible alarm sound URI — vibration still runs,
             // and the full-screen UI + notification still get the user's attention.
+        }
+    }
+
+    /**
+     * Uses the selected bundled raw sound when it exists. The id comes from
+     * Dart preferences, so validate it and fall back to the phone alarm sound
+     * for old schedules or a missing/corrupt resource.
+     */
+    private fun selectedSoundUri(): Uri? {
+        val rawName = currentSoundRawResName
+        if (!rawName.matches(Regex("[a-z0-9_]+"))) {
+            return RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
+        }
+        val resourceId = resources.getIdentifier(rawName, "raw", packageName)
+        return if (resourceId != 0) {
+            Uri.parse("android.resource://$packageName/$resourceId")
+        } else {
+            RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
         }
     }
 
@@ -239,6 +262,7 @@ class AlarmRingingService : Service() {
             minute = cal.get(java.util.Calendar.MINUTE),
             repeatType = "once",
             weekday = 0,
+            soundRawResName = currentSoundRawResName,
         )
         AlarmScheduler.schedule(this, entry)
     }

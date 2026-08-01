@@ -25,6 +25,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val minute = intent.getIntExtra(AlarmScheduler.EXTRA_MINUTE, 0)
         val repeatType = intent.getStringExtra(AlarmScheduler.EXTRA_REPEAT_TYPE) ?: "daily"
         val weekday = intent.getIntExtra(AlarmScheduler.EXTRA_WEEKDAY, 0)
+        val soundRawResName = intent.getStringExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME) ?: ""
 
         val serviceIntent = Intent(context, AlarmRingingService::class.java).apply {
             action = AlarmRingingService.ACTION_RING
@@ -33,6 +34,7 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra(AlarmScheduler.EXTRA_TITLE, title)
             putExtra(AlarmScheduler.EXTRA_DOSE, dose)
             putExtra(AlarmScheduler.EXTRA_DISPLAY_TIME, displayTime)
+            putExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME, soundRawResName)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent)
@@ -57,6 +59,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 minute = minute,
                 repeatType = repeatType,
                 weekday = weekday,
+                soundRawResName = soundRawResName,
             )
             AlarmScheduler.rescheduleNext(context, entry)
         }

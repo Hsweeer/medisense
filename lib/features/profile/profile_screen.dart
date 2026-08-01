@@ -11,6 +11,7 @@ import 'edit_health_profile_sheet.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
 import '../notifications/notifications_screen.dart';
+import '../settings/alarm_sound_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -251,6 +252,14 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     );
                   },
+                ),
+                const Divider(height: 1, indent: 56),
+                _SettingTile(
+                  icon: Icons.alarm_rounded,
+                  label: 'Alarm sound',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AlarmSoundScreen()),
+                  ),
                 ),
                 const Divider(height: 1, indent: 56),
                 _SettingTile(
