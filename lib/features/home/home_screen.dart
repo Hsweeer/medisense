@@ -131,56 +131,69 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // Quick actions 2×2
-          Row(children: [
-            Expanded(
-                child: _QuickTile(
-                  icon: Icons.local_hospital_rounded,
-                  label: 'Hospitals near me',
-                  sub: 'ER open · directions',
-                  color: AppColors.primary,
-                  soft: AppColors.soft,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) =>
-                      const NearbyScreen(initialType: 1, showBack: true))),
-                )),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _QuickTile(
-                  icon: Icons.local_pharmacy_rounded,
-                  label: 'Pharmacies near me',
-                  sub: '2 open 24 hrs',
-                  color: AppColors.warning,
-                  soft: AppColors.warningSoft,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) =>
-                      const NearbyScreen(initialType: 2, showBack: true))),
-                )),
-          ]),
+          // Quick actions 2×2 — IntrinsicHeight + stretch makes both cards
+          // in each row match the height of whichever one has more content
+          // (e.g. a longer subtitle), instead of each card hugging its own
+          // text and ending up a different size than its neighbor.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                    child: _QuickTile(
+                      icon: Icons.local_hospital_rounded,
+                      label: 'Hospitals near me',
+                      sub: 'ER open · directions',
+                      color: AppColors.primary,
+                      soft: AppColors.soft,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) =>
+                          const NearbyScreen(initialType: 1, showBack: true))),
+                    )),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: _QuickTile(
+                      icon: Icons.local_pharmacy_rounded,
+                      label: 'Pharmacies near me',
+                      sub: '2 open 24 hrs',
+                      color: AppColors.warning,
+                      soft: AppColors.warningSoft,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) =>
+                          const NearbyScreen(initialType: 2, showBack: true))),
+                    )),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-                child: _QuickTile(
-                  icon: Icons.alarm_rounded,
-                  label: 'My reminders',
-                  sub: '${reminders.reminders.length} active',
-                  color: AppColors.primary,
-                  soft: AppColors.soft,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const RemindersScreen())),
-                )),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _QuickTile(
-                  icon: Icons.contact_emergency_rounded,
-                  label: 'Emergency contacts',
-                  sub: 'Alerted during SOS',
-                  color: AppColors.danger,
-                  soft: AppColors.dangerSoft,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const EmergencyContactsScreen())),
-                )),
-          ]),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                    child: _QuickTile(
+                      icon: Icons.alarm_rounded,
+                      label: 'My reminders',
+                      sub: '${reminders.reminders.length} active',
+                      color: AppColors.primary,
+                      soft: AppColors.soft,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const RemindersScreen())),
+                    )),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: _QuickTile(
+                      icon: Icons.contact_emergency_rounded,
+                      label: 'Emergency contacts',
+                      sub: 'Alerted during SOS',
+                      color: AppColors.danger,
+                      soft: AppColors.dangerSoft,
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const EmergencyContactsScreen())),
+                    )),
+              ],
+            ),
+          ),
           const SizedBox(height: 20),
           // One AI insight — kept light.
           const SectionHeader('For you'),
