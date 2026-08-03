@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/widgets/shared_widgets.dart';
@@ -24,11 +25,13 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _intro = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900))
-    ..forward();
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..forward();
   late final AnimationController _breathe = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1600))
-    ..repeat(reverse: true);
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..repeat(reverse: true);
 
   @override
   void initState() {
@@ -39,14 +42,18 @@ class _SplashScreenState extends State<SplashScreen>
       // already a signed-in user, skip Login/Signup entirely and go
       // straight to Home. Otherwise, start the Login flow.
       final alreadySignedIn =
-          widget.isSignedIn?.call() ?? FirebaseAuth.instance.currentUser != null;
-      final destination =
-          alreadySignedIn ? const PatientShell() : const LoginScreen();
-      Navigator.of(context).pushReplacement(PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 550),
-        pageBuilder: (_, a, secondary) =>
-            FadeTransition(opacity: a, child: destination),
-      ));
+          widget.isSignedIn?.call() ??
+          FirebaseAuth.instance.currentUser != null;
+      final destination = alreadySignedIn
+          ? const PatientShell()
+          : const LoginScreen();
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 550),
+          pageBuilder: (_, a, secondary) =>
+              FadeTransition(opacity: a, child: destination),
+        ),
+      );
     });
   }
 
@@ -85,14 +92,15 @@ class _SplashScreenState extends State<SplashScreen>
                     children: [
                       for (var ring = 0; ring < 2; ring++)
                         Container(
-                          width: 130 + ring * 46 + t * 14,
-                          height: 130 + ring * 46 + t * 14,
+                          width: (130 + ring * 46 + t * 14).r,
+                          height: (130 + ring * 46 + t * 14).r,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.white
-                                  .withValues(alpha: .16 - ring * .07),
-                              width: 1.4,
+                              color: Colors.white.withValues(
+                                alpha: .16 - ring * .07,
+                              ),
+                              width: 1.4.r,
                             ),
                           ),
                         ),
@@ -107,27 +115,34 @@ class _SplashScreenState extends State<SplashScreen>
                   );
                 },
               ),
-              const SizedBox(height: 34),
+              SizedBox(height: 34.h),
               FadeTransition(
                 opacity: fade,
                 child: SlideTransition(
                   position: Tween(
-                          begin: const Offset(0, .35), end: Offset.zero)
-                      .animate(fade),
+                    begin: const Offset(0, .35),
+                    end: Offset.zero,
+                  ).animate(fade),
                   child: Column(
                     children: [
-                      Text('MediSense',
-                          style: GoogleFonts.sora(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: -.5)),
-                      const SizedBox(height: 8),
-                      Text('Smart care. Anywhere.',
-                          style: GoogleFonts.ibmPlexSans(
-                              fontSize: 15,
-                              color: Colors.white.withValues(alpha: .82),
-                              letterSpacing: .4)),
+                      Text(
+                        'MediSense',
+                        style: GoogleFonts.sora(
+                          fontSize: 36.sp,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: -.5,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Text(
+                        'Smart care. Anywhere.',
+                        style: GoogleFonts.ibmPlexSans(
+                          fontSize: 15.sp,
+                          color: Colors.white.withValues(alpha: .82),
+                          letterSpacing: .4,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -137,32 +152,34 @@ class _SplashScreenState extends State<SplashScreen>
               AnimatedBuilder(
                 animation: _breathe,
                 builder: (_, child) => Container(
-                  width: 132,
-                  height: 4,
+                  width: 132.w,
+                  height: 4.h,
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: .18),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(4.r),
                   ),
                   child: Align(
-                    alignment:
-                        Alignment(-1 + 2 * _breathe.value, 0),
+                    alignment: Alignment(-1 + 2 * _breathe.value, 0),
                     child: Container(
-                      width: 48,
-                      height: 4,
+                      width: 48.w,
+                      height: 4.h,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(4.r),
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 26),
-              Text('HIPAA-conscious design · Your data stays yours',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      color: Colors.white.withValues(alpha: .55))),
-              const SizedBox(height: 22),
+              SizedBox(height: 26.h),
+              Text(
+                'HIPAA-conscious design · Your data stays yours',
+                style: TextStyle(
+                  fontSize: 11.5.sp,
+                  color: Colors.white.withValues(alpha: .55),
+                ),
+              ),
+              SizedBox(height: 22.h),
             ],
           ),
         ),

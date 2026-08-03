@@ -34,6 +34,7 @@ object AlarmStore {
         // "daily" repeats every day; "weekly" repeats on [weekday] only.
         val repeatType: String,
         val weekday: Int, // 1 (Mon) .. 7 (Sun), only meaningful for "weekly"
+        val soundRawResName: String = "",
     ) {
         fun toJson(): String = JSONObject().apply {
             put("alarmId", alarmId)
@@ -45,6 +46,7 @@ object AlarmStore {
             put("minute", minute)
             put("repeatType", repeatType)
             put("weekday", weekday)
+            put("soundRawResName", soundRawResName)
         }.toString()
 
         companion object {
@@ -60,6 +62,7 @@ object AlarmStore {
                     minute = o.getInt("minute"),
                     repeatType = o.getString("repeatType"),
                     weekday = o.optInt("weekday", 0),
+                    soundRawResName = o.optString("soundRawResName", ""),
                 )
             }
         }

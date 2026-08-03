@@ -331,6 +331,91 @@ class _MiniAction extends StatelessWidget {
   }
 }
 
+/// Parses the app's display format ("8:00 PM") back into a [TimeOfDay] so
+/// the picker can open already set to the reminder's current time when
+/// editing. Returns null (picker falls back to now) if it doesn't match.
+TimeOfDay? _parseTimeLabel(String label) {
+  final match =
+      RegExp(r'^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$').firstMatch(label.trim());
+  if (match == null) return null;
+  var hour = int.parse(match.group(1)!);
+  final minute = int.parse(match.group(2)!);
+  final period = match.group(3)!.toUpperCase();
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+  if (period == 'PM' && hour != 12) hour += 12;
+  if (period == 'AM' && hour == 12) hour = 0;
+  return TimeOfDay(hour: hour, minute: minute);
+}
+
+/// Formats a [TimeOfDay] as "8:00 PM" — fixed 12-hour format so it always
+/// matches the app's own display style regardless of device locale.
+String _formatTimeOfDay(TimeOfDay t) {
+  final hour12 = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
+  final minute = t.minute.toString().padLeft(2, '0');
+  final period = t.period == DayPeriod.am ? 'AM' : 'PM';
+  return '$hour12:$minute $period';
+}
+
+/// Opens the app-themed time picker and writes the result straight into
+/// [controller] in the app's fixed "8:00 PM" format.
+Future<void> _pickTime(
+    BuildContext context, TextEditingController controller) async {
+  final initial = _parseTimeLabel(controller.text) ?? TimeOfDay.now();
+  final picked = await showTimePicker(
+    context: context,
+    initialTime: initial,
+    builder: (pickerCtx, child) {
+      final base = Theme.of(pickerCtx);
+      return Theme(
+        data: base.copyWith(
+          colorScheme: base.colorScheme.copyWith(
+            primary: AppColors.primary,
+            onPrimary: Colors.white,
+            surface: AppColors.card,
+            onSurface: AppColors.ink,
+          ),
+          timePickerTheme: TimePickerThemeData(
+            backgroundColor: AppColors.card,
+            hourMinuteColor: WidgetStateColor.resolveWith((states) =>
+                states.contains(WidgetState.selected)
+                    ? AppColors.primary.withValues(alpha: .12)
+                    : AppColors.paper),
+            hourMinuteTextColor: WidgetStateColor.resolveWith((states) =>
+                states.contains(WidgetState.selected)
+                    ? AppColors.primary
+                    : AppColors.ink),
+            dayPeriodColor: WidgetStateColor.resolveWith((states) =>
+                states.contains(WidgetState.selected)
+                    ? AppColors.primary.withValues(alpha: .12)
+                    : AppColors.paper),
+            dayPeriodTextColor: WidgetStateColor.resolveWith((states) =>
+                states.contains(WidgetState.selected)
+                    ? AppColors.primary
+                    : AppColors.ink),
+            dialBackgroundColor: AppColors.paper,
+            dialHandColor: AppColors.primary,
+            entryModeIconColor: AppColors.primary,
+            hourMinuteShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            dayPeriodShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppColors.line)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          ),
+        ),
+        child: child!,
+      );
+    },
+  );
+  if (picked != null) {
+    controller.text = _formatTimeOfDay(picked);
+  }
+}
+
 /// Add (reminder == null) or edit an existing reminder.
 void _showEditSheet(BuildContext context, {Reminder? reminder}) {
   final title = TextEditingController(text: reminder?.title ?? '');
@@ -388,10 +473,21 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                 decoration: const InputDecoration(
                     hintText: 'Dose (e.g. 200 mg · 1 tablet)')),
             const SizedBox(height: 10),
+            // Time — tap to open the native time picker. Read-only so the
+            // keyboard never shows and the value can never be typed wrong.
             TextField(
-                controller: time,
-                decoration:
-                    const InputDecoration(hintText: 'Time (e.g. 8:00 PM)')),
+              controller: time,
+              readOnly: true,
+              showCursor: false,
+              onTap: () => _pickTime(ctx, time),
+              decoration: const InputDecoration(
+                hintText: 'Select time',
+                prefixIcon:
+                    Icon(Icons.access_time_rounded, color: AppColors.muted),
+                suffixIcon:
+                    Icon(Icons.expand_more_rounded, color: AppColors.muted),
+              ),
+            ),
             const SizedBox(height: 10),
             TextField(
                 controller: instructions,

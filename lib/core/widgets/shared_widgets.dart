@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../theme/app_colors.dart';
 
@@ -29,11 +30,15 @@ class PrimaryButton extends StatelessWidget {
           backgroundColor: color,
           disabledBackgroundColor: color.withValues(alpha: .35),
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          textStyle: const TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: .3),
+          padding: EdgeInsets.symmetric(vertical: 16.h),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14.r),
+          ),
+          textStyle: TextStyle(
+            fontSize: 15.sp,
+            fontWeight: FontWeight.w700,
+            letterSpacing: .3,
+          ),
         ),
         child: Column(
           children: [
@@ -41,20 +46,23 @@ class PrimaryButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 20),
-                  const SizedBox(width: 8),
+                  Icon(icon, size: 20.sp),
+                  SizedBox(width: 8.w),
                 ],
                 Flexible(child: Text(label, textAlign: TextAlign.center)),
               ],
             ),
             if (subLabel != null)
               Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(subLabel!,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.white.withValues(alpha: .85))),
+                padding: EdgeInsets.only(top: 2.h),
+                child: Text(
+                  subLabel!,
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.white.withValues(alpha: .85),
+                  ),
+                ),
               ),
           ],
         ),
@@ -87,13 +95,13 @@ class MCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18.r),
         border: border ?? Border.all(color: AppColors.line),
         boxShadow: [
           BoxShadow(
             color: AppColors.ink.withValues(alpha: .04),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            blurRadius: 14.r,
+            offset: Offset(0, 4.h),
           ),
         ],
       ),
@@ -101,18 +109,23 @@ class MCard extends StatelessWidget {
     );
     if (onTap == null) return card;
     return GestureDetector(
-        onTap: onTap, behavior: HitTestBehavior.opaque, child: card);
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: card,
+    );
   }
 }
 
 /// Small rounded status/label chip.
 class MChip extends StatelessWidget {
-  const MChip(this.label,
-      {super.key,
-        this.background = AppColors.paper,
-        this.foreground = AppColors.muted,
-        this.icon,
-        this.onTap});
+  const MChip(
+    this.label, {
+    super.key,
+    this.background = AppColors.paper,
+    this.foreground = AppColors.muted,
+    this.icon,
+    this.onTap,
+  });
 
   final String label;
   final Color background;
@@ -125,23 +138,26 @@ class MChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(99),
+          borderRadius: BorderRadius.circular(99.r),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 13, color: foreground),
-              const SizedBox(width: 4),
+              Icon(icon, size: 13.sp, color: foreground),
+              SizedBox(width: 4.w),
             ],
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: foreground)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: foreground,
+              ),
+            ),
           ],
         ),
       ),
@@ -160,20 +176,23 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10, top: 4),
+      padding: EdgeInsets.only(bottom: 10.h, top: 4.h),
       child: Row(
         children: [
           Expanded(
-              child:
-              Text(title, style: Theme.of(context).textTheme.titleMedium)),
+            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+          ),
           if (action != null)
             GestureDetector(
               onTap: onAction,
-              child: Text(action!,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.muted)),
+              child: Text(
+                action!,
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.muted,
+                ),
+              ),
             ),
         ],
       ),
@@ -184,8 +203,13 @@ class SectionHeader extends StatelessWidget {
 /// Circular avatar. Shows the user's photo when [imageUrl] is provided,
 /// otherwise falls back to a gradient initials badge.
 class InitialsAvatar extends StatelessWidget {
-  const InitialsAvatar(this.name,
-      {super.key, this.size = 46, this.color, this.imageUrl});
+  const InitialsAvatar(
+    this.name, {
+    super.key,
+    this.size = 46,
+    this.color,
+    this.imageUrl,
+  });
 
   final String name;
   final double size;
@@ -206,8 +230,7 @@ class InitialsAvatar extends StatelessWidget {
           fit: BoxFit.cover,
           // If the URL fails to load, fall back to initials rather than
           // showing a broken-image icon.
-          errorBuilder: (context, error, stackTrace) =>
-              _initialsBadge(context),
+          errorBuilder: (context, error, stackTrace) => _initialsBadge(context),
         ),
       );
     }
@@ -224,8 +247,8 @@ class InitialsAvatar extends StatelessWidget {
         .join()
         .toUpperCase();
     return Container(
-      width: size,
-      height: size,
+      width: size.r,
+      height: size.r,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
@@ -235,11 +258,14 @@ class InitialsAvatar extends StatelessWidget {
         ),
       ),
       alignment: Alignment.center,
-      child: Text(initials,
-          style: TextStyle(
-              color: Colors.white,
-              fontSize: size * .34,
-              fontWeight: FontWeight.w700)),
+      child: Text(
+        initials,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: (size * .34).sp,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -254,8 +280,8 @@ class LogoMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: size,
-      height: size,
+      width: size.r,
+      height: size.r,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -267,8 +293,9 @@ class LogoMark extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * .3),
         boxShadow: [
           BoxShadow(
-            color: (onDark ? Colors.black : AppColors.primary)
-                .withValues(alpha: .25),
+            color: (onDark ? Colors.black : AppColors.primary).withValues(
+              alpha: .25,
+            ),
             blurRadius: size * .3,
             offset: Offset(0, size * .1),
           ),
@@ -276,7 +303,8 @@ class LogoMark extends StatelessWidget {
       ),
       child: CustomPaint(
         painter: _PulsePainter(
-            color: onDark ? AppColors.primary : Colors.white),
+          color: onDark ? AppColors.primary : Colors.white,
+        ),
       ),
     );
   }
@@ -312,14 +340,23 @@ class _PulsePainter extends CustomPainter {
 }
 
 /// Standard toast helper.
-void showToast(BuildContext context, String message,
-    {Color color = AppColors.ink}) {
+void showToast(
+  BuildContext context,
+  String message, {
+  Color color = AppColors.ink,
+}) {
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
-    ..showSnackBar(SnackBar(
-      backgroundColor: color,
-      content: Text(message,
+    ..showSnackBar(
+      SnackBar(
+        backgroundColor: color,
+        content: Text(
+          message,
           style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w600)),
-    ));
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
 }

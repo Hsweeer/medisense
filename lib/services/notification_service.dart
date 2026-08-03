@@ -7,6 +7,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../core/services/alarm_sound_prefs.dart';
 import '../data/models/models.dart';
 import '../data/models/notification_model.dart';
 import 'native_alarm_bridge.dart';
@@ -158,6 +159,7 @@ class NotificationService {
     });
     debugPrint(
         '[NotificationService] scheduling "${reminder.title}" baseId=$baseId payload=$payload');
+    final selectedSound = await AlarmSoundPrefs.instance.getSelected();
 
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -168,10 +170,11 @@ class NotificationService {
         priority: Priority.high,
         icon: '@mipmap/ic_launcher',
       ),
-      iOS: const DarwinNotificationDetails(
+      iOS: DarwinNotificationDetails(
         presentAlert: true,
         presentSound: true,
         presentBadge: true,
+        sound: selectedSound.id.isEmpty ? null : selectedSound.iosFilename,
       ),
     );
 
@@ -190,6 +193,7 @@ class NotificationService {
           hour: time.hour,
           minute: time.minute,
           repeatType: 'daily',
+          soundRawResName: selectedSound.id,
         );
       } else {
         for (final weekday in weekdays) {
@@ -201,6 +205,7 @@ class NotificationService {
             hour: time.hour,
             minute: time.minute,
             repeatType: 'weekly',
+            soundRawResName: selectedSound.id,
             weekday: weekday,
           );
         }
@@ -233,6 +238,7 @@ class NotificationService {
         hour: time.hour,
         minute: time.minute,
         repeatType: 'daily',
+        soundRawResName: selectedSound.id,
       );
     } else {
       // "Weekdays" or "Mon · Wed · Fri" — one recurring alarm per weekday.
@@ -260,6 +266,7 @@ class NotificationService {
           hour: time.hour,
           minute: time.minute,
           repeatType: 'weekly',
+          soundRawResName: selectedSound.id,
           weekday: weekday,
         );
       }

@@ -52,6 +52,16 @@ class ReminderProvider extends ChangeNotifier {
     await _initializeReminders();
   }
 
+  /// Re-arms enabled reminders after a global scheduling setting changes,
+  /// such as the selected alarm sound. The reminder data itself is unchanged.
+  Future<void> rescheduleEnabledReminders() async {
+    for (final reminder in reminders) {
+      if (reminder.enabled) {
+        await NotificationService.instance.scheduleReminder(reminder);
+      }
+    }
+  }
+
   int get takenCount =>
       reminders.where((r) => r.status == DoseStatus.taken).length;
 

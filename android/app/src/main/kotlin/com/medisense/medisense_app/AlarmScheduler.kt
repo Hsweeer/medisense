@@ -32,6 +32,7 @@ object AlarmScheduler {
     const val EXTRA_MINUTE = "extra_minute"
     const val EXTRA_REPEAT_TYPE = "extra_repeat_type"
     const val EXTRA_WEEKDAY = "extra_weekday"
+    const val EXTRA_SOUND_RAW_RES_NAME = "extra_sound_raw_res_name"
 
     /** Reserved sub-id (see [idFor]) for a one-off snooze fire. */
     const val SNOOZE_SUB_ID = 8
@@ -66,6 +67,7 @@ object AlarmScheduler {
             putExtra(EXTRA_MINUTE, entry.minute)
             putExtra(EXTRA_REPEAT_TYPE, entry.repeatType)
             putExtra(EXTRA_WEEKDAY, entry.weekday)
+            putExtra(EXTRA_SOUND_RAW_RES_NAME, entry.soundRawResName)
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
