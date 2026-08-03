@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -101,22 +103,46 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _submitting = true);
     try {
       await context.read<AuthProvider>().signIn(email, password);
-
-      if (!mounted) return;
-
-      context.read<ProfileProvider>().refreshForCurrentUser();
-
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const PatientShell()),
-        (_) => false,
-      );
+      // No manual navigation here! The AuthWrapper in main.dart handles it.
     } catch (error) {
       if (!mounted) return;
       showToast(context, error.toString(), color: AppColors.danger);
-    } finally {
-      if (mounted) {
+      setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _continueWithGoogle() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final success = await context.read<AuthProvider>().signInWithGoogle();
+      if (!mounted) return;
+      
+      if (!success) {
         setState(() => _submitting = false);
       }
+      // If success, AuthWrapper automatically switches to PatientShell
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      showToast(context, error.toString(), color: AppColors.danger);
+    }
+  }
+
+  Future<void> _continueWithApple() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final success = await context.read<AuthProvider>().signInWithApple();
+      if (!mounted) return;
+
+      if (!success) {
+        setState(() => _submitting = false);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      showToast(context, error.toString(), color: AppColors.danger);
     }
   }
 
@@ -128,24 +154,24 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Scaffold(
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+            padding: EdgeInsets.fromLTRB(24.w, 18.h, 24.w, 24.h),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const LogoMark(size: 42),
-                    const SizedBox(width: 10),
+                    LogoMark(size: 42.r),
+                    SizedBox(width: 10.w),
                     Expanded(
                       child: Text(
                         'MediSense',
                         style: GoogleFonts.sora(
-                          fontSize: 20,
+                          fontSize: 20.sp,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8.w),
                     const MChip(
                       'US · English',
                       background: AppColors.soft,
@@ -153,24 +179,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 26),
+                SizedBox(height: 26.h),
                 Text(
                   'Your health,\nunderstood.',
                   style: GoogleFonts.sora(
-                    fontSize: 32,
+                    fontSize: 32.sp,
                     fontWeight: FontWeight.w700,
                     height: 1.15,
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8.h),
+                Text(
                   'AI guidance, nearby care, and emergency help — in one app.',
-                  style: TextStyle(fontSize: 14.5, color: AppColors.muted),
+                  style: TextStyle(fontSize: 14.5.sp, color: AppColors.muted),
                 ),
-                const SizedBox(height: 22),
+                SizedBox(height: 22.h),
                 // Rotating value-prop hero.
                 SizedBox(
-                  height: 148,
+                  height: 148.h,
                   child: PageView.builder(
                     controller: _page,
                     itemCount: _slides.length,
@@ -178,8 +204,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     itemBuilder: (_, i) {
                       final s = _slides[i];
                       return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        padding: const EdgeInsets.all(18),
+                        margin: EdgeInsets.symmetric(horizontal: 2.w),
+                        padding: EdgeInsets.all(18.r),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
@@ -190,20 +216,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? AppColors.gradient
                                 : AppColors.aiGradient,
                           ),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(20.r),
                         ),
                         child: Row(
                           children: [
                             Container(
-                              width: 52,
-                              height: 52,
+                              width: 52.r,
+                              height: 52.r,
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: .18),
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(16.r),
                               ),
-                              child: Icon(s.$1, color: Colors.white, size: 28),
+                              child: Icon(s.$1, color: Colors.white, size: 28.sp),
                             ),
-                            const SizedBox(width: 14),
+                            SizedBox(width: 14.w),
                             Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -214,18 +240,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: GoogleFonts.sora(
-                                      fontSize: 16.5,
+                                      fontSize: 16.5.sp,
                                       fontWeight: FontWeight.w700,
                                       color: Colors.white,
                                     ),
                                   ),
-                                  const SizedBox(height: 5),
+                                  SizedBox(height: 5.h),
                                   Text(
                                     s.$3,
                                     maxLines: 3,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      fontSize: 12.5,
+                                      fontSize: 12.5.sp,
                                       height: 1.35,
                                       color: Colors.white.withValues(
                                         alpha: .88,
@@ -241,31 +267,31 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12.h),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     for (var i = 0; i < _slides.length; i++)
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        width: i == _slide ? 22 : 7,
-                        height: 7,
+                        margin: EdgeInsets.symmetric(horizontal: 3.w),
+                        width: i == _slide ? 22.w : 7.w,
+                        height: 7.h,
                         decoration: BoxDecoration(
                           color: i == _slide
                               ? AppColors.primary
                               : AppColors.line,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(4.r),
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                SizedBox(height: 18.h),
                 // Trust strip — static social proof, costs nothing.
                 MCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 12.h,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -278,37 +304,43 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 22),
-                const Text(
+                SizedBox(height: 22.h),
+                Text(
                   'Sign in with your email',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
                 ),
-                const SizedBox(height: 4),
-                const Text(
+                SizedBox(height: 4.h),
+                Text(
                   'Enter the email and password for your existing account.',
-                  style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+                  style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10.h),
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
+                  style: TextStyle(fontSize: 15.sp),
+                  decoration: InputDecoration(
                     hintText: 'you@example.com',
+                    hintStyle: TextStyle(fontSize: 14.sp),
                     prefixIcon: Icon(
                       Icons.mail_outline_rounded,
                       color: AppColors.muted,
+                      size: 20.sp,
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12.h),
                 TextField(
                   controller: _password,
                   obscureText: _obscure,
+                  style: TextStyle(fontSize: 15.sp),
                   decoration: InputDecoration(
                     hintText: 'Password',
-                    prefixIcon: const Icon(
+                    hintStyle: TextStyle(fontSize: 14.sp),
+                    prefixIcon: Icon(
                       Icons.lock_outline_rounded,
                       color: AppColors.muted,
+                      size: 20.sp,
                     ),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -316,12 +348,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? Icons.visibility_off_rounded
                             : Icons.visibility_rounded,
                         color: AppColors.muted,
+                        size: 20.sp,
                       ),
                       onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8.h),
                 Align(
                   alignment: Alignment.centerRight,
                   child: GestureDetector(
@@ -332,23 +365,48 @@ class _LoginScreenState extends State<LoginScreen> {
                               builder: (_) => const ForgotPasswordScreen(),
                             ),
                           ),
-                    child: const Text(
+                    child: Text(
                       'Forgot password?',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 13.sp,
                         color: AppColors.primary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: 6.h),
                 PrimaryButton(
                   label: _submitting ? 'Please wait…' : 'Sign in',
-                  icon: Icons.arrow_forward_rounded,
+                  icon: _submitting ? null : Icons.arrow_forward_rounded,
                   onPressed: _submitting ? null : _continue,
                 ),
-                const SizedBox(height: 14),
+                const TextDivider(text: 'OR'),
+                SocialButton(
+                  label: _submitting ? 'Connecting Google…' : 'Continue with Google',
+                  iconWidget: _submitting 
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                    : Image.network(
+                        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_\"G\"_logo.svg/1200px-Google_\"G\"_logo.svg.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Text('G', 
+                          style: GoogleFonts.sora(fontWeight: FontWeight.w900, color: Colors.blue)),
+                      ),
+                  onPressed: _submitting ? null : _continueWithGoogle,
+                ),
+                SizedBox(height: 12.h),
+                SocialButton(
+                  label: _submitting ? 'Connecting Apple…' : 'Continue with Apple',
+                  iconWidget: _submitting 
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                    : Image.network(
+                        'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/1667px-Apple_logo_black.svg.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.phone_iphone_rounded, color: Colors.black),
+                      ),
+                  onPressed: _submitting ? null : _continueWithApple,
+                ),
+                SizedBox(height: 24.h),
                 Center(
                   child: GestureDetector(
                     onTap: _submitting
@@ -361,15 +419,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text.rich(
                       TextSpan(
                         text: "New here? ",
-                        style: const TextStyle(
-                          fontSize: 13,
+                        style: TextStyle(
+                          fontSize: 13.sp,
                           color: AppColors.muted,
                         ),
                         children: [
                           TextSpan(
                             text: 'Create an account',
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 13.sp,
                               color: AppColors.primary,
                               fontWeight: FontWeight.w700,
                             ),
@@ -380,64 +438,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                // ---------------------------------------------------------
-                // Phone/OTP field — commented out for now.
-                // Re-enable once the Firebase project is upgraded to Blaze.
-                // ---------------------------------------------------------
-                // const SizedBox(height: 14),
-                // TextField(
-                //   controller: _phone,
-                //   keyboardType: TextInputType.phone,
-                //   inputFormatters: [
-                //     FilteringTextInputFormatter.allow(RegExp(r'[\d\s()\-]')),
-                //     LengthLimitingTextInputFormatter(14),
-                //   ],
-                //   decoration: const InputDecoration(
-                //     hintText: '(555) 000-0000',
-                //     prefixIcon: Icon(Icons.phone_iphone_rounded,
-                //         color: AppColors.muted),
-                //     prefixText: '+1  ',
-                //     prefixStyle: TextStyle(
-                //         color: AppColors.ink,
-                //         fontSize: 15,
-                //         fontWeight: FontWeight.w600),
-                //   ),
-                // ),
-                // PrimaryButton(
-                //   label: 'Continue with phone',
-                //   icon: Icons.arrow_forward_rounded,
-                //   onPressed: () async {
-                //     final digits = _phone.text.replaceAll(RegExp(r'\D'), '');
-                //     if (digits.length != 10) {
-                //       showToast(context, 'Enter a valid 10-digit US phone number',
-                //           color: AppColors.danger);
-                //       return;
-                //     }
-                //     final error = await context
-                //         .read<AuthProvider>()
-                //         .sendOtp('+1$digits');
-                //     if (!context.mounted) return;
-                //     if (error != null) {
-                //       showToast(context, error, color: AppColors.danger);
-                //       return;
-                //     }
-                //     Navigator.of(context).push(
-                //         MaterialPageRoute(builder: (_) => const OtpScreen()));
-                //   },
-                // ),
                 const SizedBox(height: 16),
                 Center(
                   child: Text.rich(
                     TextSpan(
                       text: 'By continuing you agree to our ',
-                      style: const TextStyle(
-                        fontSize: 11.5,
+                      style: TextStyle(
+                        fontSize: 11.5.sp,
                         color: AppColors.muted,
                       ),
                       children: [
                         TextSpan(
                           text: 'Terms',
                           style: TextStyle(
+                            fontSize: 11.5.sp,
                             color: AppColors.primary,
                             fontWeight: FontWeight.w600,
                           ),
@@ -446,6 +460,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextSpan(
                           text: 'Privacy Policy',
                           style: TextStyle(
+                            fontSize: 11.5.sp,
                             color: AppColors.primary,
                             fontWeight: FontWeight.w600,
                           ),
@@ -480,15 +495,15 @@ class _TrustStat extends StatelessWidget {
         Text(
           value,
           style: GoogleFonts.sora(
-            fontSize: 16,
+            fontSize: 16.sp,
             fontWeight: FontWeight.w700,
             color: AppColors.primary,
           ),
         ),
-        const SizedBox(height: 2),
+        SizedBox(height: 2.h),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
         ),
       ],
     );
@@ -500,5 +515,5 @@ class _StatDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Container(width: 1, height: 28, color: AppColors.line);
+      Container(width: 1.w, height: 28.h, color: AppColors.line);
 }

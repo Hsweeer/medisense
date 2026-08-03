@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -38,12 +39,12 @@ class NotificationsScreen extends StatelessWidget {
             : prov.notifications.isEmpty
             ? const _EmptyState()
             : ListView.builder(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
           itemCount: prov.notifications.length,
           itemBuilder: (context, i) {
             final item = prov.notifications[i];
             return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: EdgeInsets.only(bottom: 10.h),
               child: _NotificationCard(item: item),
             );
           },
@@ -98,21 +99,21 @@ class _NotificationCard extends StatelessWidget {
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 22),
+        padding: EdgeInsets.symmetric(horizontal: 22.w),
         margin: const EdgeInsets.only(bottom: 0),
         decoration: BoxDecoration(
           color: AppColors.dangerSoft,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(18.r),
         ),
-        child: const Icon(Icons.delete_outline_rounded,
-            color: AppColors.danger),
+        child: Icon(Icons.delete_outline_rounded,
+            color: AppColors.danger, size: 24.sp),
       ),
       onDismissed: (_) {
         prov.delete(item);
         showToast(context, 'Notification deleted');
       },
       child: MCard(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(14.r),
         color: item.isRead ? AppColors.card : AppColors.soft,
         border: Border.all(
           color: item.isRead
@@ -124,16 +125,16 @@ class _NotificationCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 42.r,
+              height: 42.r,
               decoration: BoxDecoration(
                 color: item.isRead ? AppColors.paper : Colors.white,
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(13.r),
               ),
-              child: const Icon(Icons.medication_rounded,
-                  color: AppColors.primary, size: 22),
+              child: Icon(Icons.medication_rounded,
+                  color: AppColors.primary, size: 22.sp),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12.w),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,7 +145,7 @@ class _NotificationCard extends StatelessWidget {
                         child: Text(
                           item.title,
                           style: TextStyle(
-                            fontSize: 14.5,
+                            fontSize: 14.5.sp,
                             fontWeight:
                             item.isRead ? FontWeight.w600 : FontWeight.w700,
                             color: AppColors.ink,
@@ -153,9 +154,9 @@ class _NotificationCard extends StatelessWidget {
                       ),
                       if (!item.isRead)
                         Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.only(left: 8, top: 3),
+                          width: 8.r,
+                          height: 8.r,
+                          margin: EdgeInsets.only(left: 8.w, top: 3.h),
                           decoration: const BoxDecoration(
                             color: AppColors.primary,
                             shape: BoxShape.circle,
@@ -163,31 +164,31 @@ class _NotificationCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 3),
+                  SizedBox(height: 3.h),
                   Text(
                     item.message,
-                    style: const TextStyle(
-                        fontSize: 12.5, color: AppColors.muted, height: 1.35),
+                    style: TextStyle(
+                        fontSize: 12.5.sp, color: AppColors.muted, height: 1.35),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8.h),
                   Row(
                     children: [
                       MChip(item.date,
                           icon: Icons.event_rounded,
                           background: AppColors.paper,
                           foreground: AppColors.inkSoft),
-                      const SizedBox(width: 6),
+                      SizedBox(width: 6.w),
                       MChip(item.time,
                           icon: Icons.schedule_rounded,
                           background: AppColors.paper,
                           foreground: AppColors.inkSoft),
                       const Spacer(),
                       if (item.isRead)
-                        const Icon(Icons.done_all_rounded,
-                            size: 16, color: AppColors.muted)
+                        Icon(Icons.done_all_rounded,
+                            size: 16.sp, color: AppColors.muted)
                       else
-                        const Icon(Icons.fiber_manual_record_rounded,
-                            size: 8, color: AppColors.primary),
+                        Icon(Icons.fiber_manual_record_rounded,
+                            size: 8.sp, color: AppColors.primary),
                     ],
                   ),
                 ],
@@ -212,31 +213,31 @@ class _EmptyState extends StatelessWidget {
           constraints: BoxConstraints(minHeight: constraints.maxHeight),
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(32),
+              padding: EdgeInsets.all(32.r),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 96,
-                    height: 96,
+                    width: 96.r,
+                    height: 96.r,
                     decoration: BoxDecoration(
                       color: AppColors.soft,
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(28.r),
                     ),
-                    child: const Icon(Icons.notifications_none_rounded,
-                        size: 46, color: AppColors.primary),
+                    child: Icon(Icons.notifications_none_rounded,
+                        size: 46.sp, color: AppColors.primary),
                   ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: 18.h),
                   Text('No notifications yet.',
                       style: GoogleFonts.sora(
-                          fontSize: 17,
+                          fontSize: 17.sp,
                           fontWeight: FontWeight.w700,
                           color: AppColors.ink)),
-                  const SizedBox(height: 6),
-                  const Text(
+                  SizedBox(height: 6.h),
+                  Text(
                     'Reminders and updates will show up here as they arrive.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, color: AppColors.muted),
+                    style: TextStyle(fontSize: 13.sp, color: AppColors.muted),
                   ),
                 ],
               ),

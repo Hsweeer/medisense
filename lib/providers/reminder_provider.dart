@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/models/models.dart';
@@ -16,6 +17,12 @@ class ReminderProvider extends ChangeNotifier {
 
   ReminderProvider() {
     _initializeReminders();
+
+    // Re-initialize whenever the user changes (login/logout/switch)
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      debugPrint('[ReminderProvider] authStateChanged: ${user?.email}');
+      refresh();
+    });
   }
 
   /// Load reminders from Firestore on app startup.
@@ -48,6 +55,11 @@ class ReminderProvider extends ChangeNotifier {
 
   /// Force a refresh from Firestore (useful after auth state changes).
   Future<void> refresh() async {
+    // If logging out, stop all alarms from the previous user
+    if (FirebaseAuth.instance.currentUser == null) {
+      await NotificationService.instance.cancelAll();
+    }
+
     _initialized = false;
     await _initializeReminders();
   }

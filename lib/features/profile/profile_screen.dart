@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -29,7 +30,7 @@ class ProfileScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
         children: [
           MCard(
             onTap: () => Navigator.of(context).push(
@@ -37,8 +38,8 @@ class ProfileScreen extends StatelessWidget {
             ),
             child: Row(
               children: [
-                InitialsAvatar(p.name, size: 56, imageUrl: p.imageUrl),
-                const SizedBox(width: 14),
+                InitialsAvatar(p.name, size: 56.r, imageUrl: p.imageUrl),
+                SizedBox(width: 14.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -46,24 +47,24 @@ class ProfileScreen extends StatelessWidget {
                       Text(
                         p.name.isEmpty ? 'Complete your profile' : p.name,
                         style: GoogleFonts.sora(
-                          fontSize: 16,
+                          fontSize: 16.sp,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      SizedBox(height: 3.h),
                       Text(
                         firebaseAuthEmail(context),
-                        style: const TextStyle(
-                          fontSize: 12.5,
+                        style: TextStyle(
+                          fontSize: 12.5.sp,
                           color: AppColors.muted,
                         ),
                       ),
                       if (p.dob.isNotEmpty) ...[
-                        const SizedBox(height: 2),
+                        SizedBox(height: 2.h),
                         Text(
                           p.dob,
-                          style: const TextStyle(
-                            fontSize: 12,
+                          style: TextStyle(
+                            fontSize: 12.sp,
                             color: AppColors.muted,
                           ),
                         ),
@@ -71,49 +72,49 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.muted),
+                Icon(Icons.chevron_right_rounded,
+                    color: AppColors.muted, size: 24.sp),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20.h),
           Padding(
-            padding: const EdgeInsets.only(bottom: 10, top: 4),
+            padding: EdgeInsets.only(bottom: 10.h, top: 4.h),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     'Health profile',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 16.sp),
                   ),
                 ),
                 GestureDetector(
                   onTap: () => showEditHealthProfileSheet(context),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 7,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10.w,
+                      vertical: 7.h,
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.soft,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(999.r),
                       border: Border.all(
                         color: AppColors.primary.withValues(alpha: .24),
                       ),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.edit_rounded,
-                          size: 15,
+                          size: 15.sp,
                           color: AppColors.primary,
                         ),
-                        SizedBox(width: 6),
+                        SizedBox(width: 6.w),
                         Text(
                           'Edit',
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 12.5.sp,
                             fontWeight: FontWeight.w700,
                             color: AppColors.primary,
                           ),
@@ -140,21 +141,21 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                const Divider(height: 24),
+                Divider(height: 24.h),
                 _ChipRow(
                   label: 'Allergies',
                   values: p.allergies,
                   background: AppColors.dangerSoft,
                   foreground: AppColors.danger,
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10.h),
                 _ChipRow(
                   label: 'Conditions',
                   values: p.conditions,
                   background: AppColors.warningSoft,
                   foreground: AppColors.warning,
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10.h),
                 _ChipRow(
                   label: 'Medications',
                   values: p.medications,
@@ -164,20 +165,20 @@ class ProfileScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           MCard(
             color: AppColors.aiSoft,
             border: Border.all(color: AppColors.ai.withValues(alpha: .3)),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 22),
-                SizedBox(width: 12),
+                Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 22.sp),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: Text(
                     'MedAI personalizes every answer using this profile — '
                     'keep it current for sharper guidance.',
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 12.5.sp,
                       height: 1.4,
                       color: AppColors.inkSoft,
                     ),
@@ -186,7 +187,7 @@ class ProfileScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20.h),
           const SectionHeader('Emergency'),
           MCard(
             onTap: () => Navigator.of(context).push(
@@ -197,46 +198,46 @@ class ProfileScreen extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: 42.r,
+                  height: 42.r,
                   decoration: BoxDecoration(
                     color: AppColors.dangerSoft,
-                    borderRadius: BorderRadius.circular(13),
+                    borderRadius: BorderRadius.circular(13.r),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.contact_emergency_rounded,
                     color: AppColors.danger,
-                    size: 22,
+                    size: 22.sp,
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Emergency contacts',
                         style: TextStyle(
-                          fontSize: 14.5,
+                          fontSize: 14.5.sp,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: 2.h),
                       Text(
                         '${prov.contacts.length} saved · alerted during SOS',
-                        style: const TextStyle(
-                          fontSize: 12,
+                        style: TextStyle(
+                          fontSize: 12.sp,
                           color: AppColors.muted,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+                Icon(Icons.chevron_right_rounded, color: AppColors.muted, size: 24.sp),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20.h),
           const SectionHeader('Settings'),
           MCard(
             padding: EdgeInsets.zero,
@@ -253,7 +254,7 @@ class ProfileScreen extends StatelessWidget {
                     );
                   },
                 ),
-                const Divider(height: 1, indent: 56),
+                Divider(height: 1.h, indent: 56.w),
                 _SettingTile(
                   icon: Icons.alarm_rounded,
                   label: 'Alarm sound',
@@ -261,19 +262,19 @@ class ProfileScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const AlarmSoundScreen()),
                   ),
                 ),
-                const Divider(height: 1, indent: 56),
+                Divider(height: 1.h, indent: 56.w),
                 _SettingTile(
                   icon: Icons.lock_outline_rounded,
                   label: 'Privacy & data',
                   onTap: () => showToast(context, 'Privacy settings'),
                 ),
-                const Divider(height: 1, indent: 56),
+                Divider(height: 1.h, indent: 56.w),
                 _SettingTile(
                   icon: Icons.help_outline_rounded,
                   label: 'Help & support',
                   onTap: () => showToast(context, 'Support center'),
                 ),
-                const Divider(height: 1, indent: 56),
+                Divider(height: 1.h, indent: 56.w),
                 _SettingTile(
                   icon: Icons.logout_rounded,
                   label: 'Sign out',
@@ -315,15 +316,15 @@ class _Vital extends StatelessWidget {
         Text(
           value,
           style: GoogleFonts.sora(
-            fontSize: 16,
+            fontSize: 16.sp,
             fontWeight: FontWeight.w700,
             color: AppColors.primary,
           ),
         ),
-        const SizedBox(height: 2),
+        SizedBox(height: 2.h),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: AppColors.muted),
+          style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
         ),
       ],
     );
@@ -349,24 +350,24 @@ class _ChipRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 92,
+          width: 92.w,
           child: Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: EdgeInsets.only(top: 4.h),
             child: Text(
               label,
-              style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
+              style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
             ),
           ),
         ),
         Expanded(
           child: values.isEmpty
-              ? const Text(
+              ? Text(
                   'Not set yet',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                  style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
                 )
               : Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: 6.w,
+                  runSpacing: 6.h,
                   children: [
                     for (final v in values)
                       MChip(v, background: background, foreground: foreground),
@@ -400,20 +401,20 @@ class _SettingTile extends StatelessWidget {
         leading: Icon(
           icon,
           color: color == AppColors.ink ? AppColors.inkSoft : color,
-          size: 22,
+          size: 22.sp,
         ),
         title: Text(
           label,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 14.sp,
             fontWeight: FontWeight.w600,
             color: color,
           ),
         ),
-        trailing: const Icon(
+        trailing: Icon(
           Icons.chevron_right_rounded,
           color: AppColors.muted,
-          size: 20,
+          size: 20.sp,
         ),
       ),
     );

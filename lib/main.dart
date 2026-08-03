@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -5,6 +7,8 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/splash/splash_screen.dart';
+import 'features/auth/login_screen.dart';
+import 'features/shell/patient_shell.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
@@ -54,9 +58,60 @@ class MediSenseApp extends StatelessWidget {
           title: 'MediSense',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          home: const SplashScreen(),
+          // Dark background matches Splash to hide any possible transition artifacts
+          builder: (context, child) => Container(
+            color: const Color(0xFF06413A),
+            child: child,
+          ),
+          home: const AuthWrapper(),
         ),
       ),
+    );
+  }
+}
+
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Professional 2.5s splash delay
+    Timer(const Duration(milliseconds: 2500), () {
+      if (mounted) setState(() => _showSplash = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // 1. Stay on splash during initial boot or if timer is still running
+        if (_showSplash || snapshot.connectionState == ConnectionState.waiting) {
+          return const SplashScreen(key: ValueKey('splash_view'));
+        }
+
+        // 2. Decide destination based on Firebase user presence
+        final Widget destination = snapshot.hasData 
+            ? const PatientShell(key: ValueKey('home_view')) 
+            : const LoginScreen(key: ValueKey('login_view'));
+
+        // 3. One smooth cross-fade transition
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 600),
+          switchInCurve: Curves.easeIn,
+          switchOutCurve: Curves.easeOut,
+          child: destination,
+        );
+      },
     );
   }
 }

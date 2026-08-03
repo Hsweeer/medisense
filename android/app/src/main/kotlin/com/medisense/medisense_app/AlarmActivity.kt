@@ -70,7 +70,7 @@ class AlarmActivity : Activity() {
 
         findViewById<TextView>(R.id.tvTitle).text = title
         findViewById<TextView>(R.id.tvDose).text = dose
-        findViewById<TextView>(R.id.tvScheduledTime).text =
+        findViewById<TextView>(R.id.tvReminderTime).text =
             if (displayTime.isBlank()) "Medicine time" else "Scheduled for $displayTime"
     }
 

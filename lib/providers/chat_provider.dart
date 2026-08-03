@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/models/models.dart';
@@ -13,16 +14,35 @@ import 'reminder_provider.dart';
 /// health profile — the hook where on-device / backend training plugs in).
 class ChatProvider extends ChangeNotifier {
   ChatProvider({this.reminderEngine}) {
-    messages.add(const ChatMessage(
+    _initChat();
+
+    // Reset chat whenever the user changes
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      debugPrint('[ChatProvider] authStateChanged: ${user?.email}');
+      _initChat();
+    });
+  }
+
+  void _initChat() {
+    messages.clear();
+    pendingAttachments.clear();
+    typing = false;
+    recording = false;
+
+    final user = FirebaseAuth.instance.currentUser;
+    final name = user?.displayName?.split(' ').first ?? 'there';
+
+    messages.add(ChatMessage(
       role: ChatRole.ai,
       text:
-          "Hi Emily, I'm MedAI — your personal health assistant. I can answer "
+          "Hi $name, I'm MedAI — your personal health assistant. I can answer "
           "health questions, read lab reports or photos you upload, and listen "
           "to voice notes. I've learned your health profile, so my guidance "
-          "accounts for your penicillin and peanut allergies and mild asthma."
+          "will account for any allergies or conditions you've listed."
           "\n\nHow are you feeling today?",
       personalized: true,
     ));
+    notifyListeners();
   }
 
   /// Lets MedAI create alarms itself after scanning a prescription.

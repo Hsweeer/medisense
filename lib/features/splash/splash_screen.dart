@@ -1,22 +1,13 @@
-import 'dart:async';
-
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/widgets/shared_widgets.dart';
-import '../auth/login_screen.dart';
-import '../shell/patient_shell.dart';
 
-/// Animated brand splash — deep teal gradient, breathing pulse logo,
-/// wordmark reveal, then auto-advance to the login experience.
+/// Purely visual brand splash — deep teal gradient, breathing pulse logo,
+/// wordmark reveal. No business logic here (handled by AuthWrapper).
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key, this.isSignedIn});
-
-  /// Overrides the Firebase session lookup when a caller supplies it.
-  /// This keeps the splash route testable without requiring Firebase plugins.
-  final bool Function()? isSignedIn;
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -32,30 +23,6 @@ class _SplashScreenState extends State<SplashScreen>
     vsync: this,
     duration: const Duration(milliseconds: 1600),
   )..repeat(reverse: true);
-
-  @override
-  void initState() {
-    super.initState();
-    Timer(const Duration(milliseconds: 2800), () {
-      if (!mounted) return;
-      // Firebase persists the session across app restarts. If there's
-      // already a signed-in user, skip Login/Signup entirely and go
-      // straight to Home. Otherwise, start the Login flow.
-      final alreadySignedIn =
-          widget.isSignedIn?.call() ??
-          FirebaseAuth.instance.currentUser != null;
-      final destination = alreadySignedIn
-          ? const PatientShell()
-          : const LoginScreen();
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 550),
-          pageBuilder: (_, a, secondary) =>
-              FadeTransition(opacity: a, child: destination),
-        ),
-      );
-    });
-  }
 
   @override
   void dispose() {

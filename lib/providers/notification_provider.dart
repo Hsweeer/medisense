@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/widgets.dart';
 
 import '../data/models/notification_model.dart';
@@ -16,6 +17,12 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
     NotificationService.onHistoryChanged = refresh;
     _load();
     _startWatching();
+
+    // Refresh whenever the user changes (login/logout/switch)
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      debugPrint('[NotificationProvider] authStateChanged: ${user?.email}');
+      _load();
+    });
   }
 
   final ReminderProvider _reminderProvider;

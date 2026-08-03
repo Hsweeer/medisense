@@ -32,6 +32,12 @@ class ProfileProvider extends ChangeNotifier {
 
   ProfileProvider() {
     _listen();
+
+    // Re-attach listeners whenever the user changes
+    _auth.authStateChanges().listen((user) {
+      debugPrint('[ProfileProvider] authStateChanged: ${user?.email}');
+      refreshForCurrentUser();
+    });
   }
 
   String? get _uid => _auth.currentUser?.uid;

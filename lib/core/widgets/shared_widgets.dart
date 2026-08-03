@@ -71,19 +71,102 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
+/// Professional social sign-in button (Google, Apple, etc.)
+class SocialButton extends StatelessWidget {
+  const SocialButton({
+    super.key,
+    required this.label,
+    required this.iconWidget,
+    required this.onPressed,
+    this.color = Colors.white,
+    this.textColor = AppColors.ink,
+  });
+
+  final String label;
+  final Widget iconWidget;
+  final VoidCallback? onPressed;
+  final Color color;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: textColor,
+          side: BorderSide(color: AppColors.line, width: 1.w),
+          padding: EdgeInsets.symmetric(vertical: 14.h),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14.r),
+          ),
+          elevation: 0,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(width: 18.sp, height: 18.sp, child: iconWidget),
+            SizedBox(width: 12.w),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14.5.sp,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Horizontal divider with text in the middle (e.g. "OR")
+class TextDivider extends StatelessWidget {
+  const TextDivider({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 20.h),
+      child: Row(
+        children: [
+          const Expanded(child: Divider(color: AppColors.line)),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14.w),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: AppColors.muted,
+              ),
+            ),
+          ),
+          const Expanded(child: Divider(color: AppColors.line)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Soft rounded surface — the app's standard card.
 class MCard extends StatelessWidget {
   const MCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding,
     this.color = AppColors.card,
     this.border,
     this.onTap,
   });
 
   final Widget child;
-  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? padding;
   final Color color;
   final BoxBorder? border;
   final VoidCallback? onTap;
@@ -92,11 +175,11 @@ class MCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final card = Container(
       width: double.infinity,
-      padding: padding,
+      padding: padding ?? EdgeInsets.all(16.r),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(18.r),
-        border: border ?? Border.all(color: AppColors.line),
+        border: border ?? Border.all(color: AppColors.line, width: 1.w),
         boxShadow: [
           BoxShadow(
             color: AppColors.ink.withValues(alpha: .04),

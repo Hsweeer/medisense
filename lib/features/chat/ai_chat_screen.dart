@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -49,15 +50,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+          padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 14.h),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Share with MedAI',
                   style: GoogleFonts.sora(
-                      fontSize: 16, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
+                      fontSize: 16.sp, fontWeight: FontWeight.w700)),
+              SizedBox(height: 10.h),
               _AttachRow(
                 icon: Icons.photo_camera_rounded,
                 color: AppColors.primary,
@@ -154,16 +155,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
         title: Row(
           children: [
             Container(
-              width: 34,
-              height: 34,
+              width: 34.r,
+              height: 34.r,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(colors: AppColors.aiGradient),
-                borderRadius: BorderRadius.circular(11),
+                borderRadius: BorderRadius.circular(11.r),
               ),
-              child: const Icon(Icons.psychology_alt_rounded,
-                  color: Colors.white, size: 20),
+              child: Icon(Icons.psychology_alt_rounded,
+                  color: Colors.white, size: 20.sp),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: 10.w),
             const Text('MedAI'),
           ],
         ),
@@ -197,13 +198,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
           Container(
             width: double.infinity,
             color: const Color(0xFFFDF3E3),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: const Text(
+            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+            child: Text(
               '⚠ MedAI offers general guidance — not a diagnosis. '
               'In an emergency call 911.',
               style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF8A5B0B),
+                  fontSize: 12.sp,
+                  color: const Color(0xFF8A5B0B),
                   fontWeight: FontWeight.w600),
             ),
           ),
@@ -212,7 +213,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
               children: [
                 ListView.builder(
                   controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                  padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 8.h),
                   itemCount: chat.messages.length + (chat.typing ? 1 : 0),
                   itemBuilder: (_, i) {
                     if (i == chat.messages.length) {
@@ -226,14 +227,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ),
           ),
           SizedBox(
-            height: 40,
+            height: 40.h,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
               children: [
                 for (final s in MockData.aiSuggestions)
                   Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: EdgeInsets.only(right: 8.w),
                     child: MChip(s,
                         background: AppColors.aiSoft,
                         foreground: AppColors.ai,
@@ -245,19 +246,19 @@ class _AiChatScreenState extends State<AiChatScreen> {
           // Staged attachments preview strip.
           if (chat.pendingAttachments.isNotEmpty)
             Container(
-              height: 54,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              height: 54.h,
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
               alignment: Alignment.centerLeft,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
                   for (final a in chat.pendingAttachments)
                     Container(
-                      margin: const EdgeInsets.only(right: 8, top: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      margin: EdgeInsets.only(right: 8.w, top: 8.h),
+                      padding: EdgeInsets.symmetric(horizontal: 10.w),
                       decoration: BoxDecoration(
                         color: AppColors.soft,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(12.r),
                       ),
                       child: Row(
                         children: [
@@ -265,19 +266,19 @@ class _AiChatScreenState extends State<AiChatScreen> {
                               a.type == AttachmentType.image
                                   ? Icons.image_rounded
                                   : Icons.description_rounded,
-                              size: 16,
+                              size: 16.sp,
                               color: AppColors.onSoft),
-                          const SizedBox(width: 6),
+                          SizedBox(width: 6.w),
                           Text(a.name,
-                              style: const TextStyle(
-                                  fontSize: 12,
+                              style: TextStyle(
+                                  fontSize: 12.sp,
                                   fontWeight: FontWeight.w600,
                                   color: AppColors.onSoft)),
-                          const SizedBox(width: 6),
+                          SizedBox(width: 6.w),
                           GestureDetector(
                             onTap: () => chat.removeStaged(a),
-                            child: const Icon(Icons.close_rounded,
-                                size: 15, color: AppColors.onSoft),
+                            child: Icon(Icons.close_rounded,
+                                size: 15.sp, color: AppColors.onSoft),
                           ),
                         ],
                       ),
@@ -287,33 +288,35 @@ class _AiChatScreenState extends State<AiChatScreen> {
             ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+              padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 12.h),
               child: Row(
                 children: [
                   GestureDetector(
                     onTap: _openAttachmentSheet,
                     child: Container(
-                      width: 46,
-                      height: 46,
+                      width: 46.r,
+                      height: 46.r,
                       decoration: BoxDecoration(
                         color: AppColors.card,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.line),
                       ),
-                      child: const Icon(Icons.add_rounded,
-                          color: AppColors.inkSoft),
+                      child: Icon(Icons.add_rounded,
+                          color: AppColors.inkSoft, size: 24.sp),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8.w),
                   Expanded(
                     child: TextField(
                       controller: _ctrl,
-                      decoration: const InputDecoration(
-                          hintText: 'Ask MedAI anything…'),
+                      style: TextStyle(fontSize: 15.sp),
+                      decoration: InputDecoration(
+                          hintText: 'Ask MedAI anything…',
+                          hintStyle: TextStyle(fontSize: 14.sp)),
                       onSubmitted: (_) => _send(),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8.w),
                   // Hold to record a voice note.
                   GestureDetector(
                     onLongPressStart: (_) {
@@ -329,8 +332,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     onTap: () => showToast(
                         context, 'Hold the mic to record a voice note'),
                     child: Container(
-                      width: 46,
-                      height: 46,
+                      width: 46.r,
+                      height: 46.r,
                       decoration: BoxDecoration(
                         color: chat.recording
                             ? AppColors.danger
@@ -342,24 +345,25 @@ class _AiChatScreenState extends State<AiChatScreen> {
                                 : AppColors.line),
                       ),
                       child: Icon(Icons.mic_rounded,
+                          size: 24.sp,
                           color: chat.recording
                               ? Colors.white
                               : AppColors.inkSoft),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8.w),
                   GestureDetector(
                     onTap: _send,
                     child: Container(
-                      width: 46,
-                      height: 46,
+                      width: 46.r,
+                      height: 46.r,
                       decoration: const BoxDecoration(
                         gradient:
                             LinearGradient(colors: AppColors.aiGradient),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.send_rounded,
-                          color: Colors.white, size: 21),
+                      child: Icon(Icons.send_rounded,
+                          color: Colors.white, size: 21.sp),
                     ),
                   ),
                 ],
@@ -396,32 +400,32 @@ class _AttachRow extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
+        padding: EdgeInsets.symmetric(vertical: 7.h),
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 36.r,
+              height: 36.r,
               decoration: BoxDecoration(
-                  color: soft, borderRadius: BorderRadius.circular(11)),
-              child: Icon(icon, color: color, size: 19),
+                  color: soft, borderRadius: BorderRadius.circular(11.r)),
+              child: Icon(icon, color: color, size: 19.sp),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12.w),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: const TextStyle(
-                          fontSize: 13.5, fontWeight: FontWeight.w700)),
+                      style: TextStyle(
+                          fontSize: 13.5.sp, fontWeight: FontWeight.w700)),
                   Text(sub,
-                      style: const TextStyle(
-                          fontSize: 11.5, color: AppColors.muted)),
+                      style: TextStyle(
+                          fontSize: 11.5.sp, color: AppColors.muted)),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                size: 18, color: AppColors.muted),
+            Icon(Icons.chevron_right_rounded,
+                size: 18.sp, color: AppColors.muted),
           ],
         ),
       ),
@@ -441,10 +445,10 @@ class _MessageBubble extends StatelessWidget {
     // Red-flag → full-width SOS escalation card.
     if (message.card == ChatCardType.sos) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: EdgeInsets.only(bottom: 12.h),
         child: MCard(
           color: AppColors.dangerSoft,
-          border: Border.all(color: AppColors.danger, width: 1.4),
+          border: Border.all(color: AppColors.danger, width: 1.4.w),
           onTap: () {
             context.read<SosProvider>().trigger();
             Navigator.of(context)
@@ -453,31 +457,31 @@ class _MessageBubble extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 46.r,
+                height: 46.r,
                 decoration: const BoxDecoration(
                     color: AppColors.danger, shape: BoxShape.circle),
-                child: const Icon(Icons.sos_rounded,
-                    color: Colors.white, size: 26),
+                child: Icon(Icons.sos_rounded,
+                    color: Colors.white, size: 26.sp),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('This may be an emergency',
+                    Text('This may be an emergency',
                         style: TextStyle(
                             fontWeight: FontWeight.w700,
-                            fontSize: 15,
+                            fontSize: 15.sp,
                             color: AppColors.danger)),
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2.h),
                     Text(message.text,
-                        style: const TextStyle(
-                            fontSize: 12.5, color: AppColors.inkSoft)),
-                    const SizedBox(height: 4),
-                    const Text('TAP TO OPEN EMERGENCY SOS →',
                         style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 12.5.sp, color: AppColors.inkSoft)),
+                    SizedBox(height: 4.h),
+                    Text('TAP TO OPEN EMERGENCY SOS →',
+                        style: TextStyle(
+                            fontSize: 11.5.sp,
                             fontWeight: FontWeight.w700,
                             color: AppColors.danger)),
                   ],
@@ -509,7 +513,7 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: EdgeInsets.only(bottom: 10.h),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .8),
         child: Column(
@@ -522,28 +526,28 @@ class _MessageBubble extends StatelessWidget {
             if (message.text.isNotEmpty)
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+                    EdgeInsets.symmetric(horizontal: 15.w, vertical: 11.h),
                 decoration: BoxDecoration(
                   color: isUser ? AppColors.primary : Colors.white,
                   borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(isUser ? 18 : 6),
-                    bottomRight: Radius.circular(isUser ? 6 : 18),
+                    topLeft: Radius.circular(18.r),
+                    topRight: Radius.circular(18.r),
+                    bottomLeft: Radius.circular(isUser ? 18.r : 6.r),
+                    bottomRight: Radius.circular(isUser ? 6.r : 18.r),
                   ),
                   border:
                       isUser ? null : Border.all(color: AppColors.line),
                 ),
                 child: Text(message.text,
                     style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 14.sp,
                         height: 1.45,
                         color: isUser ? Colors.white : AppColors.ink)),
               ),
             if (!isUser && message.personalized)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: MChip('Tailored to your health profile',
+              Padding(
+                padding: EdgeInsets.only(top: 4.h),
+                child: const MChip('Tailored to your health profile',
                     icon: Icons.auto_awesome_rounded,
                     background: AppColors.aiSoft,
                     foreground: AppColors.ai),
@@ -565,11 +569,11 @@ class _AttachmentTile extends StatelessWidget {
     if (attachment.type == AttachmentType.image) {
       // Mock photo preview.
       return Container(
-        width: 190,
-        height: 120,
-        margin: const EdgeInsets.only(bottom: 6),
+        width: 190.w,
+        height: 120.h,
+        margin: EdgeInsets.only(bottom: 6.h),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(16.r),
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -578,21 +582,21 @@ class _AttachmentTile extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            const Center(
+            Center(
                 child: Icon(Icons.image_rounded,
-                    size: 38, color: Colors.white)),
+                    size: 38.sp, color: Colors.white)),
             Positioned(
-              left: 8,
-              bottom: 8,
+              left: 8.w,
+              bottom: 8.h,
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
                 decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: .45),
-                    borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8.r)),
                 child: Text(attachment.name,
-                    style: const TextStyle(
-                        fontSize: 10.5,
+                    style: TextStyle(
+                        fontSize: 10.5.sp,
                         color: Colors.white,
                         fontWeight: FontWeight.w600)),
               ),
@@ -603,35 +607,35 @@ class _AttachmentTile extends StatelessWidget {
     }
     // Document chip.
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.all(12),
+      margin: EdgeInsets.only(bottom: 6.h),
+      padding: EdgeInsets.all(12.r),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14.r),
         border: Border.all(color: AppColors.line),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 38.r,
+            height: 38.r,
             decoration: BoxDecoration(
                 color: AppColors.warningSoft,
-                borderRadius: BorderRadius.circular(11)),
-            child: const Icon(Icons.description_rounded,
-                color: AppColors.warning, size: 20),
+                borderRadius: BorderRadius.circular(11.r)),
+            child: Icon(Icons.description_rounded,
+                color: AppColors.warning, size: 20.sp),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: 10.w),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(attachment.name,
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      fontSize: 13.sp, fontWeight: FontWeight.w700)),
               Text(attachment.detail,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.muted)),
+                  style: TextStyle(
+                      fontSize: 11.sp, color: AppColors.muted)),
             ],
           ),
         ],
@@ -649,36 +653,36 @@ class _VoiceBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final rng = Random(attachment.durationSeconds);
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: EdgeInsets.only(bottom: 6.h),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
       decoration: BoxDecoration(
         color: AppColors.primary,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18.r),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
-          const SizedBox(width: 6),
+          Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24.sp),
+          SizedBox(width: 6.w),
           Row(
             children: [
               for (var i = 0; i < 22; i++)
                 Container(
-                  width: 2.6,
-                  height: 6 + rng.nextDouble() * 16,
-                  margin: const EdgeInsets.symmetric(horizontal: 1.1),
+                  width: 2.6.w,
+                  height: (6 + rng.nextDouble() * 16).h,
+                  margin: EdgeInsets.symmetric(horizontal: 1.1.w),
                   decoration: BoxDecoration(
                     color: Colors.white
                         .withValues(alpha: i < 14 ? 1 : .45),
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(2.r),
                   ),
                 ),
             ],
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8.w),
           Text(attachment.detail,
-              style: const TextStyle(
-                  fontSize: 12,
+              style: TextStyle(
+                  fontSize: 12.sp,
                   color: Colors.white,
                   fontWeight: FontWeight.w600)),
         ],
@@ -724,10 +728,10 @@ class _RecordingOverlayState extends State<_RecordingOverlay>
         color: Colors.black.withValues(alpha: .35),
         alignment: Alignment.center,
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(24.r),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(24.r),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -741,29 +745,29 @@ class _RecordingOverlayState extends State<_RecordingOverlay>
                     children: [
                       for (var i = 0; i < 18; i++)
                         Container(
-                          width: 3.4,
-                          height: 8 +
-                              rng.nextDouble() * 26 * (.4 + _wave.value * .6),
+                          width: 3.4.w,
+                          height: (8 +
+                              rng.nextDouble() * 26 * (.4 + _wave.value * .6)).h,
                           margin:
-                              const EdgeInsets.symmetric(horizontal: 1.6),
+                              EdgeInsets.symmetric(horizontal: 1.6.w),
                           decoration: BoxDecoration(
                             color: AppColors.danger,
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(2.r),
                           ),
                         ),
                     ],
                   );
                 },
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12.h),
               Text(
                   'Recording… 0:${_seconds.toString().padLeft(2, '0')}',
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              const Text('Release to send',
+                  style: TextStyle(
+                      fontSize: 14.sp, fontWeight: FontWeight.w700)),
+              SizedBox(height: 4.h),
+              Text('Release to send',
                   style:
-                      TextStyle(fontSize: 12, color: AppColors.muted)),
+                      TextStyle(fontSize: 12.sp, color: AppColors.muted)),
             ],
           ),
         ),
@@ -782,35 +786,35 @@ class _PrescriptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: 12.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MCard(
-            border: Border.all(color: AppColors.ai.withValues(alpha: .45)),
+            border: Border.all(color: AppColors.ai.withValues(alpha: .45), width: 1.w),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      width: 34,
-                      height: 34,
+                      width: 34.r,
+                      height: 34.r,
                       decoration: BoxDecoration(
                           color: AppColors.aiSoft,
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.receipt_long_rounded,
-                          color: AppColors.ai, size: 19),
+                          borderRadius: BorderRadius.circular(10.r)),
+                      child: Icon(Icons.receipt_long_rounded,
+                          color: AppColors.ai, size: 19.sp),
                     ),
-                    const SizedBox(width: 10),
-                    const Expanded(
+                    SizedBox(width: 10.w),
+                    Expanded(
                       child: Text('Prescription scanned',
                           style: TextStyle(
-                              fontSize: 14.5, fontWeight: FontWeight.w700)),
+                              fontSize: 14.5.sp, fontWeight: FontWeight.w700)),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12.h),
                 const _MedRow(
                     name: 'Ibuprofen 400 mg',
                     freq: '2× daily · after food · 5 days',
@@ -825,30 +829,30 @@ class _PrescriptionCard extends StatelessWidget {
                       freq: '3× daily · 7 days',
                       added: false,
                       flag: 'Penicillin allergy — ask your doctor'),
-                const Divider(height: 20),
+                Divider(height: 20.h),
                 Text(message.text,
-                    style: const TextStyle(
-                        fontSize: 13, height: 1.45, color: AppColors.ink)),
-                const SizedBox(height: 12),
+                    style: TextStyle(
+                        fontSize: 13.sp, height: 1.45, color: AppColors.ink)),
+                SizedBox(height: 12.h),
                 GestureDetector(
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const RemindersScreen())),
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    padding: EdgeInsets.symmetric(vertical: 11.h),
                     decoration: BoxDecoration(
                       color: AppColors.aiSoft,
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: BorderRadius.circular(11.r),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.alarm_on_rounded,
-                            size: 17, color: AppColors.ai),
-                        SizedBox(width: 7),
+                            size: 17.sp, color: AppColors.ai),
+                        SizedBox(width: 7.w),
                         Text('2 alarm reminders added — view & edit',
                             style: TextStyle(
-                                fontSize: 12.5,
+                                fontSize: 12.5.sp,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.ai)),
                       ],
@@ -859,9 +863,9 @@ class _PrescriptionCard extends StatelessWidget {
             ),
           ),
           if (message.personalized)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: MChip('Tailored to your health profile',
+            Padding(
+              padding: EdgeInsets.only(top: 4.h),
+              child: const MChip('Tailored to your health profile',
                   icon: Icons.auto_awesome_rounded,
                   background: AppColors.aiSoft,
                   foreground: AppColors.ai),
@@ -887,28 +891,28 @@ class _MedRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: 8.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(added ? Icons.alarm_on_rounded : Icons.warning_amber_rounded,
-              size: 17,
+              size: 17.sp,
               color: added ? AppColors.success : AppColors.warning),
-          const SizedBox(width: 8),
+          SizedBox(width: 8.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        fontSize: 13.sp, fontWeight: FontWeight.w700)),
                 Text(freq,
-                    style: const TextStyle(
-                        fontSize: 11.5, color: AppColors.muted)),
+                    style: TextStyle(
+                        fontSize: 11.5.sp, color: AppColors.muted)),
                 if (flag != null)
                   Text(flag!,
-                      style: const TextStyle(
-                          fontSize: 11.5,
+                      style: TextStyle(
+                          fontSize: 11.5.sp,
                           fontWeight: FontWeight.w600,
                           color: AppColors.warning)),
               ],
@@ -916,7 +920,7 @@ class _MedRow extends StatelessWidget {
           ),
           Text(added ? 'Reminder set' : 'Not added',
               style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 11.sp,
                   fontWeight: FontWeight.w700,
                   color: added ? AppColors.success : AppColors.warning)),
         ],
@@ -940,40 +944,40 @@ class _SkinReportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: 12.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MCard(
-            border: Border.all(color: AppColors.ai.withValues(alpha: .45)),
+            border: Border.all(color: AppColors.ai.withValues(alpha: .45), width: 1.w),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      width: 34,
-                      height: 34,
+                      width: 34.r,
+                      height: 34.r,
                       decoration: BoxDecoration(
                           color: AppColors.aiSoft,
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(
+                          borderRadius: BorderRadius.circular(10.r)),
+                      child: Icon(
                           Icons.face_retouching_natural_rounded,
                           color: AppColors.ai,
-                          size: 19),
+                          size: 19.sp),
                     ),
-                    const SizedBox(width: 10),
-                    const Expanded(
+                    SizedBox(width: 10.w),
+                    Expanded(
                       child: Text('Skin analysis',
                           style: TextStyle(
-                              fontSize: 14.5, fontWeight: FontWeight.w700)),
+                              fontSize: 14.5.sp, fontWeight: FontWeight.w700)),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12.h),
                 for (final c in _conditions)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
+                    padding: EdgeInsets.only(bottom: 8.h),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -981,23 +985,23 @@ class _SkinReportCard extends StatelessWidget {
                           children: [
                             Expanded(
                               child: Text(c.$1,
-                                  style: const TextStyle(
-                                      fontSize: 12.5,
+                                  style: TextStyle(
+                                      fontSize: 12.5.sp,
                                       fontWeight: FontWeight.w600)),
                             ),
                             Text('${(c.$2 * 100).round()}%',
-                                style: const TextStyle(
-                                    fontSize: 12,
+                                style: TextStyle(
+                                    fontSize: 12.sp,
                                     fontWeight: FontWeight.w700,
                                     color: AppColors.ai)),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: 4.h),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(4.r),
                           child: LinearProgressIndicator(
                             value: c.$2,
-                            minHeight: 6,
+                            minHeight: 6.h,
                             backgroundColor: AppColors.paper,
                             color: AppColors.ai,
                           ),
@@ -1005,23 +1009,23 @@ class _SkinReportCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                const Divider(height: 18),
+                Divider(height: 18.h),
                 Text(message.text,
-                    style: const TextStyle(
-                        fontSize: 13, height: 1.45, color: AppColors.ink)),
-                const SizedBox(height: 10),
-                const Text('Visual estimate — not a diagnosis.',
                     style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 13.sp, height: 1.45, color: AppColors.ink)),
+                SizedBox(height: 10.h),
+                Text('Visual estimate — not a diagnosis.',
+                    style: TextStyle(
+                        fontSize: 11.sp,
                         fontStyle: FontStyle.italic,
                         color: AppColors.muted)),
               ],
             ),
           ),
           if (message.personalized)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: MChip('Tailored to your health profile',
+            Padding(
+              padding: EdgeInsets.only(top: 4.h),
+              child: const MChip('Tailored to your health profile',
                   icon: Icons.auto_awesome_rounded,
                   background: AppColors.aiSoft,
                   foreground: AppColors.ai),
@@ -1040,16 +1044,16 @@ class _TypingBubble extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        margin: EdgeInsets.only(bottom: 10.h),
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.line),
+          borderRadius: BorderRadius.circular(18.r),
+          border: Border.all(color: AppColors.line, width: 1.w),
         ),
-        child: const Text('MedAI is thinking…',
+        child: Text('MedAI is thinking…',
             style: TextStyle(
-                fontSize: 13,
+                fontSize: 13.sp,
                 fontStyle: FontStyle.italic,
                 color: AppColors.muted)),
       ),

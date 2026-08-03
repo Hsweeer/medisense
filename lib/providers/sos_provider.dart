@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/mock/mock_data.dart';
@@ -13,6 +14,14 @@ enum RideStage { none, searching, assigned, pickedUp, arrived }
 /// One-tap emergency flow: 5-second cancel window → active SOS with
 /// hospital selection and a direct emergency-ride booking.
 class SosProvider extends ChangeNotifier {
+  SosProvider() {
+    // Reset state whenever the user changes
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      debugPrint('[SosProvider] authStateChanged: ${user?.email}');
+      cancel();
+    });
+  }
+
   SosPhase phase = SosPhase.idle;
   int countdown = 5;
 

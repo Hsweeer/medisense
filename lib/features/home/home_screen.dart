@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -28,7 +29,7 @@ class HomeScreen extends StatelessWidget {
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 90),
+        padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 90.h),
         children: [
           // Greeting bar
           Row(
@@ -38,60 +39,62 @@ class HomeScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Good morning, $firstName 👋',
-                        style: Theme.of(context).textTheme.headlineSmall),
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 22.sp)),
                     const _LocationLabel(),
                   ],
                 ),
               ),
               const _NotificationBell(),
-              const SizedBox(width: 10),
+              SizedBox(width: 10.w),
               InitialsAvatar(displayName, imageUrl: profile.imageUrl),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           // Universal search → nearby care
           TextField(
             readOnly: true,
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const NearbyScreen(showBack: true))),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Search hospitals, pharmacies…',
-              prefixIcon: Icon(Icons.search_rounded, color: AppColors.muted),
+              hintStyle: TextStyle(fontSize: 14.sp),
+              prefixIcon: Icon(Icons.search_rounded, color: AppColors.muted, size: 22.sp),
+              contentPadding: EdgeInsets.symmetric(vertical: 12.h),
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           // HERO — next dose card
           GestureDetector(
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const RemindersScreen())),
             child: Container(
-              padding: const EdgeInsets.all(18),
+              padding: EdgeInsets.all(18.r),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                     colors: AppColors.gradient,
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(20.r),
                 boxShadow: [
                   BoxShadow(
                       color: AppColors.primary.withValues(alpha: .35),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8)),
+                      blurRadius: 18.r,
+                      offset: Offset(0, 8.h)),
                 ],
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 48.r,
+                    height: 48.r,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: .2),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(14.r),
                     ),
-                    child: const Icon(Icons.medication_rounded,
-                        color: Colors.white, size: 26),
+                    child: Icon(Icons.medication_rounded,
+                        color: Colors.white, size: 26.sp),
                   ),
-                  const SizedBox(width: 14),
+                  SizedBox(width: 14.w),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,18 +103,18 @@ class HomeScreen extends StatelessWidget {
                           next == null ? 'ALL DONE TODAY' : 'NEXT DOSE',
                           style: TextStyle(
                               color: Colors.white.withValues(alpha: .8),
-                              fontSize: 11,
+                              fontSize: 11.sp,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 1.2),
                         ),
-                        const SizedBox(height: 3),
+                        SizedBox(height: 3.h),
                         Text(
                           next == null
                               ? 'Great job — streak safe 🔥'
                               : '${next.title} · ${next.time}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: Colors.white,
-                              fontSize: 16,
+                              fontSize: 16.sp,
                               fontWeight: FontWeight.w700),
                         ),
                         if (next != null)
@@ -119,18 +122,18 @@ class HomeScreen extends StatelessWidget {
                             next.dose,
                             style: TextStyle(
                                 color: Colors.white.withValues(alpha: .85),
-                                fontSize: 12.5),
+                                fontSize: 12.5.sp),
                           ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded,
-                      color: Colors.white),
+                  Icon(Icons.chevron_right_rounded,
+                      color: Colors.white, size: 24.sp),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           // Quick actions 2×2 — IntrinsicHeight + stretch makes both cards
           // in each row match the height of whichever one has more content
           // (e.g. a longer subtitle), instead of each card hugging its own
@@ -150,7 +153,7 @@ class HomeScreen extends StatelessWidget {
                           builder: (_) =>
                           const NearbyScreen(initialType: 1, showBack: true))),
                     )),
-                const SizedBox(width: 12),
+                SizedBox(width: 12.w),
                 Expanded(
                     child: _QuickTile(
                       icon: Icons.local_pharmacy_rounded,
@@ -165,7 +168,7 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12.h),
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -180,7 +183,7 @@ class HomeScreen extends StatelessWidget {
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => const RemindersScreen())),
                     )),
-                const SizedBox(width: 12),
+                SizedBox(width: 12.w),
                 Expanded(
                     child: _QuickTile(
                       icon: Icons.contact_emergency_rounded,
@@ -194,7 +197,7 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20.h),
           // One AI insight — kept light.
           const SectionHeader('For you'),
           MCard(
@@ -202,26 +205,26 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 38.r,
+                  height: 38.r,
                   decoration: BoxDecoration(
                       color: AppColors.aiSoft,
-                      borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.auto_awesome_rounded,
-                      color: AppColors.ai, size: 20),
+                      borderRadius: BorderRadius.circular(12.r)),
+                  child: Icon(Icons.auto_awesome_rounded,
+                      color: AppColors.ai, size: 20.sp),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(MockData.healthTips[1].$1,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 3),
+                          style: TextStyle(
+                              fontSize: 14.sp, fontWeight: FontWeight.w700)),
+                      SizedBox(height: 3.h),
                       Text(MockData.healthTips[1].$2,
-                          style: const TextStyle(
-                              fontSize: 12.5,
+                          style: TextStyle(
+                              fontSize: 12.5.sp,
                               height: 1.4,
                               color: AppColors.muted)),
                     ],
@@ -263,12 +266,12 @@ class _LocationLabel extends StatelessWidget {
         children: [
           Icon(
             showsPin ? Icons.location_on_rounded : Icons.location_off_rounded,
-            size: 13,
+            size: 13.sp,
             color: AppColors.muted,
           ),
-          const SizedBox(width: 3),
+          SizedBox(width: 3.w),
           Text(loc.displayLabel,
-              style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+              style: TextStyle(color: AppColors.muted, fontSize: 13.sp)),
         ],
       ),
     );
@@ -291,33 +294,33 @@ class _NotificationBell extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 44.r,
+            height: 44.r,
             decoration: BoxDecoration(
               color: AppColors.soft,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(14.r),
             ),
-            child: const Icon(Icons.notifications_none_rounded,
-                color: AppColors.primary, size: 22),
+            child: Icon(Icons.notifications_none_rounded,
+                color: AppColors.primary, size: 22.sp),
           ),
           if (unread > 0)
             Positioned(
-              top: -3,
-              right: -3,
+              top: -3.h,
+              right: -3.w,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                constraints: const BoxConstraints(minWidth: 18),
+                padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
+                constraints: BoxConstraints(minWidth: 18.r),
                 decoration: BoxDecoration(
                   color: AppColors.danger,
-                  borderRadius: BorderRadius.circular(99),
-                  border: Border.all(color: AppColors.paper, width: 1.5),
+                  borderRadius: BorderRadius.circular(99.r),
+                  border: Border.all(color: AppColors.paper, width: 1.5.w),
                 ),
                 child: Text(
                   unread > 9 ? '9+' : '$unread',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: Colors.white,
-                      fontSize: 10,
+                      fontSize: 10.sp,
                       fontWeight: FontWeight.w700),
                 ),
               ),
@@ -349,26 +352,26 @@ class _QuickTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return MCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(14.r),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 42.r,
+            height: 42.r,
             decoration: BoxDecoration(
               color: soft,
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(13.r),
             ),
-            child: Icon(icon, color: color, size: 22),
+            child: Icon(icon, color: color, size: 22.sp),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           Text(label,
               style:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
+              TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)),
+          SizedBox(height: 2.h),
           Text(sub,
-              style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+              style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
         ],
       ),
     );

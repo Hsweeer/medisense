@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -40,9 +41,9 @@ class _CountdownView extends StatelessWidget {
         foregroundColor: Colors.white,
         title: const Text('Emergency SOS'),
         titleTextStyle: GoogleFonts.sora(
-            fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+            fontSize: 18.sp, fontWeight: FontWeight.w700, color: Colors.white),
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
+          icon: Icon(Icons.close_rounded, size: 24.sp),
           onPressed: () {
             context.read<SosProvider>().cancel();
             Navigator.of(context).pop();
@@ -51,41 +52,41 @@ class _CountdownView extends StatelessWidget {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(24.r),
           child: Column(
             children: [
               const Spacer(),
               Text('Sending alert in',
                   style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 16.sp,
                       color: Colors.white.withValues(alpha: .8))),
-              const SizedBox(height: 18),
+              SizedBox(height: 18.h),
               Container(
-                width: 168,
-                height: 168,
+                width: 168.r,
+                height: 168.r,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppColors.danger,
                   boxShadow: [
                     BoxShadow(
                         color: AppColors.danger.withValues(alpha: .55),
-                        blurRadius: 60,
-                        spreadRadius: 8),
+                        blurRadius: 60.r,
+                        spreadRadius: 8.r),
                   ],
                 ),
                 alignment: Alignment.center,
                 child: Text('${sos.countdown}',
                     style: GoogleFonts.sora(
-                        fontSize: 72,
+                        fontSize: 72.sp,
                         fontWeight: FontWeight.w700,
                         color: Colors.white)),
               ),
-              const SizedBox(height: 26),
+              SizedBox(height: 26.h),
               Text(
                   '911 + your emergency contacts will be alerted\nwith your live location',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 14.sp,
                       height: 1.5,
                       color: Colors.white.withValues(alpha: .75))),
               const Spacer(),
@@ -97,14 +98,15 @@ class _CountdownView extends StatelessWidget {
                     Navigator.of(context).pop();
                   },
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.white, width: 1.4),
+                    side: BorderSide(color: Colors.white, width: 1.4.w),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: EdgeInsets.symmetric(vertical: 16.h),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14.r)),
                   ),
-                  child: const Text("I'M SAFE — CANCEL",
+                  child: Text("I'M SAFE — CANCEL",
                       style: TextStyle(
+                          fontSize: 14.sp,
                           fontWeight: FontWeight.w700, letterSpacing: 1)),
                 ),
               ),
@@ -136,32 +138,32 @@ class _ActiveSosView extends StatelessWidget {
       ),
       backgroundColor: const Color(0xFFFFF7F6),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        padding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 24.h),
         children: [
           Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+                EdgeInsets.symmetric(horizontal: 18.w, vertical: 15.h),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                   colors: [AppColors.danger, Color(0xFFE0554B)]),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(16.r),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.gps_fixed_rounded, color: Colors.white),
-                SizedBox(width: 12),
+                Icon(Icons.gps_fixed_rounded, color: Colors.white, size: 24.sp),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: Text('SOS ACTIVE · location locked ✔',
                       style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
-                          fontSize: 15,
+                          fontSize: 15.sp,
                           letterSpacing: .3)),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14.h),
           // Native-dial buttons — always on top, work with zero data.
           PrimaryButton(
             label: 'CALL 911',
@@ -170,36 +172,36 @@ class _ActiveSosView extends StatelessWidget {
             subLabel: 'works without data',
             onPressed: () => launchUrl(Uri.parse('tel:911')),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           OutlinedButton(
             onPressed: () => launchUrl(Uri.parse('tel:18002221222')),
             style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              side: const BorderSide(color: AppColors.ink, width: 1.3),
+              padding: EdgeInsets.symmetric(vertical: 15.h),
+              side: BorderSide(color: AppColors.ink, width: 1.3.w),
               foregroundColor: AppColors.ink,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+                  borderRadius: BorderRadius.circular(14.r)),
             ),
-            child: const Text('Poison Control · 1-800-222-1222',
-                style: TextStyle(fontWeight: FontWeight.w700)),
+            child: Text('Poison Control · 1-800-222-1222',
+                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)),
           ),
-          const SizedBox(height: 20),
-          const Text('NEAREST HOSPITALS · ER OPEN',
+          SizedBox(height: 20.h),
+          Text('NEAREST HOSPITALS · ER OPEN',
               style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 12.sp,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1,
                   color: AppColors.muted)),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           for (final h in MockData.hospitals)
             Padding(
-              padding: const EdgeInsets.only(bottom: 9),
+              padding: EdgeInsets.only(bottom: 9.h),
               child: MCard(
                 onTap: () => context.read<SosProvider>().selectHospital(h),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 12),
+                padding: EdgeInsets.symmetric(
+                    horizontal: 14.w, vertical: 12.h),
                 border: sos.selectedHospital == h
-                    ? Border.all(color: AppColors.danger, width: 1.5)
+                    ? Border.all(color: AppColors.danger, width: 1.5.w)
                     : null,
                 child: Row(
                   children: [
@@ -210,30 +212,31 @@ class _ActiveSosView extends StatelessWidget {
                       color: sos.selectedHospital == h
                           ? AppColors.danger
                           : AppColors.line,
+                      size: 24.sp,
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: 12.w),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(h.name,
-                              style: const TextStyle(
-                                  fontSize: 14.5,
+                              style: TextStyle(
+                                  fontSize: 14.5.sp,
                                   fontWeight: FontWeight.w700)),
                           Text(
                               '${h.distanceMiles} mi · ETA ${h.etaMinutes} min',
-                              style: const TextStyle(
-                                  fontSize: 12, color: AppColors.muted)),
+                              style: TextStyle(
+                                  fontSize: 12.sp, color: AppColors.muted)),
                         ],
                       ),
                     ),
-                    const Icon(Icons.navigation_rounded,
-                        size: 18, color: AppColors.muted),
+                    Icon(Icons.navigation_rounded,
+                        size: 18.sp, color: AppColors.muted),
                   ],
                 ),
               ),
             ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           PrimaryButton(
             label: 'BOOK EMERGENCY RIDE',
             icon: Icons.emergency_share_rounded,
@@ -246,10 +249,10 @@ class _ActiveSosView extends StatelessWidget {
                   builder: (_) => const EmergencyRideScreen()));
             },
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14.h),
           MCard(
             padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
             child: Material(
               color: Colors.transparent,
               child: SwitchListTile(
@@ -258,19 +261,19 @@ class _ActiveSosView extends StatelessWidget {
                 activeThumbColor: AppColors.danger,
                 onChanged: (v) =>
                     context.read<SosProvider>().toggleNotifyContacts(v),
-                title: const Text('Auto-text emergency contacts',
+                title: Text('Auto-text emergency contacts',
                     style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
+                        fontSize: 14.sp, fontWeight: FontWeight.w600)),
                 subtitle: Text(
                     contactNames.isEmpty
                         ? 'No contacts yet — add one below'
                         : '$contactNames — live tracking link',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.muted)),
+                    style: TextStyle(
+                        fontSize: 12.sp, color: AppColors.muted)),
               ),
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           // Medical ID — the part responders see.
           MCard(
             border: Border.all(color: AppColors.danger.withValues(alpha: .3)),
@@ -279,44 +282,45 @@ class _ActiveSosView extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.medical_information_rounded,
-                        color: AppColors.danger, size: 20),
-                    const SizedBox(width: 8),
+                    Icon(Icons.medical_information_rounded,
+                        color: AppColors.danger, size: 20.sp),
+                    SizedBox(width: 8.w),
                     Text('Medical ID — shared with responders',
                         style: GoogleFonts.sora(
-                            fontSize: 13.5, fontWeight: FontWeight.w700)),
+                            fontSize: 13.5.sp, fontWeight: FontWeight.w700)),
                   ],
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8.h),
                 Text(
                   '${p.bloodType} · allergies: ${p.allergies.join(", ")} · '
                   '${p.conditions.join(", ")} · meds: ${p.medications.join(", ")}',
-                  style: const TextStyle(
-                      fontSize: 12.5,
+                  style: TextStyle(
+                      fontSize: 12.5.sp,
                       height: 1.5,
                       color: AppColors.inkSoft),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           Center(
             child: TextButton.icon(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => const EmergencyContactsScreen())),
-              icon: const Icon(Icons.person_add_alt_rounded,
-                  size: 18, color: AppColors.muted),
-              label: const Text('Manage emergency contacts',
+              icon: Icon(Icons.person_add_alt_rounded,
+                  size: 18.sp, color: AppColors.muted),
+              label: Text('Manage emergency contacts',
                   style: TextStyle(
+                      fontSize: 14.sp,
                       color: AppColors.muted, fontWeight: FontWeight.w600)),
             ),
           ),
-          const Center(
+          Center(
             child: Text(
                 'If no driver accepts within 90 seconds, a full-screen '
                 '911 call prompt opens automatically.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                style: TextStyle(fontSize: 12.sp, color: AppColors.muted)),
           ),
         ],
       ),

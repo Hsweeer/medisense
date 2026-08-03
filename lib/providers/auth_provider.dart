@@ -1,33 +1,27 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'dart:convert';
+import 'dart:math';
+import 'package:crypto/crypto.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String phone = '';
-  bool loggedIn = false;
   bool isLoading = false;
 
   User? get currentUser => _auth.currentUser;
+  bool get loggedIn => _auth.currentUser != null;
   String get currentEmail => _auth.currentUser?.email ?? '';
-
-  AuthProvider() {
-    loggedIn = _auth.currentUser != null;
-
-    _auth.authStateChanges().listen((user) {
-      loggedIn = user != null;
-      notifyListeners();
-    });
-  }
 
   void setPhone(String value) {
     phone = value;
     notifyListeners();
   }
 
-  /// Existing users only. Throws a friendly [String] message on failure
-  /// (e.g. no account found, wrong password) — never auto-creates a user.
   Future<void> signIn(String email, String password) async {
     isLoading = true;
     notifyListeners();
@@ -36,7 +30,6 @@ class AuthProvider extends ChangeNotifier {
         email: email.trim(),
         password: password,
       );
-      loggedIn = true;
     } on FirebaseAuthException catch (error) {
       throw _friendlyAuthError(error);
     } finally {
@@ -45,8 +38,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Creates a brand-new account. Fails with a friendly message if an
-  /// account for that email already exists.
   Future<void> signUp(String name, String email, String password) async {
     isLoading = true;
     notifyListeners();
@@ -59,25 +50,9 @@ class AuthProvider extends ChangeNotifier {
       final user = credential.user;
       final trimmedName = name.trim();
       if (user != null && trimmedName.isNotEmpty) {
-        try {
-          await user.updateDisplayName(trimmedName);
-          // Seed a users/{uid} doc so ProfileProvider has something to read
-          // in a later milestone. Wrapped separately so a Firestore rules
-          // issue (e.g. not set up yet) never blocks a successful signup.
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .set({
-            'name': trimmedName,
-            'email': email.trim(),
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-        } catch (error) {
-          debugPrint('Non-fatal: could not seed users/${user.uid}: $error');
-        }
+        await user.updateDisplayName(trimmedName);
+        await _ensureUserDoc(user);
       }
-
-      loggedIn = true;
     } on FirebaseAuthException catch (error) {
       throw _friendlyAuthError(error);
     } finally {
@@ -86,39 +61,141 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Google Sign-In logic. Returns true if successful, false if cancelled.
+  Future<bool> signInWithGoogle() async {
+    if (isLoading) return false;
+    isLoading = true;
+    notifyListeners();
+    try {
+      final googleSignIn = GoogleSignIn();
+      
+      // Forces account selection dialog
+      await googleSignIn.signOut().catchError((_) => null);
+      
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      
+      if (googleUser == null) {
+        isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      await _ensureUserDoc(userCredential.user);
+
+      isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (error) {
+      isLoading = false;
+      notifyListeners();
+      debugPrint('Google Sign-In error details: $error');
+      
+      String message = 'Google Sign-In failed.';
+      final errStr = error.toString().toLowerCase();
+      if (errStr.contains('network')) {
+        message = 'Internet connection error. Check your WiFi/Data.';
+      } else if (errStr.contains('12500') || errStr.contains('developer_error')) {
+        message = 'Firebase Config Error: Missing SHA-1 key in Firebase Console.';
+      } else if (errStr.contains('7')) {
+        message = 'Google Play Services is not working correctly.';
+      }
+      
+      throw message;
+    }
+  }
+
+  Future<bool> signInWithApple() async {
+    if (isLoading) return false;
+    isLoading = true;
+    notifyListeners();
+    try {
+      final rawNonce = _generateNonce();
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: _sha256Nonce(rawNonce),
+      );
+
+      final AuthCredential credential = OAuthProvider('apple.com').credential(
+        idToken: appleCredential.identityToken,
+        rawNonce: rawNonce,
+      );
+
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      
+      if (appleCredential.givenName != null && userCredential.user?.displayName == null) {
+        await userCredential.user?.updateDisplayName(
+          '${appleCredential.givenName} ${appleCredential.familyName}'.trim(),
+        );
+      }
+
+      await _ensureUserDoc(userCredential.user);
+      isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (error) {
+      isLoading = false;
+      notifyListeners();
+      if (error.toString().contains('canceled') || error.toString().contains('1001')) {
+        return false;
+      }
+      throw 'Apple Sign-In failed.';
+    }
+  }
+
+  Future<void> _ensureUserDoc(User? user) async {
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (!doc.exists) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'name': user.displayName ?? 'User',
+        'email': user.email ?? '',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  String _generateNonce([int length = 32]) {
+    const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    final random = Random();
+    return List.generate(length, (index) => charset[random.nextInt(charset.length)]).join();
+  }
+  
+  String _sha256Nonce(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
   String _friendlyAuthError(FirebaseAuthException error) {
     switch (error.code) {
       case 'user-not-found':
-        return 'No account found for that email. Try signing up instead.';
+        return 'No account found for this email.';
       case 'wrong-password':
       case 'invalid-credential':
         return 'Incorrect email or password.';
       case 'email-already-in-use':
-        return 'An account already exists for that email. Try signing in instead.';
+        return 'Account already exists for this email.';
       case 'weak-password':
         return 'Password should be at least 6 characters.';
-      case 'invalid-email':
-        return 'That email address looks invalid.';
-      case 'operation-not-allowed':
-        return 'Email/password sign-in isn\'t enabled for this Firebase project yet.';
-      case 'network-request-failed':
-        return 'Network error. Check your connection and try again.';
       default:
-        return error.message ?? 'Something went wrong. Please try again.';
+        return error.message ?? 'Authentication failed.';
     }
-  }
-
-  void verify() {
-    loggedIn = true;
-    notifyListeners();
   }
 
   Future<void> logout() async {
     await _auth.signOut();
-
-    loggedIn = false;
+    await GoogleSignIn().signOut().catchError((_) => null);
     phone = '';
-
     notifyListeners();
   }
 }

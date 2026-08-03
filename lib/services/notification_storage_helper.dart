@@ -1,27 +1,35 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../data/models/notification_model.dart';
 
-/// Reads and writes notification history to a single JSON file on the
-/// device's local storage. This never touches Firebase/Firestore — the
-/// history is device-local only, as required.
-///
-/// File layout on disk is a plain JSON array of notification objects:
-/// `[{ "id": "...", "title": "...", ... }, ...]`
+/// Reads and writes notification history to a JSON file on the device's
+/// local storage, partitioned by user UID so different accounts don't
+/// share history on the same phone.
 class NotificationStorageHelper {
   NotificationStorageHelper._();
 
-  static const _fileName = 'notification_history.json';
+  static const _baseFileName = 'notification_history';
   static File? _cachedFile;
+  static String? _cachedUid;
 
   static Future<File> _file() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+
+    // Reset cache if user switched
+    if (_cachedUid != uid) {
+      _cachedFile = null;
+      _cachedUid = uid;
+    }
+
     if (_cachedFile != null) return _cachedFile!;
+
     final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/$_fileName');
+    final file = File('${dir.path}/${_baseFileName}_$uid.json');
     if (!await file.exists()) {
       await file.create(recursive: true);
       await file.writeAsString('[]');

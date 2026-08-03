@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -35,37 +36,37 @@ class EmergencyRideScreen extends StatelessWidget {
       ),
       backgroundColor: const Color(0xFFFFF7F6),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        padding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 24.h),
         children: [
           Container(
             padding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                EdgeInsets.symmetric(horizontal: 18.w, vertical: 14.h),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                   colors: [AppColors.danger, Color(0xFFE0554B)]),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(16.r),
             ),
             child: Row(
               children: [
-                const Icon(Icons.emergency_share_rounded,
-                    color: Colors.white),
-                const SizedBox(width: 12),
+                Icon(Icons.emergency_share_rounded,
+                    color: Colors.white, size: 24.sp),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: Text(bannerText,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
-                          fontSize: 14.5)),
+                          fontSize: 14.5.sp)),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14.h),
           // Live trip map: you → selected ER.
           ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(16.r),
             child: SizedBox(
-              height: 170,
+              height: 170.h,
               child: FlutterMap(
                 options: MapOptions(
                   initialCenter: MockData.userLocation,
@@ -85,38 +86,38 @@ class EmergencyRideScreen extends StatelessWidget {
                         MockData.userLocation,
                         sos.selectedHospital.position,
                       ],
-                      strokeWidth: 4,
+                      strokeWidth: 4.w,
                       color: AppColors.danger,
                     ),
                   ]),
                   MarkerLayer(markers: [
-                    const Marker(
+                    Marker(
                       point: MockData.userLocation,
-                      width: 22,
-                      height: 22,
+                      width: 22.r,
+                      height: 22.r,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Color(0xFF2A6DF4),
+                          color: const Color(0xFF2A6DF4),
                           shape: BoxShape.circle,
                           border:
                               Border.fromBorderSide(BorderSide(
-                                  color: Colors.white, width: 3)),
+                                  color: Colors.white, width: 3.w)),
                         ),
                       ),
                     ),
                     Marker(
                       point: sos.selectedHospital.position,
-                      width: 36,
-                      height: 36,
+                      width: 36.r,
+                      height: 36.r,
                       child: Container(
                         decoration: BoxDecoration(
                           color: AppColors.danger,
                           shape: BoxShape.circle,
                           border:
-                              Border.all(color: Colors.white, width: 2.5),
+                              Border.all(color: Colors.white, width: 2.5.w),
                         ),
-                        child: const Icon(Icons.local_hospital_rounded,
-                            color: Colors.white, size: 18),
+                        child: Icon(Icons.local_hospital_rounded,
+                            color: Colors.white, size: 18.sp),
                       ),
                     ),
                   ]),
@@ -124,122 +125,122 @@ class EmergencyRideScreen extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14.h),
           // Driver card
           MCard(
             padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                EdgeInsets.symmetric(horizontal: 14.w, vertical: 11.h),
             child: sos.stage == RideStage.searching
-                ? const Row(
+                ? Row(
                     children: [
                       SizedBox(
-                          width: 22,
-                          height: 22,
+                          width: 22.r,
+                          height: 22.r,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
+                              strokeWidth: 2.5.w,
                               color: AppColors.danger)),
-                      SizedBox(width: 14),
+                      SizedBox(width: 14.w),
                       Expanded(
                         child: Text('Contacting MediRide partners near you…',
                             style: TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 13.5.sp,
                                 fontWeight: FontWeight.w600)),
                       ),
                     ],
                   )
                 : Row(
                     children: [
-                      const InitialsAvatar('Marcus Reed',
-                          size: 46, color: AppColors.danger),
-                      const SizedBox(width: 12),
-                      const Expanded(
+                      InitialsAvatar('Marcus Reed',
+                          size: 46.r, color: AppColors.danger),
+                      SizedBox(width: 12.w),
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Driver: Marcus Reed',
                                 style: TextStyle(
-                                    fontSize: 14.5,
+                                    fontSize: 14.5.sp,
                                     fontWeight: FontWeight.w700)),
                             Text('Toyota Sienna · 7TRX412 · verified partner',
                                 style: TextStyle(
-                                    fontSize: 12, color: AppColors.muted)),
+                                    fontSize: 12.sp, color: AppColors.muted)),
                           ],
                         ),
                       ),
                       IconButton(
                         onPressed: () =>
                             launchUrl(Uri.parse('tel:14155550149')),
-                        icon: const Icon(Icons.call_rounded,
-                            color: AppColors.danger),
+                        icon: Icon(Icons.call_rounded,
+                            color: AppColors.danger, size: 24.sp),
                       ),
                     ],
                   ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           // Destination + change
           MCard(
             padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                EdgeInsets.symmetric(horizontal: 16.w, vertical: 13.h),
             child: Row(
               children: [
-                const Icon(Icons.local_hospital_rounded,
-                    color: AppColors.danger, size: 20),
-                const SizedBox(width: 10),
+                Icon(Icons.local_hospital_rounded,
+                    color: AppColors.danger, size: 20.sp),
+                SizedBox(width: 10.w),
                 Expanded(
                   child: Text(
                       'Destination: ${sos.selectedHospital.name}',
-                      style: const TextStyle(
-                          fontSize: 13.5, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          fontSize: 13.5.sp, fontWeight: FontWeight.w600)),
                 ),
                 TextButton(
                   onPressed: () => _changeHospital(context),
-                  child: const Text('Change'),
+                  child: Text('Change', style: TextStyle(fontSize: 14.sp)),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10.h),
           // Medical ID shared with the driver & ER
           MCard(
             border: Border.all(color: AppColors.danger.withValues(alpha: .3)),
             padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                EdgeInsets.symmetric(horizontal: 16.w, vertical: 13.h),
             child: Row(
               children: [
-                const Icon(Icons.medical_information_rounded,
-                    color: AppColors.danger, size: 20),
-                const SizedBox(width: 10),
+                Icon(Icons.medical_information_rounded,
+                    color: AppColors.danger, size: 20.sp),
+                SizedBox(width: 10.w),
                 Expanded(
                   child: Text(
                     'Medical ID shared: ${p.bloodType} · '
                     'allergies: ${p.allergies.join(", ")} · '
                     '${p.conditions.join(", ")}',
-                    style: const TextStyle(
-                        fontSize: 12.5, color: AppColors.inkSoft),
+                    style: TextStyle(
+                        fontSize: 12.5.sp, color: AppColors.inkSoft),
                   ),
                 ),
               ],
             ),
           ),
           if (sos.contactsNotified) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10.h),
             MCard(
               color: AppColors.successSoft,
               border: Border.all(color: Colors.transparent),
               padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                  EdgeInsets.symmetric(horizontal: 16.w, vertical: 13.h),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle_rounded,
-                      color: AppColors.success, size: 20),
-                  const SizedBox(width: 10),
+                  Icon(Icons.check_circle_rounded,
+                      color: AppColors.success, size: 20.sp),
+                  SizedBox(width: 10.w),
                   Expanded(
                     child: Text(
                         'Contacts notified ✔ '
                         '(${profile.contacts.map((c) => c.name.split(' ').first).join(", ")}) '
                         '· live tracking link sent by text',
-                        style: const TextStyle(
-                            fontSize: 12.5,
+                        style: TextStyle(
+                            fontSize: 12.5.sp,
                             fontWeight: FontWeight.w600,
                             color: AppColors.success)),
                   ),
@@ -247,21 +248,22 @@ class EmergencyRideScreen extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 18),
+          SizedBox(height: 18.h),
           Center(
             child: TextButton(
               onPressed: () => _confirmCancel(context),
-              child: const Text('Cancel SOS',
+              child: Text('Cancel SOS',
                   style: TextStyle(
+                      fontSize: 14.sp,
                       color: AppColors.danger,
                       fontWeight: FontWeight.w600)),
             ),
           ),
-          const Center(
+          Center(
             child: Text('Fare settles after the trip — payment never blocks '
                 'an SOS booking.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                style: TextStyle(fontSize: 12.sp, color: AppColors.muted)),
           ),
         ],
       ),
