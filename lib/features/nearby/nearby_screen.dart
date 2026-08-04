@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/services/places_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/mock/mock_data.dart';
@@ -11,8 +13,9 @@ import '../../data/models/models.dart';
 import '../../providers/location_provider.dart';
 
 /// Nearby care — Google-Maps-style basemap (free CARTO Voyager raster
-/// tiles), every hospital + pharmacy pinned at once, and turn-by-turn
-/// directions deep-linked into the Google Maps app (no API key, no cost).
+/// tiles), every hospital + pharmacy within 5 km pulled live from the
+/// Google Places API (rating, open/closed status, distance), with
+/// turn-by-turn directions deep-linked into the Google Maps app.
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key, this.initialType = 0, this.showBack = false});
 
@@ -30,10 +33,18 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Facility? _selected;
   String? _lastCenteredLocation;
 
+  // Live Places results. Starts as the mock seed data so the screen never
+  // looks empty while the first request is in flight.
+  List<Facility> _all = [...MockData.hospitals, ...MockData.pharmacies];
+  bool _loading = false;
+  String? _error;
+  bool _didInitialFetch = false;
+  bool _didLiveFetch = false;
+
   List<Facility> get _facilities => switch (_filter) {
-        1 => MockData.hospitals,
-        2 => MockData.pharmacies,
-        _ => [...MockData.hospitals, ...MockData.pharmacies],
+        1 => _all.where((f) => f.type == FacilityType.hospital).toList(),
+        2 => _all.where((f) => f.type == FacilityType.pharmacy).toList(),
+        _ => _all,
       };
 
   static Color _accentOf(Facility f) =>
@@ -52,6 +63,31 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   String _distanceLabel(Facility facility, LocationProvider location) =>
       '${_distanceFor(facility, location).toStringAsFixed(1)} mi';
+
+  /// Pulls hospitals + pharmacies within 5 km of [center] from Google
+  /// Places. Falls back to the seeded mock list on any failure (missing
+  /// key, offline, quota) so the screen always stays usable.
+  Future<void> _load(LatLng center) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results =
+          await PlacesService.instance.nearby(center: center, radiusMeters: 5000);
+      if (!mounted) return;
+      setState(() {
+        if (results.isNotEmpty) _all = results;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Showing saved list — live results unavailable.';
+        _loading = false;
+      });
+    }
+  }
 
   Future<void> _openDirections(Facility f) async {
     final dest = '${f.position.latitude},${f.position.longitude}';
@@ -74,6 +110,23 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Widget build(BuildContext context) {
     final location = context.watch<LocationProvider>();
     final userPosition = location.positionOrFallback;
+
+    // Fetch #1: as soon as we have *some* center (real fix or fallback),
+    // so the screen shows live data on first open.
+    if (!_didInitialFetch) {
+      _didInitialFetch = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load(userPosition));
+    }
+    // Fetch #2: re-run once against the user's real GPS fix, since the
+    // first call may have used the fallback seed location. After this,
+    // results only refresh via the manual refresh button — Places API
+    // calls are billed per request, so we don't re-query on every GPS tick.
+    if (!_didLiveFetch && location.position != null) {
+      _didLiveFetch = true;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _load(location.position!));
+    }
+
     final sorted = [..._facilities]
       ..sort((a, b) =>
           _distanceFor(a, location).compareTo(_distanceFor(b, location)));
@@ -93,6 +146,17 @@ class _NearbyScreenState extends State<NearbyScreen> {
         title: const Text('Nearby care'),
         automaticallyImplyLeading: widget.showBack,
         actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loading ? null : () => _load(userPosition),
+            icon: _loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: MChip(location.displayLabel,
@@ -104,6 +168,15 @@ class _NearbyScreenState extends State<NearbyScreen> {
       ),
       body: Column(
         children: [
+          if (_error != null)
+            Container(
+              width: double.infinity,
+              color: AppColors.warningSoft,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Text(_error!,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.warning)),
+            ),
           // Filter chips: All · Hospitals · Pharmacies
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
@@ -226,15 +299,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                       CrossAxisAlignment.start,
                                   children: [
                                     Text(f.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontSize: 14.5,
+                                        style: GoogleFonts.sora(
+                                            fontSize: 14,
                                             fontWeight: FontWeight.w700)),
-                                    const SizedBox(height: 2),
+                                    const SizedBox(height: 3),
                                     Text(
                                         '${_distanceLabel(f, location)} · '
-                                        '★ ${f.rating} · ${f.openLabel}',
+                                        '★ ${f.rating.toStringAsFixed(1)} · '
+                                        '${f.openLabel}',
                                         style: const TextStyle(
                                             fontSize: 12,
                                             color: AppColors.muted)),
@@ -412,12 +484,15 @@ class _FacilityDetail extends StatelessWidget {
                     icon: Icons.near_me_rounded,
                     background: AppColors.paper,
                     foreground: AppColors.inkSoft),
-                MChip('★ ${facility.rating}',
+                MChip('★ ${facility.rating.toStringAsFixed(1)}',
                     background: AppColors.warningSoft,
                     foreground: AppColors.warning),
                 MChip(facility.openLabel,
-                    background: AppColors.successSoft,
-                    foreground: AppColors.success),
+                    background: facility.isOpen
+                        ? AppColors.successSoft
+                        : AppColors.dangerSoft,
+                    foreground:
+                        facility.isOpen ? AppColors.success : AppColors.danger),
                 for (final t in facility.tags)
                   MChip(t,
                       background: AppColors.paper,
