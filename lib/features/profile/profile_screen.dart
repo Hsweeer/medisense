@@ -279,13 +279,10 @@ class ProfileScreen extends StatelessWidget {
                   icon: Icons.logout_rounded,
                   label: 'Sign out',
                   color: AppColors.danger,
-                  onTap: () {
-                    context.read<AuthProvider>().logout();
-                    context.read<ProfileProvider>().refreshForCurrentUser();
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (_) => false,
-                    );
+                  onTap: () async {
+                    // Just call logout. AuthWrapper will handle the screen switch.
+                    await context.read<AuthProvider>().logout();
+                    // No Navigator.push here!
                   },
                 ),
               ],

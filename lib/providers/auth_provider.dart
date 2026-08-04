@@ -22,6 +22,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sign in with email and password.
   Future<void> signIn(String email, String password) async {
     isLoading = true;
     notifyListeners();
@@ -38,6 +39,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Sign up with name, email, and password.
   Future<void> signUp(String name, String email, String password) async {
     isLoading = true;
     notifyListeners();
@@ -69,7 +71,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       final googleSignIn = GoogleSignIn();
       
-      // Forces account selection dialog
+      // Forces account selection dialog every time
       await googleSignIn.signOut().catchError((_) => null);
       
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
@@ -111,6 +113,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Apple Sign-In logic. Returns true if successful, false if cancelled.
   Future<bool> signInWithApple() async {
     if (isLoading) return false;
     isLoading = true;
@@ -152,6 +155,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Internal: ensures a Firestore user document exists for data storage.
   Future<void> _ensureUserDoc(User? user) async {
     if (user == null) return;
     final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
