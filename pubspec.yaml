@@ -49,6 +49,7 @@ dependencies:
   cloud_firestore:
   image_picker:
   firebase_storage:
+  http: 
 
   # Notification feature — local scheduling + local JSON history storage.
   flutter_local_notifications: ^19.4.2
