@@ -60,7 +60,7 @@ class MediSenseApp extends StatelessWidget {
           theme: AppTheme.light(),
           // Dark background matches Splash to hide any possible transition artifacts
           builder: (context, child) => Container(
-            color: const Color(0xFF06413A),
+            color: const Color(0xFF06413A), // Darkest splash color
             child: child,
           ),
           home: const AuthWrapper(),
@@ -78,38 +78,40 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _showSplash = true;
+  bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    // Professional 2.5s splash delay
+    // Professional 2.5s splash branding duration
     Timer(const Duration(milliseconds: 2500), () {
-      if (mounted) setState(() => _showSplash = false);
+      if (mounted) setState(() => _ready = true);
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // 1. Branding Phase
+    if (!_ready) return const SplashScreen();
+
+    // 2. Data/Auth Phase - Listen once and switch
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // 1. Stay on splash during initial boot or if timer is still running
-        if (_showSplash || snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen(key: ValueKey('splash_view'));
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SplashScreen();
         }
 
-        // 2. Decide destination based on Firebase user presence
-        final Widget destination = snapshot.hasData 
-            ? const PatientShell(key: ValueKey('home_view')) 
-            : const LoginScreen(key: ValueKey('login_view'));
+        final user = snapshot.data;
+        final Widget screen = user != null 
+            ? const PatientShell(key: ValueKey('home')) 
+            : const LoginScreen(key: ValueKey('login'));
 
-        // 3. One smooth cross-fade transition
         return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 600),
+          duration: const Duration(milliseconds: 500),
           switchInCurve: Curves.easeIn,
           switchOutCurve: Curves.easeOut,
-          child: destination,
+          child: screen,
         );
       },
     );

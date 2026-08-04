@@ -17,12 +17,17 @@ class AuthProvider extends ChangeNotifier {
   bool get loggedIn => _auth.currentUser != null;
   String get currentEmail => _auth.currentUser?.email ?? '';
 
+  AuthProvider() {
+    _auth.authStateChanges().listen((user) {
+      notifyListeners();
+    });
+  }
+
   void setPhone(String value) {
     phone = value;
     notifyListeners();
   }
 
-  /// Sign in with email and password.
   Future<void> signIn(String email, String password) async {
     isLoading = true;
     notifyListeners();
@@ -39,7 +44,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Sign up with name, email, and password.
   Future<void> signUp(String name, String email, String password) async {
     isLoading = true;
     notifyListeners();
@@ -50,9 +54,9 @@ class AuthProvider extends ChangeNotifier {
       );
 
       final user = credential.user;
-      final trimmedName = name.trim();
-      if (user != null && trimmedName.isNotEmpty) {
-        await user.updateDisplayName(trimmedName);
+      if (user != null) {
+        // Wait for profile setup to complete before telling the UI we are done
+        await user.updateDisplayName(name.trim());
         await _ensureUserDoc(user);
       }
     } on FirebaseAuthException catch (error) {
@@ -63,19 +67,15 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Google Sign-In logic. Returns true if successful, false if cancelled.
   Future<bool> signInWithGoogle() async {
     if (isLoading) return false;
     isLoading = true;
     notifyListeners();
     try {
       final googleSignIn = GoogleSignIn();
-      
-      // Forces account selection dialog every time
       await googleSignIn.signOut().catchError((_) => null);
       
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      
       if (googleUser == null) {
         isLoading = false;
         notifyListeners();
@@ -113,7 +113,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Apple Sign-In logic. Returns true if successful, false if cancelled.
   Future<bool> signInWithApple() async {
     if (isLoading) return false;
     isLoading = true;
@@ -155,7 +154,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Internal: ensures a Firestore user document exists for data storage.
   Future<void> _ensureUserDoc(User? user) async {
     if (user == null) return;
     final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();

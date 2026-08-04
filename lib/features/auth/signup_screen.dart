@@ -57,7 +57,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
     try {
       await context.read<AuthProvider>().signUp(name, email, password);
-      // No manual navigation here!
+      if (mounted) {
+        // Pop the signup screen so the AuthWrapper can show the Home screen
+        Navigator.of(context).pop();
+      }
     } catch (error) {
       if (!mounted) return;
       showToast(context, error.toString(), color: AppColors.danger);
@@ -66,7 +69,11 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _continueWithGoogle() async {
     try {
-      await context.read<AuthProvider>().signInWithGoogle();
+      final success = await context.read<AuthProvider>().signInWithGoogle();
+      if (mounted && success) {
+        // Pop the signup screen if it was pushed
+        Navigator.of(context).pop();
+      }
     } catch (error) {
       if (!mounted) return;
       showToast(context, error.toString(), color: AppColors.danger);
@@ -75,7 +82,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _continueWithApple() async {
     try {
-      await context.read<AuthProvider>().signInWithApple();
+      final success = await context.read<AuthProvider>().signInWithApple();
+      if (mounted && success) {
+        Navigator.of(context).pop();
+      }
     } catch (error) {
       if (!mounted) return;
       showToast(context, error.toString(), color: AppColors.danger);
