@@ -494,7 +494,7 @@ class _MessageBubble extends StatelessWidget {
           color: AppColors.dangerSoft,
           border: Border.all(color: AppColors.danger, width: 1.4.w),
           onTap: () {
-            context.read<SosProvider>().trigger();
+            context.read<SosProvider>().triggerImmediate();
             Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const SosScreen()));
           },

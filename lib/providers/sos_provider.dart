@@ -54,6 +54,14 @@ class SosProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Triggers SOS immediately, bypassing the countdown.
+  void triggerImmediate() {
+    _timer?.cancel();
+    phase = SosPhase.active;
+    contactsNotified = notifyContacts;
+    notifyListeners();
+  }
+
   void selectHospital(Facility hospital) {
     selectedHospital = hospital;
     notifyListeners();

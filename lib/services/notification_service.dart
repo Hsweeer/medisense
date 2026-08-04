@@ -310,14 +310,27 @@ class NotificationService {
   }
 
   List<int>? _weekdaysFor(String schedule) {
-    switch (schedule) {
-      case 'Weekdays':
-        return const [1, 2, 3, 4, 5];
-      case 'Mon · Wed · Fri':
-        return const [1, 3, 5];
-      default:
-        return null; // Daily / Custom
+    if (schedule == 'Daily') return null;
+    if (schedule == 'Weekdays') return const [1, 2, 3, 4, 5];
+    if (schedule == 'Mon · Wed · Fri') return const [1, 3, 5];
+
+    // Handle custom list: "Mon · Tue · Sat"
+    const dayMap = {
+      'Mon': 1,
+      'Tue': 2,
+      'Wed': 3,
+      'Thu': 4,
+      'Fri': 5,
+      'Sat': 6,
+      'Sun': 7
+    };
+    final parts = schedule.split(' · ');
+    final result = <int>[];
+    for (var p in parts) {
+      if (dayMap.containsKey(p)) result.add(dayMap[p]!);
     }
+
+    return result.isEmpty ? null : result;
   }
 
   tz.TZDateTime _nextInstanceOfTime(TimeOfDay time) {

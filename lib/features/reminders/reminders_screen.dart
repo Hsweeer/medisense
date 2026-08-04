@@ -426,127 +426,294 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
       TextEditingController(text: reminder?.instructions ?? '');
   var schedule = reminder?.schedule ?? 'Daily';
   const scheduleOptions = ['Daily', 'Weekdays', 'Mon · Wed · Fri', 'Custom'];
-  if (!scheduleOptions.contains(schedule)) schedule = 'Custom';
+
+  // Handle parsing existing custom schedule
+  Set<int> selectedDays = {};
+  if (schedule == 'Weekdays') {
+    selectedDays = {1, 2, 3, 4, 5};
+  } else if (schedule == 'Mon · Wed · Fri') {
+    selectedDays = {1, 3, 5};
+  } else if (schedule != 'Daily') {
+    // Check if it's a custom list like "Mon · Tue"
+    final parts = schedule.split(' · ');
+    const dayMap = {
+      'Mon': 1,
+      'Tue': 2,
+      'Wed': 3,
+      'Thu': 4,
+      'Fri': 5,
+      'Sat': 6,
+      'Sun': 7
+    };
+    for (var p in parts) {
+      if (dayMap.containsKey(p)) selectedDays.add(dayMap[p]!);
+    }
+    if (selectedDays.isNotEmpty) schedule = 'Custom';
+  }
 
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: AppColors.card,
+    useSafeArea: true, // Make it larger/taller
     shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32.r))),
     builder: (sheetCtx) => StatefulBuilder(
-      builder: (ctx, setSheetState) => Padding(
+      builder: (ctx, setSheetState) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+        ),
         padding: EdgeInsets.fromLTRB(
-            20.w, 20.h, 20.w, (20.h + MediaQuery.of(ctx).viewInsets.bottom)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                      reminder == null ? 'New reminder' : 'Edit reminder',
-                      style: GoogleFonts.sora(
-                          fontSize: 17.sp, fontWeight: FontWeight.w700)),
-                ),
-                if (reminder != null)
-                  IconButton(
-                    onPressed: () async {
-                      final prov = sheetCtx.read<ReminderProvider>();
-                      await prov.remove(reminder);
-                      if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
-                    },
-                    icon: Icon(Icons.delete_outline_rounded,
-                        color: AppColors.danger, size: 24.sp),
+            24.w, 24.h, 24.w, (24.h + MediaQuery.of(ctx).viewInsets.bottom)),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                        reminder == null ? 'Add Reminder' : 'Edit Reminder',
+                        style: GoogleFonts.sora(
+                            fontSize: 20.sp, fontWeight: FontWeight.w800)),
                   ),
-              ],
-            ),
-            SizedBox(height: 12.h),
-            TextField(
-                controller: title,
-                enabled: reminder == null,
-                style: TextStyle(fontSize: 15.sp),
-                decoration: InputDecoration(
-                    hintText: 'Medication or habit (e.g. Ibuprofen)',
-                    hintStyle: TextStyle(fontSize: 14.sp))),
-            SizedBox(height: 10.h),
-            TextField(
-                controller: dose,
-                style: TextStyle(fontSize: 15.sp),
-                decoration: InputDecoration(
-                    hintText: 'Dose (e.g. 200 mg · 1 tablet)',
-                    hintStyle: TextStyle(fontSize: 14.sp))),
-            SizedBox(height: 10.h),
-            // Time — tap to open the native time picker. Read-only so the
-            // keyboard never shows and the value can never be typed wrong.
-            TextField(
-              controller: time,
-              readOnly: true,
-              showCursor: false,
-              style: TextStyle(fontSize: 15.sp),
-              onTap: () => _pickTime(ctx, time),
-              decoration: InputDecoration(
-                hintText: 'Select time',
-                hintStyle: TextStyle(fontSize: 14.sp),
-                prefixIcon:
-                    Icon(Icons.access_time_rounded, color: AppColors.muted, size: 20.sp),
-                suffixIcon:
-                    Icon(Icons.expand_more_rounded, color: AppColors.muted, size: 20.sp),
+                  if (reminder != null)
+                    IconButton(
+                      onPressed: () async {
+                        final prov = sheetCtx.read<ReminderProvider>();
+                        await prov.remove(reminder);
+                        if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
+                      },
+                      icon: Icon(Icons.delete_outline_rounded,
+                          color: AppColors.danger, size: 26.sp),
+                    ),
+                ],
               ),
-            ),
-            SizedBox(height: 10.h),
-            TextField(
-                controller: instructions,
-                style: TextStyle(fontSize: 15.sp),
+              SizedBox(height: 20.h),
+              Text('WHAT & HOW MUCH',
+                  style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: AppColors.muted)),
+              SizedBox(height: 10.h),
+              TextField(
+                  controller: title,
+                  enabled: reminder == null,
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+                  decoration: InputDecoration(
+                      hintText: 'Medication name',
+                      prefixIcon: Icon(Icons.medication_rounded, size: 22.sp))),
+              SizedBox(height: 12.h),
+              TextField(
+                  controller: dose,
+                  style: TextStyle(fontSize: 16.sp),
+                  decoration: InputDecoration(
+                      hintText: 'Dose (e.g. 1 tablet, 500mg)',
+                      prefixIcon: Icon(Icons.fitness_center_rounded, size: 22.sp))),
+              SizedBox(height: 24.h),
+              Text('WHEN',
+                  style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: AppColors.muted)),
+              SizedBox(height: 10.h),
+              TextField(
+                controller: time,
+                readOnly: true,
+                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
+                onTap: () => _pickTime(ctx, time),
                 decoration: InputDecoration(
-                    hintText: 'Instructions (e.g. after food) — optional',
-                    hintStyle: TextStyle(fontSize: 14.sp))),
-            SizedBox(height: 12.h),
-            Wrap(
-              spacing: 8.w,
-              runSpacing: 8.h,
-              children: [
-                for (final s in scheduleOptions)
-                  MChip(s,
-                      background:
-                          s == schedule ? AppColors.primary : AppColors.paper,
-                      foreground:
-                          s == schedule ? Colors.white : AppColors.muted,
-                      onTap: () => setSheetState(() => schedule = s)),
+                  hintText: 'Select time',
+                  prefixIcon: Icon(Icons.access_time_filled_rounded,
+                      color: AppColors.primary, size: 22.sp),
+                  suffixIcon: Icon(Icons.expand_more_rounded, size: 24.sp),
+                ),
+              ),
+              SizedBox(height: 24.h),
+              Text('SCHEDULE',
+                  style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: AppColors.muted)),
+              SizedBox(height: 12.h),
+              Wrap(
+                spacing: 8.w,
+                runSpacing: 10.h,
+                children: [
+                  for (final s in scheduleOptions)
+                    GestureDetector(
+                      onTap: () {
+                        setSheetState(() {
+                          schedule = s;
+                          if (s == 'Daily') selectedDays = {};
+                          if (s == 'Weekdays') selectedDays = {1, 2, 3, 4, 5};
+                          if (s == 'Mon · Wed · Fri') selectedDays = {1, 3, 5};
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 16.w, vertical: 10.h),
+                        decoration: BoxDecoration(
+                          color: s == schedule
+                              ? AppColors.primary
+                              : AppColors.paper,
+                          borderRadius: BorderRadius.circular(12.r),
+                          border: Border.all(
+                            color: s == schedule
+                                ? AppColors.primary
+                                : AppColors.line,
+                          ),
+                        ),
+                        child: Text(s,
+                            style: TextStyle(
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w700,
+                                color: s == schedule
+                                    ? Colors.white
+                                    : AppColors.muted)),
+                      ),
+                    ),
+                ],
+              ),
+              if (schedule == 'Custom') ...[
+                SizedBox(height: 20.h),
+                Container(
+                  padding: EdgeInsets.all(12.r),
+                  decoration: BoxDecoration(
+                    color: AppColors.soft,
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      for (int i = 1; i <= 7; i++)
+                        _DayButton(
+                          day: i,
+                          isSelected: selectedDays.contains(i),
+                          onTap: () {
+                            setSheetState(() {
+                              if (selectedDays.contains(i)) {
+                                if (selectedDays.length > 1) {
+                                  selectedDays.remove(i);
+                                }
+                              } else {
+                                selectedDays.add(i);
+                              }
+                            });
+                          },
+                        ),
+                    ],
+                  ),
+                ),
               ],
-            ),
-            SizedBox(height: 16.h),
-            PrimaryButton(
-              label: reminder == null ? 'Save reminder' : 'Save changes',
-              onPressed: () async {
-                final prov = sheetCtx.read<ReminderProvider>();
-                if (reminder == null) {
-                  if (title.text.trim().isEmpty) return;
-                  await prov.add(Reminder(
-                    title: title.text.trim(),
-                    dose: dose.text.trim().isEmpty
-                        ? '1 dose'
-                        : dose.text.trim(),
-                    time: time.text.trim().isEmpty
-                        ? '9:00 AM'
-                        : time.text.trim(),
-                    schedule: schedule,
-                    instructions: instructions.text.trim(),
-                  ));
-                } else {
-                  await prov.update(reminder,
-                      dose: dose.text.trim(),
-                      time: time.text.trim(),
-                      schedule: schedule,
-                      instructions: instructions.text.trim());
-                }
-                if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
-              },
-            ),
-          ],
+              SizedBox(height: 24.h),
+              TextField(
+                  controller: instructions,
+                  style: TextStyle(fontSize: 15.sp),
+                  decoration: InputDecoration(
+                      hintText: 'Additional instructions (optional)',
+                      prefixIcon: Icon(Icons.notes_rounded, size: 22.sp))),
+              SizedBox(height: 32.h),
+              PrimaryButton(
+                label: reminder == null ? 'Set Reminder' : 'Update Reminder',
+                onPressed: () async {
+                  final prov = sheetCtx.read<ReminderProvider>();
+                  String finalSchedule = schedule;
+                  if (schedule == 'Custom') {
+                    final sorted = selectedDays.toList()..sort();
+                    const dayNames = [
+                      '',
+                      'Mon',
+                      'Tue',
+                      'Wed',
+                      'Thu',
+                      'Fri',
+                      'Sat',
+                      'Sun'
+                    ];
+                    finalSchedule =
+                        sorted.map((d) => dayNames[d]).join(' · ');
+                  }
+
+                  if (reminder == null) {
+                    if (title.text.trim().isEmpty) return;
+                    await prov.add(Reminder(
+                      title: title.text.trim(),
+                      dose: dose.text.trim().isEmpty
+                          ? '1 dose'
+                          : dose.text.trim(),
+                      time: time.text.trim().isEmpty
+                          ? '9:00 AM'
+                          : time.text.trim(),
+                      schedule: finalSchedule,
+                      instructions: instructions.text.trim(),
+                    ));
+                  } else {
+                    await prov.update(reminder,
+                        dose: dose.text.trim(),
+                        time: time.text.trim(),
+                        schedule: finalSchedule,
+                        instructions: instructions.text.trim());
+                  }
+                  if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
+                },
+              ),
+            ],
+          ),
         ),
       ),
     ),
   );
+}
+
+class _DayButton extends StatelessWidget {
+  final int day;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _DayButton({
+    required this.day,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const dayNames = ['', 'M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 38.r,
+        height: 38.r,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                    blurRadius: 8.r,
+                    offset: Offset(0, 4.h),
+                  )
+                ]
+              : null,
+        ),
+        child: Text(
+          dayNames[day],
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w800,
+            color: isSelected ? Colors.white : AppColors.muted,
+          ),
+        ),
+      ),
+    );
+  }
 }

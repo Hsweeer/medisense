@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -22,8 +23,11 @@ class PatientShell extends StatefulWidget {
 }
 
 class _PatientShellState extends State<PatientShell>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   int index = 0;
+  Timer? _sosTimer;
+  double _sosProgress = 0.0;
+  late AnimationController _sosAnim;
 
   static const _tabs = [
     HomeScreen(),
@@ -36,6 +40,13 @@ class _PatientShellState extends State<PatientShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _sosAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    );
+    _sosAnim.addListener(() {
+      setState(() => _sosProgress = _sosAnim.value);
+    });
     // Ask for real location right when the patient reaches the main app —
     // this is what powers "Hospitals near me" / "Pharmacies near me" and
     // the home-screen location label. The system permission dialog carries
@@ -48,6 +59,8 @@ class _PatientShellState extends State<PatientShell>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _sosTimer?.cancel();
+    _sosAnim.dispose();
     super.dispose();
   }
 
@@ -148,47 +161,82 @@ class _PatientShellState extends State<PatientShell>
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(
-              backgroundColor: AppColors.danger,
-              content: Text(
-                'Hold for 2 seconds to trigger SOS',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
-        onLongPress: () {
-          context.read<SosProvider>().trigger();
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const SosScreen()));
+        onTapDown: (_) {
+          _sosAnim.forward();
+          _sosTimer = Timer(const Duration(seconds: 2), () {
+            context.read<SosProvider>().triggerImmediate();
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SosScreen()),
+            );
+            _sosAnim.reset();
+            _sosProgress = 0;
+          });
+        },
+        onTapUp: (_) {
+          _sosTimer?.cancel();
+          if (_sosAnim.isAnimating || _sosAnim.value < 1.0) {
+            _sosAnim.reverse();
+          }
+        },
+        onTapCancel: () {
+          _sosTimer?.cancel();
+          _sosAnim.reverse();
+        },
+        onTap: () {
+          if (_sosProgress < 0.1) {
+            ScaffoldMessenger.of(context)
+              ..clearSnackBars()
+              ..showSnackBar(
+                const SnackBar(
+                  backgroundColor: AppColors.danger,
+                  content: Text(
+                    'Hold for 2 seconds to trigger SOS',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              );
+          }
         },
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 44.w,
-              height: 44.w,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.danger, Color(0xFFE0554B)],
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.danger.withValues(alpha: .4),
-                    blurRadius: 10.r,
-                    offset: Offset(0, 3.h),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 48.w,
+                  height: 48.w,
+                  child: CircularProgressIndicator(
+                    value: _sosProgress,
+                    strokeWidth: 3.w,
+                    backgroundColor: AppColors.danger.withValues(alpha: .15),
+                    valueColor: const AlwaysStoppedAnimation(AppColors.danger),
                   ),
-                ],
-              ),
-              child: Icon(Icons.sos_rounded, color: Colors.white, size: 24.sp),
+                ),
+                Container(
+                  width: 40.w,
+                  height: 40.w,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.danger, Color(0xFFE0554B)],
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.danger.withValues(alpha: .4),
+                        blurRadius: 10.r,
+                        offset: Offset(0, 3.h),
+                      ),
+                    ],
+                  ),
+                  child:
+                      Icon(Icons.sos_rounded, color: Colors.white, size: 22.sp),
+                ),
+              ],
             ),
             SizedBox(height: 2.h),
             Text(
-              'Hold 2s',
+              'SOS',
               style: TextStyle(
                 fontSize: 10.sp,
                 fontWeight: FontWeight.w600,
