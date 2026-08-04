@@ -20,6 +20,7 @@ class ChatAttachment {
     this.detail = '',
     this.durationSeconds = 0,
     this.intent = AttachmentIntent.general,
+    this.filePath,
   });
 
   final AttachmentType type;
@@ -27,6 +28,7 @@ class ChatAttachment {
   final String detail; // e.g. "2.4 MB · PDF" or "Photo"
   final int durationSeconds; // voice notes only
   final AttachmentIntent intent;
+  final String? filePath; // real on-device file path, when actually captured/picked
 }
 
 class ChatMessage {
