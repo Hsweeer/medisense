@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -14,6 +16,7 @@ import '../../providers/chat_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../reminders/reminders_screen.dart';
 import '../sos/sos_screen.dart';
+import '../vitals/vitals_scan_screen.dart';
 
 /// MedAI — multimodal health assistant: text, image, file, and voice input,
 /// with "Personal insights" replies tailored from the user's health profile.
@@ -65,12 +68,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.soft,
                 title: 'Camera',
                 sub: 'Take a photo of anything',
-                onTap: () => _stage(
-                    chat,
-                    const ChatAttachment(
-                        type: AttachmentType.image,
-                        name: 'Photo — camera',
-                        detail: 'Camera · JPG')),
+                onTap: () => _pickAndStage(chat,
+                    source: ImageSource.camera,
+                    intent: AttachmentIntent.general,
+                    detail: 'Camera · JPG'),
               ),
               _AttachRow(
                 icon: Icons.photo_library_rounded,
@@ -78,12 +79,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.soft,
                 title: 'Photo library',
                 sub: 'Pick from your gallery',
-                onTap: () => _stage(
-                    chat,
-                    const ChatAttachment(
-                        type: AttachmentType.image,
-                        name: 'IMG_2481.jpg',
-                        detail: 'Photo · 1.8 MB')),
+                onTap: () => _pickAndStage(chat,
+                    source: ImageSource.gallery,
+                    intent: AttachmentIntent.general,
+                    detail: 'Photo'),
               ),
               _AttachRow(
                 icon: Icons.description_rounded,
@@ -104,13 +103,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.aiSoft,
                 title: 'Scan prescription',
                 sub: 'MedAI reads the doctor\'s note & sets alarms itself',
-                onTap: () => _stage(
-                    chat,
-                    const ChatAttachment(
-                        type: AttachmentType.image,
-                        name: 'Prescription — clinic note',
-                        detail: 'Scan · JPG',
-                        intent: AttachmentIntent.prescription)),
+                onTap: () => _pickAndStage(chat,
+                    source: ImageSource.camera,
+                    intent: AttachmentIntent.prescription,
+                    detail: 'Scan · JPG'),
               ),
               _AttachRow(
                 icon: Icons.face_retouching_natural_rounded,
@@ -118,13 +114,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.aiSoft,
                 title: 'Skin check',
                 sub: 'Detect a skin condition from a photo',
-                onTap: () => _stage(
-                    chat,
-                    const ChatAttachment(
-                        type: AttachmentType.image,
-                        name: 'Skin check photo',
-                        detail: 'Camera · JPG',
-                        intent: AttachmentIntent.skin)),
+                onTap: () => _pickAndStage(chat,
+                    source: ImageSource.camera,
+                    intent: AttachmentIntent.skin,
+                    detail: 'Camera · JPG'),
+              ),
+              _AttachRow(
+                icon: Icons.favorite_rounded,
+                color: AppColors.danger,
+                soft: AppColors.dangerSoft,
+                title: 'Heart rate scan',
+                sub: '20s live camera scan for your pulse',
+                onTap: () => _openVitalsScan(chat),
               ),
             ],
           ),
@@ -136,6 +137,47 @@ class _AiChatScreenState extends State<AiChatScreen> {
   void _stage(ChatProvider chat, ChatAttachment a) {
     Navigator.of(context).pop();
     chat.stageAttachment(a);
+  }
+
+  /// Opens the real device camera or gallery and stages whatever the user
+  /// actually picks — replaces the old placeholder that staged a fake
+  /// hardcoded filename without ever opening anything.
+  Future<void> _pickAndStage(
+    ChatProvider chat, {
+    required ImageSource source,
+    required AttachmentIntent intent,
+    required String detail,
+  }) async {
+    Navigator.of(context).pop(); // close the attach sheet first
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85, // keeps upload size reasonable once wired to a real AI call
+      );
+      if (picked == null || !mounted) return; // user cancelled
+      final fileName = picked.path.split(Platform.pathSeparator).last;
+      chat.stageAttachment(ChatAttachment(
+        type: AttachmentType.image,
+        name: fileName,
+        detail: detail,
+        intent: intent,
+        filePath: picked.path,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      showToast(context, 'Could not open camera/gallery — check app permissions',
+          color: AppColors.danger);
+    }
+  }
+
+  Future<void> _openVitalsScan(ChatProvider chat) async {
+    Navigator.of(context).pop(); // close the attach sheet first
+    final bpm = await Navigator.of(context).push<double>(
+      MaterialPageRoute(builder: (_) => const VitalsScanScreen()),
+    );
+    if (bpm != null) {
+      chat.send('My heart rate scan result: ${bpm.round()} BPM');
+    }
   }
 
   @override
@@ -165,7 +207,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   color: Colors.white, size: 20.sp),
             ),
             SizedBox(width: 10.w),
-            const Text('MedAI'),
+            const Flexible(
+              child: Text('MedAI', overflow: TextOverflow.ellipsis),
+            ),
           ],
         ),
         actions: [
