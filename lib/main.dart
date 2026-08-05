@@ -24,7 +24,6 @@ import 'providers/reminder_provider.dart';
 import 'providers/sos_provider.dart';
 import 'services/notification_service.dart';
 
-// Global key to allow background navigation
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
@@ -77,14 +76,7 @@ class MediSenseApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          builder: (context, child) {
-            return SosGlobalListener(
-              child: Container(
-                color: const Color(0xFF06413A),
-                child: child,
-              ),
-            );
-          },
+          builder: (context, child) => SosSignalListener(child: child!),
           home: const AuthWrapper(),
         ),
       ),
@@ -92,47 +84,36 @@ class MediSenseApp extends StatelessWidget {
   }
 }
 
-/// A global listener that lives inside the Provider scope to handle SOS signals
-class SosGlobalListener extends StatefulWidget {
+class SosSignalListener extends StatefulWidget {
   final Widget child;
-  const SosGlobalListener({super.key, required this.child});
+  const SosSignalListener({super.key, required this.child});
 
   @override
-  State<SosGlobalListener> createState() => _SosGlobalListenerState();
+  State<SosSignalListener> createState() => _SosSignalListenerState();
 }
 
-class _SosGlobalListenerState extends State<SosGlobalListener> {
-  StreamSubscription? _overlaySub;
+class _SosSignalListenerState extends State<SosSignalListener> {
+  StreamSubscription? _sub;
+  static const _native = MethodChannel('medisense_native_channel');
 
   @override
   void initState() {
     super.initState();
-    // Re-initialize listener to ensure it's fresh
-    _initOverlayListener();
-  }
-
-  void _initOverlayListener() {
-    _overlaySub?.cancel();
-    _overlaySub = FlutterOverlayWindow.overlayListener.listen((data) async {
+    _sub = FlutterOverlayWindow.overlayListener.listen((data) async {
       if (data == "trigger_sos") {
-        debugPrint('[SosGlobalListener] SOS Signal Received FROM OVERLAY');
+        debugPrint('[SosListener] SOS Signal Received');
         
-        // 1. Force app to foreground
         try {
-          const channel = MethodChannel('com.medisense.medisense_app/native_alarm');
-          await channel.invokeMethod('bringToForeground');
+          await _native.invokeMethod('triggerSosNow');
         } catch (e) {
-          debugPrint('Foreground error: $e');
+          debugPrint('Native Error: $e');
         }
 
-        // 2. Trigger SOS logic in provider
         if (mounted) {
           context.read<SosProvider>().triggerImmediate();
-          
-          // 3. Clear stack and push SOS screen
           navigatorKey.currentState?.pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const SosScreen()),
-            (route) => route.isFirst,
+            (r) => r.isFirst,
           );
         }
       }
@@ -141,7 +122,7 @@ class _SosGlobalListenerState extends State<SosGlobalListener> {
 
   @override
   void dispose() {
-    _overlaySub?.cancel();
+    _sub?.cancel();
     super.dispose();
   }
 
@@ -184,7 +165,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             : const LoginScreen(key: ValueKey('login'));
 
         return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 500),
+          duration: const Duration(milliseconds: 600),
           switchInCurve: Curves.easeIn,
           switchOutCurve: Curves.easeOut,
           child: screen,

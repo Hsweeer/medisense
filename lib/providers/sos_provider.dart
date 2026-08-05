@@ -1,22 +1,17 @@
 import 'dart:async';
-
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../data/mock/mock_data.dart';
 import '../data/models/models.dart';
 
 enum SosPhase { idle, countdown, active }
-
-/// Emergency ride lifecycle after "BOOK EMERGENCY RIDE".
 enum RideStage { none, searching, assigned, pickedUp, arrived }
 
-/// One-tap emergency flow: 5-second cancel window → active SOS with
-/// hospital selection and a direct emergency-ride booking.
 class SosProvider extends ChangeNotifier {
   SosProvider() {
-    // Reset state whenever the user changes
     FirebaseAuth.instance.authStateChanges().listen((user) {
       debugPrint('[SosProvider] authStateChanged: ${user?.email}');
       cancel();
@@ -26,7 +21,6 @@ class SosProvider extends ChangeNotifier {
   SosPhase phase = SosPhase.idle;
   int countdown = 5;
 
-  /// Nearest ER pre-selected; user can switch before or during the ride.
   Facility selectedHospital = MockData.hospitals
       .reduce((a, b) => a.distanceMiles <= b.distanceMiles ? a : b);
 
@@ -56,7 +50,6 @@ class SosProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Triggers SOS immediately, bypassing the countdown.
   void triggerImmediate() {
     _timer?.cancel();
     phase = SosPhase.active;
@@ -77,7 +70,6 @@ class SosProvider extends ChangeNotifier {
 
   void toggleAccessibilityButton(bool value) async {
     if (value) {
-      // 1. Check/Request permission
       final status = await FlutterOverlayWindow.isPermissionGranted();
       if (!status) {
         final granted = await FlutterOverlayWindow.requestPermission();
@@ -88,7 +80,12 @@ class SosProvider extends ChangeNotifier {
         }
       }
       
-      // 2. Start Overlay
+      // Request Battery Exemption for background reliability
+      try {
+        const channel = MethodChannel('com.medisense.medisense_app/native_alarm');
+        await channel.invokeMethod('requestIgnoreBatteryOptimizations');
+      } catch (e) {}
+
       if (!await FlutterOverlayWindow.isActive()) {
         await FlutterOverlayWindow.showOverlay(
           enableDrag: true,
@@ -101,7 +98,6 @@ class SosProvider extends ChangeNotifier {
         );
       }
     } else {
-      // Stop Overlay
       await FlutterOverlayWindow.closeOverlay();
     }
 
@@ -109,7 +105,6 @@ class SosProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Books the emergency ride and walks the mock trip through its stages.
   void bookRide() {
     stage = RideStage.searching;
     driverEtaMinutes = selectedHospital.etaMinutes;

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../../core/theme/app_colors.dart';
 
 class SosOverlayButton extends StatefulWidget {
@@ -15,6 +14,9 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
   bool _isHolding = false;
   double _progress = 0.0;
   Timer? _timer;
+
+  // FIXED: Must match MainActivity.kt exactly
+  static const _channel = MethodChannel('medisense_native_channel');
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +53,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
                           valueColor: const AlwaysStoppedAnimation(AppColors.danger),
                         ),
                       ),
-                      // The Button itself (Professional size 44x44)
+                      // The Button itself
                       Container(
                         width: 44,
                         height: 44,
@@ -86,8 +88,6 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
   void _startTimer() {
     _timer?.cancel();
     _progress = 0.0;
-    
-    // Tactile feedback on start
     HapticFeedback.mediumImpact();
     
     const duration = Duration(milliseconds: 40);
@@ -112,12 +112,14 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
   }
 
   void _triggerSos() async {
-    // Strong vibration to confirm
     HapticFeedback.vibrate();
     
-    // Send signal to main app
-    await FlutterOverlayWindow.shareData("trigger_sos");
-
+    // Sends trigger to Native Android code
+    try {
+      await _channel.invokeMethod('triggerSosNow');
+    } catch (e) {
+      debugPrint('SOS Trigger Error: $e');
+    }
     _resetTimer();
   }
 }
