@@ -45,51 +45,8 @@ void overlayMain() {
   );
 }
 
-class MediSenseApp extends StatefulWidget {
+class MediSenseApp extends StatelessWidget {
   const MediSenseApp({super.key});
-
-  @override
-  State<MediSenseApp> createState() => _MediSenseAppState();
-}
-
-class _MediSenseAppState extends State<MediSenseApp> {
-  StreamSubscription? _overlaySub;
-
-  @override
-  void initState() {
-    super.initState();
-    // Global listener: Ensures SOS triggers no matter where the user is
-    _overlaySub = FlutterOverlayWindow.overlayListener.listen((data) async {
-      if (data == "trigger_sos") {
-        debugPrint('[MediSenseApp] SOS Signal Received');
-        
-        // 1. Force app to foreground via Native Launcher
-        try {
-          const channel = MethodChannel('com.medisense.medisense_app/native_alarm');
-          await channel.invokeMethod('bringToForeground');
-        } catch (e) {
-          debugPrint('Foregrounding error: $e');
-        }
-
-        // 2. Immediate data update and clean navigation
-        if (mounted) {
-          context.read<SosProvider>().triggerImmediate();
-          
-          // Clear everything and open SOS screen
-          navigatorKey.currentState?.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const SosScreen()),
-            (route) => route.isFirst,
-          );
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _overlaySub?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,15 +77,76 @@ class _MediSenseAppState extends State<MediSenseApp> {
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          builder: (context, child) => Container(
-            color: const Color(0xFF06413A),
-            child: child,
-          ),
+          builder: (context, child) {
+            return SosGlobalListener(
+              child: Container(
+                color: const Color(0xFF06413A),
+                child: child,
+              ),
+            );
+          },
           home: const AuthWrapper(),
         ),
       ),
     );
   }
+}
+
+/// A global listener that lives inside the Provider scope to handle SOS signals
+class SosGlobalListener extends StatefulWidget {
+  final Widget child;
+  const SosGlobalListener({super.key, required this.child});
+
+  @override
+  State<SosGlobalListener> createState() => _SosGlobalListenerState();
+}
+
+class _SosGlobalListenerState extends State<SosGlobalListener> {
+  StreamSubscription? _overlaySub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Re-initialize listener to ensure it's fresh
+    _initOverlayListener();
+  }
+
+  void _initOverlayListener() {
+    _overlaySub?.cancel();
+    _overlaySub = FlutterOverlayWindow.overlayListener.listen((data) async {
+      if (data == "trigger_sos") {
+        debugPrint('[SosGlobalListener] SOS Signal Received FROM OVERLAY');
+        
+        // 1. Force app to foreground
+        try {
+          const channel = MethodChannel('com.medisense.medisense_app/native_alarm');
+          await channel.invokeMethod('bringToForeground');
+        } catch (e) {
+          debugPrint('Foreground error: $e');
+        }
+
+        // 2. Trigger SOS logic in provider
+        if (mounted) {
+          context.read<SosProvider>().triggerImmediate();
+          
+          // 3. Clear stack and push SOS screen
+          navigatorKey.currentState?.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const SosScreen()),
+            (route) => route.isFirst,
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _overlaySub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class AuthWrapper extends StatefulWidget {

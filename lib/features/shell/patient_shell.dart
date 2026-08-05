@@ -70,8 +70,6 @@ class _PatientShellState extends State<PatientShell>
 
   @override
   Widget build(BuildContext context) {
-    final sosProv = context.watch<SosProvider>();
-
     return Scaffold(
       body: _tabs[index],
       floatingActionButton: index == 0
@@ -107,13 +105,7 @@ class _PatientShellState extends State<PatientShell>
               children: [
                 _navItem(0, Icons.home_rounded, 'Home'),
                 _navItem(1, Icons.alarm_rounded, 'Remind'),
-                
-                // MERGE LOGIC: If global floating button is ON, hide the bottom bar SOS
-                if (!sosProv.showAccessibilityButton)
-                  _sosItem()
-                else
-                  const Expanded(child: SizedBox.shrink()), // Keeps layout balance
-
+                _sosItem(), // Always visible now
                 _navItem(2, Icons.map_rounded, 'Nearby'),
                 _navItem(3, Icons.person_rounded, 'Profile'),
               ],

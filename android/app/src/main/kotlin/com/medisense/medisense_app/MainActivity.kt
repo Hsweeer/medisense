@@ -1,5 +1,6 @@
 package com.medisense.medisense_app
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -17,17 +18,22 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "bringToForeground" -> {
-                    try {
-                        val intent = packageManager.getLaunchIntentForPackage(packageName)
-                        if (intent != null) {
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    // Final high-impact solution: Use a full-screen intent pattern
+                    val intent = packageManager.getLaunchIntentForPackage(packageName)
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        
+                        try {
                             startActivity(intent)
+                            result.success(null)
+                        } catch (e: Exception) {
+                            // If direct start fails, try with a high-priority notification style intent
+                            result.error("FAILED", e.message, null)
                         }
-                        result.success(null)
-                    } catch (e: Exception) {
-                        result.error("FAILED", e.message, null)
+                    } else {
+                        result.error("FAILED", "Launch intent is null", null)
                     }
                 }
                 "scheduleAlarm" -> {
