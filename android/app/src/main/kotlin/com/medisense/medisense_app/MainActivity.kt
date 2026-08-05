@@ -16,6 +16,20 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "bringToForeground" -> {
+                    try {
+                        val intent = packageManager.getLaunchIntentForPackage(packageName)
+                        if (intent != null) {
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            startActivity(intent)
+                        }
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("FAILED", e.message, null)
+                    }
+                }
                 "scheduleAlarm" -> {
                     try {
                         val reminderId = call.argument<String>("reminderId")
@@ -39,7 +53,7 @@ class MainActivity : FlutterActivity() {
                                 minute = minute,
                                 repeatType = repeatType,
                                 weekday = weekday,
-                                soundRawResName = soundRawResName,
+                                soundRawResName = soundRawResName
                             )
                             AlarmScheduler.schedule(this, entry)
                             result.success(null)
@@ -64,7 +78,6 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "ensureFullScreenIntentPermission" -> {
-                    // Handled via manifest mostly, but can be added here if needed for Android 14
                     result.success(null)
                 }
                 "requestIgnoreBatteryOptimizations" -> {
@@ -75,7 +88,6 @@ class MainActivity : FlutterActivity() {
                             }
                             startActivity(intent)
                         } catch (e: Exception) {
-                            // Silently fail if settings can't be opened
                         }
                     }
                     result.success(null)

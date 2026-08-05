@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
@@ -9,6 +11,8 @@ import 'core/theme/app_theme.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/shell/patient_shell.dart';
+import 'features/sos/sos_screen.dart';
+import 'features/sos/sos_overlay_button.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
@@ -20,6 +24,9 @@ import 'providers/reminder_provider.dart';
 import 'providers/sos_provider.dart';
 import 'services/notification_service.dart';
 
+// Global key to allow background navigation
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -27,8 +34,62 @@ Future<void> main() async {
   runApp(const MediSenseApp());
 }
 
-class MediSenseApp extends StatelessWidget {
+@pragma("vm:entry-point")
+void overlayMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: SosOverlayButton(),
+    ),
+  );
+}
+
+class MediSenseApp extends StatefulWidget {
   const MediSenseApp({super.key});
+
+  @override
+  State<MediSenseApp> createState() => _MediSenseAppState();
+}
+
+class _MediSenseAppState extends State<MediSenseApp> {
+  StreamSubscription? _overlaySub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Global listener: Ensures SOS triggers no matter where the user is
+    _overlaySub = FlutterOverlayWindow.overlayListener.listen((data) async {
+      if (data == "trigger_sos") {
+        debugPrint('[MediSenseApp] SOS Signal Received');
+        
+        // 1. Force app to foreground via Native Launcher
+        try {
+          const channel = MethodChannel('com.medisense.medisense_app/native_alarm');
+          await channel.invokeMethod('bringToForeground');
+        } catch (e) {
+          debugPrint('Foregrounding error: $e');
+        }
+
+        // 2. Immediate data update and clean navigation
+        if (mounted) {
+          context.read<SosProvider>().triggerImmediate();
+          
+          // Clear everything and open SOS screen
+          navigatorKey.currentState?.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const SosScreen()),
+            (route) => route.isFirst,
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _overlaySub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +117,11 @@ class MediSenseApp extends StatelessWidget {
         ],
         child: MaterialApp(
           title: 'MediSense',
+          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          // Dark background matches Splash to hide any possible transition artifacts
           builder: (context, child) => Container(
-            color: const Color(0xFF06413A), // Darkest splash color
+            color: const Color(0xFF06413A),
             child: child,
           ),
           home: const AuthWrapper(),
@@ -83,7 +144,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    // Professional 2.5s splash branding duration
     Timer(const Duration(milliseconds: 2500), () {
       if (mounted) setState(() => _ready = true);
     });
@@ -91,10 +151,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Branding Phase
     if (!_ready) return const SplashScreen();
 
-    // 2. Data/Auth Phase - Listen once and switch
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {

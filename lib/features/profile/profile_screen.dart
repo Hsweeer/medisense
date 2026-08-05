@@ -7,7 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
-import '../auth/login_screen.dart';
+import '../../providers/sos_provider.dart';
 import 'edit_health_profile_sheet.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
@@ -222,7 +222,7 @@ class ProfileScreen extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      SizedBox(height: 2.h),
+                      const SizedBox(height: 2),
                       Text(
                         '${prov.contacts.length} saved · alerted during SOS',
                         style: TextStyle(
@@ -235,6 +235,56 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 Icon(Icons.chevron_right_rounded, color: AppColors.muted, size: 24.sp),
               ],
+            ),
+          ),
+          SizedBox(height: 10.h),
+          // SOS Accessibility Toggle Card
+          Consumer<SosProvider>(
+            builder: (context, sos, _) => MCard(
+              child: Row(
+                children: [
+                  Container(
+                    width: 42.r,
+                    height: 42.r,
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withValues(alpha: .1),
+                      borderRadius: BorderRadius.circular(13.r),
+                    ),
+                    child: Icon(
+                      Icons.emergency_rounded,
+                      color: AppColors.danger,
+                      size: 22.sp,
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SOS Assist Button',
+                          style: TextStyle(
+                            fontSize: 14.5.sp,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          'Floating button for quick SOS',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: sos.showAccessibilityButton,
+                    activeThumbColor: AppColors.danger,
+                    onChanged: (v) => sos.toggleAccessibilityButton(v),
+                  ),
+                ],
+              ),
             ),
           ),
           SizedBox(height: 20.h),

@@ -13,8 +13,7 @@ import '../profile/profile_screen.dart';
 import '../reminders/reminders_screen.dart';
 import '../sos/sos_screen.dart';
 
-/// Bottom-tab scaffold: home · remind · [SOS] · nearby · profile,
-/// plus the floating MedAI button and the 2s long-press SOS trigger.
+/// Bottom-tab scaffold: home · remind · [SOS] · nearby · profile.
 class PatientShell extends StatefulWidget {
   const PatientShell({super.key});
 
@@ -40,6 +39,7 @@ class _PatientShellState extends State<PatientShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
     _sosAnim = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -47,10 +47,7 @@ class _PatientShellState extends State<PatientShell>
     _sosAnim.addListener(() {
       setState(() => _sosProgress = _sosAnim.value);
     });
-    // Ask for real location right when the patient reaches the main app —
-    // this is what powers "Hospitals near me" / "Pharmacies near me" and
-    // the home-screen location label. The system permission dialog carries
-    // its own rationale (see Info.plist / AndroidManifest copy).
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<LocationProvider>().requestAccess();
     });
@@ -66,7 +63,6 @@ class _PatientShellState extends State<PatientShell>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Catches the user coming back from Settings after enabling location.
     if (state == AppLifecycleState.resumed) {
       context.read<LocationProvider>().refreshAccessSilently();
     }
@@ -74,6 +70,8 @@ class _PatientShellState extends State<PatientShell>
 
   @override
   Widget build(BuildContext context) {
+    final sosProv = context.watch<SosProvider>();
+
     return Scaffold(
       body: _tabs[index],
       floatingActionButton: index == 0
@@ -109,7 +107,13 @@ class _PatientShellState extends State<PatientShell>
               children: [
                 _navItem(0, Icons.home_rounded, 'Home'),
                 _navItem(1, Icons.alarm_rounded, 'Remind'),
-                _sosItem(),
+                
+                // MERGE LOGIC: If global floating button is ON, hide the bottom bar SOS
+                if (!sosProv.showAccessibilityButton)
+                  _sosItem()
+                else
+                  const Expanded(child: SizedBox.shrink()), // Keeps layout balance
+
                 _navItem(2, Icons.map_rounded, 'Nearby'),
                 _navItem(3, Icons.person_rounded, 'Profile'),
               ],
@@ -156,7 +160,6 @@ class _PatientShellState extends State<PatientShell>
     );
   }
 
-  /// SOS — a short tap shows a hint; only a 2-second long-press triggers it.
   Widget _sosItem() {
     return Expanded(
       child: GestureDetector(
@@ -174,28 +177,11 @@ class _PatientShellState extends State<PatientShell>
         },
         onTapUp: (_) {
           _sosTimer?.cancel();
-          if (_sosAnim.isAnimating || _sosAnim.value < 1.0) {
-            _sosAnim.reverse();
-          }
+          _sosAnim.reverse();
         },
         onTapCancel: () {
           _sosTimer?.cancel();
           _sosAnim.reverse();
-        },
-        onTap: () {
-          if (_sosProgress < 0.1) {
-            ScaffoldMessenger.of(context)
-              ..clearSnackBars()
-              ..showSnackBar(
-                const SnackBar(
-                  backgroundColor: AppColors.danger,
-                  content: Text(
-                    'Hold for 2 seconds to trigger SOS',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              );
-          }
         },
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -221,13 +207,6 @@ class _PatientShellState extends State<PatientShell>
                       colors: [AppColors.danger, Color(0xFFE0554B)],
                     ),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.danger.withValues(alpha: .4),
-                        blurRadius: 10.r,
-                        offset: Offset(0, 3.h),
-                      ),
-                    ],
                   ),
                   child:
                       Icon(Icons.sos_rounded, color: Colors.white, size: 22.sp),

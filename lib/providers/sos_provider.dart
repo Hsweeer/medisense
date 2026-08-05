@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -31,6 +32,7 @@ class SosProvider extends ChangeNotifier {
 
   bool notifyContacts = true;
   bool contactsNotified = false;
+  bool showAccessibilityButton = false;
 
   RideStage stage = RideStage.none;
   int driverEtaMinutes = 6;
@@ -70,6 +72,40 @@ class SosProvider extends ChangeNotifier {
   void toggleNotifyContacts(bool value) {
     notifyContacts = value;
     contactsNotified = phase == SosPhase.active && value;
+    notifyListeners();
+  }
+
+  void toggleAccessibilityButton(bool value) async {
+    if (value) {
+      // 1. Check/Request permission
+      final status = await FlutterOverlayWindow.isPermissionGranted();
+      if (!status) {
+        final granted = await FlutterOverlayWindow.requestPermission();
+        if (granted == null || !granted) {
+          showAccessibilityButton = false;
+          notifyListeners();
+          return;
+        }
+      }
+      
+      // 2. Start Overlay
+      if (!await FlutterOverlayWindow.isActive()) {
+        await FlutterOverlayWindow.showOverlay(
+          enableDrag: true,
+          overlayTitle: "SOS Button",
+          overlayContent: "MediSense Emergency Button",
+          flag: OverlayFlag.defaultFlag,
+          visibility: NotificationVisibility.visibilityPublic,
+          height: 160,
+          width: 160,
+        );
+      }
+    } else {
+      // Stop Overlay
+      await FlutterOverlayWindow.closeOverlay();
+    }
+
+    showAccessibilityButton = value;
     notifyListeners();
   }
 
