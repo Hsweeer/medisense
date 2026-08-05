@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:audioplayers/audioplayers.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
@@ -30,18 +34,62 @@ class AiChatScreen extends StatefulWidget {
 class _AiChatScreenState extends State<AiChatScreen> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
+  final _recorder = AudioRecorder();
   DateTime? _recordStart;
+  String? _recordingPath;
 
   @override
   void dispose() {
     _ctrl.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
   void _send() {
     context.read<ChatProvider>().send(_ctrl.text);
     _ctrl.clear();
+  }
+
+  /// Starts a real mic recording to a temp file on hold-down.
+  Future<void> _startVoiceRecording(ChatProvider chat) async {
+    try {
+      if (!await _recorder.hasPermission()) {
+        if (mounted) {
+          showToast(context, 'Microphone permission is needed to record a voice note',
+              color: AppColors.danger);
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final path =
+          '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc),
+          path: path);
+      _recordingPath = path;
+      _recordStart = DateTime.now();
+      chat.startRecording();
+    } catch (_) {
+      if (mounted) {
+        showToast(context, 'Could not start recording', color: AppColors.danger);
+      }
+    }
+  }
+
+  /// Stops the mic recording on release and sends the real audio file.
+  Future<void> _stopVoiceRecording(ChatProvider chat) async {
+    if (!chat.recording) return; // never actually started (e.g. permission denied)
+    final secs = DateTime.now()
+        .difference(_recordStart ?? DateTime.now())
+        .inSeconds;
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (_) {
+      // fall back to the path we started recording to
+    }
+    chat.stopRecording(
+        seconds: max(secs, 1), filePath: path ?? _recordingPath);
   }
 
   void _openAttachmentSheet() {
@@ -90,12 +138,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.warningSoft,
                 title: 'Document / PDF',
                 sub: 'Lab reports, medical records',
-                onTap: () => _stage(
-                    chat,
-                    const ChatAttachment(
-                        type: AttachmentType.file,
-                        name: 'Lab-results-June.pdf',
-                        detail: 'PDF · 2.4 MB')),
+                onTap: () => _pickAndStageDocument(chat),
               ),
               _AttachRow(
                 icon: Icons.receipt_long_rounded,
@@ -134,11 +177,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
     );
   }
 
-  void _stage(ChatProvider chat, ChatAttachment a) {
-    Navigator.of(context).pop();
-    chat.stageAttachment(a);
-  }
-
   /// Opens the real device camera or gallery and stages whatever the user
   /// actually picks — replaces the old placeholder that staged a fake
   /// hardcoded filename without ever opening anything.
@@ -166,6 +204,32 @@ class _AiChatScreenState extends State<AiChatScreen> {
     } catch (_) {
       if (!mounted) return;
       showToast(context, 'Could not open camera/gallery — check app permissions',
+          color: AppColors.danger);
+    }
+  }
+
+  /// Opens the device's own file picker so the user can attach a real PDF
+  /// from their phone — replaces the old placeholder that staged a fake
+  /// "Lab-results-June.pdf" without ever opening anything.
+  Future<void> _pickAndStageDocument(ChatProvider chat) async {
+    Navigator.of(context).pop(); // close the attach sheet first
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+      final picked = result?.files.single;
+      if (picked == null || picked.path == null || !mounted) return; // cancelled
+      final sizeMb = picked.size / (1024 * 1024);
+      chat.stageAttachment(ChatAttachment(
+        type: AttachmentType.file,
+        name: picked.name,
+        detail: 'PDF · ${sizeMb.toStringAsFixed(1)} MB',
+        filePath: picked.path,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      showToast(context, 'Could not open file picker — check app permissions',
           color: AppColors.danger);
     }
   }
@@ -363,16 +427,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   SizedBox(width: 8.w),
                   // Hold to record a voice note.
                   GestureDetector(
-                    onLongPressStart: (_) {
-                      _recordStart = DateTime.now();
-                      chat.startRecording();
-                    },
-                    onLongPressEnd: (_) {
-                      final secs = DateTime.now()
-                          .difference(_recordStart ?? DateTime.now())
-                          .inSeconds;
-                      chat.stopRecording(seconds: max(secs, 2));
-                    },
+                    onLongPressStart: (_) => _startVoiceRecording(chat),
+                    onLongPressEnd: (_) => _stopVoiceRecording(chat),
                     onTap: () => showToast(
                         context, 'Hold the mic to record a voice note'),
                     child: Container(
@@ -494,7 +550,7 @@ class _MessageBubble extends StatelessWidget {
           color: AppColors.dangerSoft,
           border: Border.all(color: AppColors.danger, width: 1.4.w),
           onTap: () {
-            context.read<SosProvider>().triggerImmediate();
+            context.read<SosProvider>().trigger();
             Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const SosScreen()));
           },
@@ -688,48 +744,143 @@ class _AttachmentTile extends StatelessWidget {
   }
 }
 
-class _VoiceBubble extends StatelessWidget {
+class _VoiceBubble extends StatefulWidget {
   const _VoiceBubble({required this.attachment});
 
   final ChatAttachment attachment;
 
   @override
+  State<_VoiceBubble> createState() => _VoiceBubbleState();
+}
+
+class _VoiceBubbleState extends State<_VoiceBubble> {
+  final _player = AudioPlayer();
+  bool _playing = false;
+  bool _loading = false;
+  Duration _position = Duration.zero;
+  late Duration _total =
+      Duration(seconds: widget.attachment.durationSeconds);
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<Duration>? _durSub;
+  StreamSubscription<void>? _completeSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _posSub = _player.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _position = p);
+    });
+    _durSub = _player.onDurationChanged.listen((d) {
+      if (mounted && d > Duration.zero) setState(() => _total = d);
+    });
+    _completeSub = _player.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _playing = false;
+          _position = Duration.zero;
+        });
+      }
+    });
+  }
+
+  Future<void> _toggle() async {
+    final path = widget.attachment.filePath;
+    if (path == null) {
+      showToast(context, 'This voice note has no audio to play',
+          color: AppColors.danger);
+      return;
+    }
+    if (_playing) {
+      await _player.pause();
+      if (mounted) setState(() => _playing = false);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await _player.play(DeviceFileSource(path));
+      if (mounted) setState(() => _playing = true);
+    } catch (_) {
+      if (mounted) {
+        showToast(context, 'Could not play this voice note',
+            color: AppColors.danger);
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _fmt(Duration d) =>
+      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    _durSub?.cancel();
+    _completeSub?.cancel();
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final rng = Random(attachment.durationSeconds);
-    return Container(
-      margin: EdgeInsets.only(bottom: 6.h),
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(18.r),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24.sp),
-          SizedBox(width: 6.w),
-          Row(
-            children: [
-              for (var i = 0; i < 22; i++)
-                Container(
-                  width: 2.6.w,
-                  height: (6 + rng.nextDouble() * 16).h,
-                  margin: EdgeInsets.symmetric(horizontal: 1.1.w),
-                  decoration: BoxDecoration(
-                    color: Colors.white
-                        .withValues(alpha: i < 14 ? 1 : .45),
-                    borderRadius: BorderRadius.circular(2.r),
+    final rng = Random(widget.attachment.durationSeconds);
+    final progress = _total.inMilliseconds == 0
+        ? 0.0
+        : (_position.inMilliseconds / _total.inMilliseconds).clamp(0.0, 1.0);
+    final litBars = (progress * 22).round();
+
+    return GestureDetector(
+      onTap: _toggle,
+      child: Container(
+        margin: EdgeInsets.only(bottom: 6.h),
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(18.r),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _loading
+                ? SizedBox(
+                    width: 24.sp,
+                    height: 24.sp,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.2, color: Colors.white))
+                : Icon(
+                    _playing
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 24.sp,
                   ),
-                ),
-            ],
-          ),
-          SizedBox(width: 8.w),
-          Text(attachment.detail,
-              style: TextStyle(
-                  fontSize: 12.sp,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600)),
-        ],
+            SizedBox(width: 6.w),
+            Row(
+              children: [
+                for (var i = 0; i < 22; i++)
+                  Container(
+                    width: 2.6.w,
+                    height: (6 + rng.nextDouble() * 16).h,
+                    margin: EdgeInsets.symmetric(horizontal: 1.1.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white
+                          .withValues(alpha: i < litBars ? 1 : .45),
+                      borderRadius: BorderRadius.circular(2.r),
+                    ),
+                  ),
+              ],
+            ),
+            SizedBox(width: 8.w),
+            Text(
+                _playing || _position > Duration.zero
+                    ? _fmt(_position)
+                    : widget.attachment.detail,
+                style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

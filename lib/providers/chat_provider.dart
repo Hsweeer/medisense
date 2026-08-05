@@ -81,7 +81,13 @@ class ChatProvider extends ChangeNotifier {
   }
 
   /// Ends the hold-to-talk gesture; sends a voice message when long enough.
-  void stopRecording({required int seconds, bool cancelled = false}) {
+  /// [filePath] is the on-device path of the actual recorded audio file, so
+  /// it can be played back later from the chat bubble.
+  void stopRecording({
+    required int seconds,
+    bool cancelled = false,
+    String? filePath,
+  }) {
     recording = false;
     if (!cancelled && seconds >= 1) {
       _sendUser(
@@ -91,7 +97,8 @@ class ChatProvider extends ChangeNotifier {
               type: AttachmentType.voice,
               name: 'Voice note',
               detail: '0:${seconds.toString().padLeft(2, '0')}',
-              durationSeconds: seconds),
+              durationSeconds: seconds,
+              filePath: filePath),
         ],
       );
       _reply(_voiceReply());
