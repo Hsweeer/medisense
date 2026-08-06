@@ -51,7 +51,7 @@ dependencies:
   firebase_storage:
   http: ^1.2.2
   camera: ^0.11.0+2
-  google_mlkit_face_detection: ^0.13.1
+  google_mlkit_face_detection: ^0.14.0
   flutter_overlay_window: ^0.5.0
   flutter_contacts: ^1.1.9
   file_picker: ^8.1.0
@@ -59,6 +59,8 @@ dependencies:
   package_info_plus: ^9.0.1
   path_provider: ^2.1.5
   audioplayers: ^6.5.1
+  google_mlkit_text_recognition: ^0.16.0
+  flutter_tts: ^4.2.0
 
   # Notification feature — local scheduling + local JSON history storage.
   flutter_local_notifications: ^19.4.2
@@ -85,6 +87,8 @@ flutter:
 
   assets:
     - assets/sounds/
+    - assets/
+    - assets/tessdata/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

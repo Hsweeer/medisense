@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -39,6 +38,7 @@ class ChatMessage {
     this.card = ChatCardType.none,
     this.attachments = const [],
     this.personalized = false,
+    this.ocrText,
   });
 
   final ChatRole role;
@@ -48,6 +48,12 @@ class ChatMessage {
 
   /// True when the reply was tailored using the user's health profile.
   final bool personalized;
+
+  /// Raw text actually read off a scanned prescription photo (real Tesseract
+  /// OCR output — not scripted). Null for every other kind of message. The
+  /// prescription card re-parses this on demand so the review screen always
+  /// works from the real source text, not a cached guess.
+  final String? ocrText;
 }
 
 // ── Nearby care ─────────────────────────────────────────────────────────
@@ -112,8 +118,7 @@ class Reminder {
     this.snoozeLabel,
     this.streakDays = 0,
     this.enabled = true,
-    DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+  });
 
   String? id; // Firestore document ID
   final String title;
@@ -126,7 +131,6 @@ class Reminder {
   String? snoozeLabel; // "rings again 9:10 AM"
   int streakDays;
   bool enabled; // controls whether alarm is scheduled
-  final DateTime createdAt;
 
   bool get taken => status == DoseStatus.taken;
 
@@ -146,9 +150,6 @@ class Reminder {
       snoozeLabel: map['snoozeLabel'],
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
-      createdAt: map['createdAt'] != null
-          ? (map['createdAt'] as Timestamp).toDate()
-          : null,
     );
   }
 
@@ -162,7 +163,6 @@ class Reminder {
     'status': status.toString().split('.').last,
     'streakDays': streakDays,
     'enabled': enabled,
-    'createdAt': Timestamp.fromDate(createdAt),
   };
 }
 
@@ -209,7 +209,6 @@ class HealthProfile {
     required this.conditions,
     required this.medications,
     this.imageUrl,
-    this.sosAccessibilityEnabled = false,
   });
 
   final String name;
@@ -220,7 +219,6 @@ class HealthProfile {
   final List<String> allergies;
   final List<String> conditions;
   final List<String> medications;
-  final bool sosAccessibilityEnabled;
 
   /// Download URL of the user's profile photo in Firebase Storage.
   /// Null (or empty) means no photo has been set — UI falls back to
@@ -265,7 +263,6 @@ class HealthProfile {
     conditions: List<String>.from(map['conditions'] ?? const []),
     medications: List<String>.from(map['medications'] ?? const []),
     imageUrl: map['profileImage'] as String?,
-    sosAccessibilityEnabled: map['sosAccessibilityEnabled'] ?? false,
   );
 
   Map<String, dynamic> toMap() => {
@@ -278,7 +275,6 @@ class HealthProfile {
     'conditions': conditions,
     'medications': medications,
     'profileImage': imageUrl,
-    'sosAccessibilityEnabled': sosAccessibilityEnabled,
   };
 
   HealthProfile copyWith({
@@ -291,7 +287,6 @@ class HealthProfile {
     List<String>? conditions,
     List<String>? medications,
     String? imageUrl,
-    bool? sosAccessibilityEnabled,
   }) {
     return HealthProfile(
       name: name ?? this.name,
@@ -303,7 +298,6 @@ class HealthProfile {
       conditions: conditions ?? this.conditions,
       medications: medications ?? this.medications,
       imageUrl: imageUrl ?? this.imageUrl,
-      sosAccessibilityEnabled: sosAccessibilityEnabled ?? this.sosAccessibilityEnabled,
     );
   }
 }

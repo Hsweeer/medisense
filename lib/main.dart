@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
@@ -11,8 +9,6 @@ import 'core/theme/app_theme.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/shell/patient_shell.dart';
-import 'features/sos/sos_screen.dart';
-import 'features/sos/sos_overlay_button.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
@@ -24,24 +20,11 @@ import 'providers/reminder_provider.dart';
 import 'providers/sos_provider.dart';
 import 'services/notification_service.dart';
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.instance.initialize();
   runApp(const MediSenseApp());
-}
-
-@pragma("vm:entry-point")
-void overlayMain() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: SosOverlayButton(),
-    ),
-  );
 }
 
 class MediSenseApp extends StatelessWidget {
@@ -62,7 +45,9 @@ class MediSenseApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => ReminderProvider()),
           ChangeNotifierProvider(
             create: (ctx) =>
-                ChatProvider(reminderEngine: ctx.read<ReminderProvider>()),
+                ChatProvider(
+                    reminderEngine: ctx.read<ReminderProvider>(),
+                    profileProvider: ctx.read<ProfileProvider>()),
           ),
           ChangeNotifierProvider(create: (_) => SosProvider()),
           ChangeNotifierProvider(
@@ -73,61 +58,18 @@ class MediSenseApp extends StatelessWidget {
         ],
         child: MaterialApp(
           title: 'MediSense',
-          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          builder: (context, child) => SosSignalListener(child: child!),
+          // Dark background matches Splash to hide any possible transition artifacts
+          builder: (context, child) => Container(
+            color: const Color(0xFF06413A),
+            child: child,
+          ),
           home: const AuthWrapper(),
         ),
       ),
     );
   }
-}
-
-class SosSignalListener extends StatefulWidget {
-  final Widget child;
-  const SosSignalListener({super.key, required this.child});
-
-  @override
-  State<SosSignalListener> createState() => _SosSignalListenerState();
-}
-
-class _SosSignalListenerState extends State<SosSignalListener> {
-  StreamSubscription? _sub;
-  static const _native = MethodChannel('medisense_native_channel');
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = FlutterOverlayWindow.overlayListener.listen((data) async {
-      if (data == "trigger_sos") {
-        debugPrint('[SosListener] SOS Signal Received');
-        
-        try {
-          await _native.invokeMethod('triggerSosNow');
-        } catch (e) {
-          debugPrint('Native Error: $e');
-        }
-
-        if (mounted) {
-          context.read<SosProvider>().triggerImmediate();
-          navigatorKey.currentState?.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const SosScreen()),
-            (r) => r.isFirst,
-          );
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
 }
 
 class AuthWrapper extends StatefulWidget {
@@ -138,37 +80,38 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _ready = false;
+  bool _showSplash = true;
 
   @override
   void initState() {
     super.initState();
+    // Professional 2.5s splash delay
     Timer(const Duration(milliseconds: 2500), () {
-      if (mounted) setState(() => _ready = true);
+      if (mounted) setState(() => _showSplash = false);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) return const SplashScreen();
-
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen();
+        // 1. Stay on splash during initial boot or if timer is still running
+        if (_showSplash || snapshot.connectionState == ConnectionState.waiting) {
+          return const SplashScreen(key: ValueKey('splash_view'));
         }
 
-        final user = snapshot.data;
-        final Widget screen = user != null 
-            ? const PatientShell(key: ValueKey('home')) 
-            : const LoginScreen(key: ValueKey('login'));
+        // 2. Decide destination based on Firebase user presence
+        final Widget destination = snapshot.hasData
+            ? const PatientShell(key: ValueKey('home_view'))
+            : const LoginScreen(key: ValueKey('login_view'));
 
+        // 3. One smooth cross-fade transition
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 600),
           switchInCurve: Curves.easeIn,
           switchOutCurve: Curves.easeOut,
-          child: screen,
+          child: destination,
         );
       },
     );

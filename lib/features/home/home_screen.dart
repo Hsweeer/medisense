@@ -13,6 +13,7 @@ import '../nearby/nearby_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../reminders/reminders_screen.dart';
+import '../scan_reader/scan_reader_screen.dart';
 
 /// Home — "what do I need to do right now?"
 /// The next-dose card is the hero, everything else sits below it.
@@ -196,6 +197,16 @@ class HomeScreen extends StatelessWidget {
                     )),
               ],
             ),
+          ),
+          SizedBox(height: 12.h),
+          _QuickTile(
+            icon: Icons.document_scanner_rounded,
+            label: 'Scan & Read',
+            sub: 'Photo → text → read aloud, fully offline',
+            color: AppColors.primary,
+            soft: AppColors.soft,
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ScanReaderScreen())),
           ),
           SizedBox(height: 20.h),
           // One AI insight — kept light.
