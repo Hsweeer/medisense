@@ -2,18 +2,31 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
+import '../core/services/groq_service.dart';
+import '../core/services/prescription_parser.dart';
 import '../data/models/models.dart';
+import 'profile_provider.dart';
 import 'reminder_provider.dart';
 
 /// MedAI — the in-app health assistant.
 ///
-/// Frontend-only: replies are scripted locally. The provider still models the
-/// full product surface — image / file / voice attachments, a red-flag → SOS
-/// escalation, and "Personal insights" (replies tailored from the user's
-/// health profile — the hook where on-device / backend training plugs in).
+/// Free-text replies are generated live by Groq (llama-3.3-70b-versatile),
+/// personalized with the user's health profile when "Personal insights" is
+/// on. Red-flag → SOS escalation stays local and rule-based (safety-critical,
+/// must not depend on an LLM call succeeding). Prescription scans run real,
+/// fully-offline OCR (Tesseract) on the photo and a heuristic parser guesses
+/// medicine/dose/frequency — the user reviews and picks the exact times
+/// before anything becomes a real reminder (see PrescriptionReviewScreen).
+/// Skin-photo/lab-report "analysis" replies stay scripted for now — that
+/// needs a vision-capable model, a separate task from OCR.
+/// must not depend on an LLM call succeeding). Attachment "analysis" replies
+/// (prescription/skin photo/lab report) stay scripted for now — the text
+/// model here can't see the actual image/PDF content; wiring that up for
+/// real needs a vision-capable model plus file-content extraction.
 class ChatProvider extends ChangeNotifier {
-  ChatProvider({this.reminderEngine}) {
+  ChatProvider({this.reminderEngine, this.profileProvider}) {
     _initChat();
 
     // Reset chat whenever the user changes
@@ -47,6 +60,10 @@ class ChatProvider extends ChangeNotifier {
 
   /// Lets MedAI create alarms itself after scanning a prescription.
   final ReminderProvider? reminderEngine;
+
+  /// Health profile — used to personalize Groq's system prompt when
+  /// "Personal insights" is on.
+  final ProfileProvider? profileProvider;
 
   final messages = <ChatMessage>[];
   bool typing = false;
@@ -101,7 +118,7 @@ class ChatProvider extends ChangeNotifier {
               filePath: filePath),
         ],
       );
-      _reply(_voiceReply());
+      _replyDelayed(_voiceReply());
     }
     notifyListeners();
   }
@@ -112,7 +129,116 @@ class ChatProvider extends ChangeNotifier {
     final attachments = [...pendingAttachments];
     pendingAttachments.clear();
     _sendUser(t, attachments);
-    _reply(_composeReply(t, attachments));
+
+    // A prescription photo always goes through real OCR, not the scripted
+    // or Groq paths — even if the user typed a caption along with it.
+    ChatAttachment? rxPhoto;
+    for (final a in attachments) {
+      if (a.intent == AttachmentIntent.prescription) {
+        rxPhoto = a;
+        break;
+      }
+    }
+    if (rxPhoto != null) {
+      _replyFromPrescriptionScan(rxPhoto);
+      return;
+    }
+
+    final scripted = _scriptedReply(t, attachments);
+    if (scripted != null) {
+      _replyDelayed(scripted);
+    } else {
+      _replyFromGroq();
+    }
+  }
+
+  /// Runs real, fully-offline OCR (Tesseract) on a scanned prescription
+  /// photo, heuristically parses medicine/dose/frequency out of the text,
+  /// and shows a card the user can open to review and confirm exact times
+  /// before anything becomes a real reminder. Nothing is added automatically
+  /// — OCR on a doctor's handwriting is often wrong, so the user always has
+  /// the final say (see PrescriptionReviewScreen).
+  Future<void> _replyFromPrescriptionScan(ChatAttachment photo) async {
+    typing = true;
+    notifyListeners();
+
+    final path = photo.filePath;
+    if (path == null) {
+      typing = false;
+      messages.add(const ChatMessage(
+        role: ChatRole.ai,
+        text: "I couldn't access that photo — please try scanning again.",
+      ));
+      notifyListeners();
+      return;
+    }
+
+    final textRecognizer =
+        TextRecognizer(script: TextRecognitionScript.latin);
+    try {
+      final inputImage = InputImage.fromFilePath(path);
+      final raw = (await textRecognizer.processImage(inputImage)).text;
+      final cleaned = raw.trim();
+      typing = false;
+
+      if (cleaned.isEmpty) {
+        messages.add(const ChatMessage(
+          role: ChatRole.ai,
+          text:
+              "I couldn't make out any text on that photo. Try again with "
+              'better lighting, a flatter angle, and the note filling the '
+              "frame — or use 'Document / PDF' if you have a typed copy.",
+        ));
+        notifyListeners();
+        return;
+      }
+
+      final meds = parsePrescriptionText(cleaned);
+      final summary = meds.isEmpty
+          ? "I read the photo but couldn't confidently pick out medicine "
+              'names and dosages from it — this happens most with '
+              'handwriting. Tap below to review the raw text and add '
+              'reminders yourself.'
+          : "Here's what I could read from the prescription:\n\n"
+              '${meds.map((m) => '• ${m.name}${m.dose.isNotEmpty ? ' ${m.dose}' : ''} — ${m.timesPerDay}× daily').join('\n')}'
+              '\n\nOCR reads printed text far better than handwriting, so '
+              'please double-check everything below and set the exact '
+              'times before adding reminders.';
+
+      messages.add(ChatMessage(
+        role: ChatRole.ai,
+        card: ChatCardType.prescription,
+        personalized: learnFromData,
+        text: summary,
+        ocrText: cleaned,
+      ));
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[ChatProvider] OCR error: $e');
+      typing = false;
+      messages.add(const ChatMessage(
+        role: ChatRole.ai,
+        text: 'Something went wrong reading that photo. Please try again.',
+      ));
+      notifyListeners();
+    } finally {
+      await textRecognizer.close();
+    }
+  }
+
+  /// Called by the chat screen after the user returns from the prescription
+  /// review screen, so the confirmation shows up as a real MedAI message.
+  void noteRemindersAdded(int count) {
+    if (count <= 0) return;
+    messages.add(ChatMessage(
+      role: ChatRole.ai,
+      text: count == 1
+          ? 'Added 1 reminder — find it, snooze it, or edit it anytime in '
+              'Reminders.'
+          : 'Added $count reminders — find, snooze, or edit them anytime '
+              'in Reminders.',
+    ));
+    notifyListeners();
   }
 
   void _sendUser(String text, List<ChatAttachment> attachments) {
@@ -121,7 +247,8 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _reply(ChatMessage message) {
+  /// Scripted, simulated-delay reply (red-flags, attachment "analysis").
+  void _replyDelayed(ChatMessage message) {
     typing = true;
     notifyListeners();
     _timer?.cancel();
@@ -130,6 +257,81 @@ class ChatProvider extends ChangeNotifier {
       messages.add(message);
       notifyListeners();
     });
+  }
+
+  /// Real reply from Groq for free-text questions.
+  Future<void> _replyFromGroq() async {
+    typing = true;
+    notifyListeners();
+    try {
+      final reply = await GroqService.chat(
+        systemPrompt: _buildSystemPrompt(),
+        history: _buildHistory(),
+      );
+      typing = false;
+      messages.add(ChatMessage(
+          role: ChatRole.ai, text: reply, personalized: learnFromData));
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[ChatProvider] Groq error: $e');
+      typing = false;
+      messages.add(const ChatMessage(
+        role: ChatRole.ai,
+        text:
+            "I'm having trouble reaching MedAI's servers right now — please "
+            "check your connection and try again in a moment.",
+      ));
+      notifyListeners();
+    }
+  }
+
+  String _buildSystemPrompt() {
+    final buffer = StringBuffer(
+      'You are MedAI, a friendly, careful health-assistant chat feature '
+      'inside the MediSense app. Give clear, practical, safe guidance in '
+      'plain language, under about 120 words unless the question needs '
+      'more detail. Always recommend seeing a doctor for anything serious, '
+      'uncertain, or worsening. Never claim to give a diagnosis — you are '
+      'a supportive assistant, not a replacement for professional care.',
+    );
+
+    if (learnFromData) {
+      final p = profileProvider?.profile;
+      final hasContext = p != null &&
+          (p.allergies.isNotEmpty ||
+              p.conditions.isNotEmpty ||
+              p.medications.isNotEmpty);
+      if (hasContext) {
+        buffer.write(
+            "\n\nThe user's health profile (use it to tailor advice — e.g. "
+            "flag allergy/medication conflicts — but don't just recite it "
+            'back unless relevant):');
+        if (p.allergies.isNotEmpty) {
+          buffer.write('\n- Allergies: ${p.allergies.join(', ')}');
+        }
+        if (p.conditions.isNotEmpty) {
+          buffer.write('\n- Conditions: ${p.conditions.join(', ')}');
+        }
+        if (p.medications.isNotEmpty) {
+          buffer.write('\n- Current medications: ${p.medications.join(', ')}');
+        }
+      }
+    }
+    return buffer.toString();
+  }
+
+  /// Last ~12 text messages as {role, content} pairs for conversation
+  /// context (Groq has no memory of its own between calls).
+  List<Map<String, String>> _buildHistory() {
+    final recent =
+        messages.length > 12 ? messages.sublist(messages.length - 12) : messages;
+    return recent
+        .where((m) => m.text.trim().isNotEmpty)
+        .map((m) => {
+              'role': m.role == ChatRole.user ? 'user' : 'assistant',
+              'content': m.text,
+            })
+        .toList();
   }
 
   static const _redFlags = [
@@ -143,7 +345,9 @@ class ChatProvider extends ChangeNotifier {
     'overdose',
   ];
 
-  ChatMessage _composeReply(String text, List<ChatAttachment> attachments) {
+  /// Returns a scripted reply for red-flags and attachment "analysis";
+  /// returns null for everything else so [send] routes it to Groq instead.
+  ChatMessage? _scriptedReply(String text, List<ChatAttachment> attachments) {
     final lower = text.toLowerCase();
 
     if (_redFlags.any(lower.contains)) {
@@ -153,43 +357,6 @@ class ChatProvider extends ChangeNotifier {
         text:
             'Symptoms like these can be serious. Please call 911 or use '
             'Emergency SOS now — I can alert your emergency contacts too.',
-      );
-    }
-
-    // Prescription scan — parse the doctor's note, flag allergy conflicts,
-    // and add the safe medications as alarm reminders automatically.
-    if (attachments.any((a) => a.intent == AttachmentIntent.prescription)) {
-      reminderEngine?.addAll([
-        Reminder(
-            title: 'Ibuprofen',
-            dose: '400 mg · 1 tablet',
-            time: '8:00 AM & 8:00 PM',
-            schedule: 'Daily · 5 days',
-            instructions: 'After food',
-            addedBy: 'MedAI'),
-        Reminder(
-            title: 'Cetirizine',
-            dose: '10 mg · 1 tablet',
-            time: '9:00 PM',
-            schedule: 'Nightly · 7 days',
-            instructions: 'May cause drowsiness',
-            addedBy: 'MedAI'),
-      ]);
-      return ChatMessage(
-        role: ChatRole.ai,
-        card: ChatCardType.prescription,
-        personalized: learnFromData,
-        text:
-            "I've read Dr. Nguyen's note. It prescribes:\n\n"
-            '• Ibuprofen 400 mg — twice daily after food, 5 days\n'
-            '• Cetirizine 10 mg — nightly, 7 days\n'
-            '• Amoxicillin 500 mg — 3× daily, 7 days'
-            "${learnFromData ? '\n\n⚠ Heads-up: Amoxicillin is a '
-                'penicillin-class antibiotic and your profile lists a '
-                'penicillin allergy. I have NOT set reminders for it — '
-                'please confirm with your doctor before taking it.' : ''}"
-            '\n\nI added alarm reminders for the other two — you can '
-            'snooze, edit, or delete them anytime in Reminders.',
       );
     }
 
@@ -242,74 +409,8 @@ class ChatProvider extends ChangeNotifier {
       );
     }
 
-    if (lower.contains('tired') || lower.contains('fatigue')) {
-      return ChatMessage(
-        role: ChatRole.ai,
-        personalized: learnFromData,
-        text:
-            'Persistent tiredness usually traces back to sleep quality, '
-            'hydration, iron or vitamin levels, or stress.'
-            "${learnFromData ? ' Your last upload showed Vitamin D at '
-                '24 ng/mL — low levels are a very common cause of fatigue, '
-                'and your 2000 IU supplement should help within weeks.' : ''}"
-            '\n\nTry a consistent sleep window this week; if it persists '
-            'beyond 2–3 weeks, a basic blood panel is worth it.',
-      );
-    }
-
-    if (lower.contains('headache')) {
-      return ChatMessage(
-        role: ChatRole.ai,
-        personalized: learnFromData,
-        text:
-            'Most headaches are tension-type — hydration, screen breaks, and '
-            'rest usually resolve them.'
-            "${learnFromData ? ' For relief, acetaminophen (Tylenol) or '
-                'ibuprofen are fine with your profile — no interactions with '
-                'your current medications.' : ''}"
-            '\n\nSeek urgent care if it is sudden and severe, follows a head '
-            'injury, or comes with vision changes or a stiff neck.',
-      );
-    }
-
-    if (lower.contains('cold') ||
-        lower.contains('flu') ||
-        lower.contains('medicine')) {
-      return ChatMessage(
-        role: ChatRole.ai,
-        personalized: learnFromData,
-        text:
-            'For cold symptoms: rest, fluids, and OTC relief work for most '
-            'people.'
-            "${learnFromData ? '\n\nTailored to you: avoid combination '
-                'products containing penicillin-class antibiotics (rare in '
-                'OTC) and check labels for peanut-derived excipients. With '
-                'mild asthma, skip mentholated vapor rubs if they trigger '
-                'coughing — saline spray is safest.' : ''}"
-            '\n\nWant me to find a 24-hour pharmacy nearby?',
-      );
-    }
-
-    if (lower.contains('sleep')) {
-      return const ChatMessage(
-        role: ChatRole.ai,
-        text:
-            'A steady wind-down works better than any tracker: same bedtime '
-            '±30 min, screens off 45 min before, bedroom below 68°F. Log it '
-            'for a week and I can spot patterns with you.',
-      );
-    }
-
-    return ChatMessage(
-      role: ChatRole.ai,
-      personalized: learnFromData,
-      text:
-          "Thanks — I've noted that in your health journal."
-          "${learnFromData ? ' Everything you share here trains your personal '
-              'model, so my answers keep getting more specific to you.' : ''}"
-          '\n\nTell me more about your symptoms, or upload a photo, report, '
-          'or voice note and I will take a look.',
-    );
+    // Everything else — plain questions — goes to Groq for a real reply.
+    return null;
   }
 
   ChatMessage _voiceReply() {

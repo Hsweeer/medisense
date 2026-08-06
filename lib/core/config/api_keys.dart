@@ -1,8 +1,6 @@
 /// Central place for third-party API keys.
 ///
-/// ⚠️ Do not commit a real key in this file to a public repo — add it to
-/// .gitignore once you paste your key below, or better, skip hardcoding it
-/// entirely and pass it in at build/run time instead:
+/// Do not commit real keys to the repository. Supply them at build/run time:
 ///
 ///   flutter run --dart-define=GOOGLE_PLACES_API_KEY=your_key_here
 ///
@@ -14,6 +12,14 @@ class ApiKeys {
 
   static const googlePlacesApiKey = String.fromEnvironment(
     'GOOGLE_PLACES_API_KEY',
-    defaultValue: 'AIzaSyAOVYRIgupAurZup5y1PRh8Ismb1A3lLao',
+    defaultValue: '',
+  );
+
+  /// Groq API key — powers MedAI's free-text replies.
+  /// Run with:
+  ///   flutter run --dart-define=GROQ_API_KEY=your_key_here
+  static const groqApiKey = String.fromEnvironment(
+    'GROQ_API_KEY',
+    defaultValue: '',
   );
 }

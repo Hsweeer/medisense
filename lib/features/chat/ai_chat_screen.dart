@@ -12,15 +12,17 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 
+import '../../core/services/prescription_parser.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/mock/mock_data.dart';
 import '../../data/models/models.dart';
 import '../../providers/chat_provider.dart';
+import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
-import '../reminders/reminders_screen.dart';
 import '../sos/sos_screen.dart';
 import '../vitals/vitals_scan_screen.dart';
+import 'prescription_review_screen.dart';
 
 /// MedAI — multimodal health assistant: text, image, file, and voice input,
 /// with "Personal insights" replies tailored from the user's health profile.
@@ -980,6 +982,9 @@ class _PrescriptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final meds = parsePrescriptionText(message.ocrText ?? '');
+    final allergies = context.watch<ProfileProvider>().profile.allergies;
+
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: Column(
@@ -1010,28 +1015,42 @@ class _PrescriptionCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 12.h),
-                const _MedRow(
-                    name: 'Ibuprofen 400 mg',
-                    freq: '2× daily · after food · 5 days',
-                    added: true),
-                const _MedRow(
-                    name: 'Cetirizine 10 mg',
-                    freq: 'Nightly · 7 days',
-                    added: true),
-                if (message.personalized)
-                  const _MedRow(
-                      name: 'Amoxicillin 500 mg',
-                      freq: '3× daily · 7 days',
-                      added: false,
-                      flag: 'Penicillin allergy — ask your doctor'),
+                for (final med in meds.take(4))
+                  _MedRow(
+                    name: med.dose.isEmpty ? med.name : '${med.name} ${med.dose}',
+                    freq: '${med.timesPerDay}× daily'
+                        '${med.durationDays != null ? ' · ${med.durationDays} days' : ''}'
+                        '${med.instructions.isNotEmpty ? ' · ${med.instructions}' : ''}',
+                    added: false,
+                    flag: _matchingAllergy(med.name, allergies) != null
+                        ? 'Possible match with "${_matchingAllergy(med.name, allergies)}" allergy'
+                        : null,
+                  ),
+                if (meds.length > 4)
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 8.h),
+                    child: Text('+ ${meds.length - 4} more — see full review',
+                        style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
+                  ),
                 Divider(height: 20.h),
                 Text(message.text,
                     style: TextStyle(
                         fontSize: 13.sp, height: 1.45, color: AppColors.ink)),
                 SizedBox(height: 12.h),
                 GestureDetector(
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const RemindersScreen())),
+                  onTap: () async {
+                    final count = await Navigator.of(context).push<int>(
+                      MaterialPageRoute(
+                        builder: (_) => PrescriptionReviewScreen(
+                          ocrText: message.ocrText ?? '',
+                          initialMeds: meds,
+                        ),
+                      ),
+                    );
+                    if (count != null && count > 0 && context.mounted) {
+                      context.read<ChatProvider>().noteRemindersAdded(count);
+                    }
+                  },
                   child: Container(
                     width: double.infinity,
                     padding: EdgeInsets.symmetric(vertical: 11.h),
@@ -1042,10 +1061,10 @@ class _PrescriptionCard extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.alarm_on_rounded,
+                        Icon(Icons.alarm_add_rounded,
                             size: 17.sp, color: AppColors.ai),
                         SizedBox(width: 7.w),
-                        Text('2 alarm reminders added — view & edit',
+                        Text('Review & add reminders',
                             style: TextStyle(
                                 fontSize: 12.5.sp,
                                 fontWeight: FontWeight.w700,
@@ -1068,6 +1087,20 @@ class _PrescriptionCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Simple case-insensitive substring match against the user's listed
+  /// allergies — a heuristic hint only, shown again (with more detail) in
+  /// the full review screen. Never blocks anything on its own.
+  String? _matchingAllergy(String medName, List<String> allergies) {
+    final name = medName.trim().toLowerCase();
+    if (name.isEmpty) return null;
+    for (final allergy in allergies) {
+      final a = allergy.trim().toLowerCase();
+      if (a.isEmpty) continue;
+      if (name.contains(a) || a.contains(name)) return allergy;
+    }
+    return null;
   }
 }
 

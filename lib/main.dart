@@ -107,7 +107,9 @@ class _MediSenseAppState extends State<MediSenseApp> {
           ChangeNotifierProvider(create: (_) => ReminderProvider()),
           ChangeNotifierProvider(
             create: (ctx) =>
-                ChatProvider(reminderEngine: ctx.read<ReminderProvider>()),
+                ChatProvider(
+                    reminderEngine: ctx.read<ReminderProvider>(),
+                    profileProvider: ctx.read<ProfileProvider>()),
           ),
           ChangeNotifierProvider(create: (_) => SosProvider()),
           ChangeNotifierProvider(
@@ -144,37 +146,38 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _ready = false;
+  bool _showSplash = true;
 
   @override
   void initState() {
     super.initState();
+    // Professional 2.5s splash delay
     Timer(const Duration(milliseconds: 2500), () {
-      if (mounted) setState(() => _ready = true);
+      if (mounted) setState(() => _showSplash = false);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) return const SplashScreen();
-
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen();
+        // 1. Stay on splash during initial boot or if timer is still running
+        if (_showSplash || snapshot.connectionState == ConnectionState.waiting) {
+          return const SplashScreen(key: ValueKey('splash_view'));
         }
 
-        final user = snapshot.data;
-        final Widget screen = user != null 
-            ? const PatientShell(key: ValueKey('home_view')) 
+        // 2. Decide destination based on Firebase user presence
+        final Widget destination = snapshot.hasData
+            ? const PatientShell(key: ValueKey('home_view'))
             : const LoginScreen(key: ValueKey('login_view'));
 
+        // 3. One smooth cross-fade transition
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 600),
           switchInCurve: Curves.easeIn,
           switchOutCurve: Curves.easeOut,
-          child: screen,
+          child: destination,
         );
       },
     );
