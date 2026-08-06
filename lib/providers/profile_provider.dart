@@ -31,12 +31,20 @@ class ProfileProvider extends ChangeNotifier {
   String? error;
 
   ProfileProvider() {
-    _listen();
-
-    // Re-attach listeners whenever the user changes
+    // Only register the listener. It will trigger _listen() on first auth event.
     _auth.authStateChanges().listen((user) {
-      debugPrint('[ProfileProvider] authStateChanged: ${user?.email}');
-      refreshForCurrentUser();
+      if (user != null) {
+        debugPrint('[ProfileProvider] Auth event: ${user.email}, attaching listeners...');
+        refreshForCurrentUser();
+      } else {
+        debugPrint('[ProfileProvider] No user, clearing profile...');
+        _profileSub?.cancel();
+        _contactsSub?.cancel();
+        profile = HealthProfile.empty();
+        contacts = [];
+        isLoading = false;
+        notifyListeners();
+      }
     });
   }
 

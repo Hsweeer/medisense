@@ -71,7 +71,10 @@ class _PatientShellState extends State<PatientShell>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _tabs[index],
+      body: IndexedStack(
+        index: index,
+        children: _tabs,
+      ),
       floatingActionButton: index == 0
           ? FloatingActionButton.extended(
               heroTag: 'med-ai',

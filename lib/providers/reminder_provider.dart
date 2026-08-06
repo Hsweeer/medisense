@@ -16,12 +16,18 @@ class ReminderProvider extends ChangeNotifier {
   bool _initialized = false;
 
   ReminderProvider() {
-    _initializeReminders();
-
-    // Re-initialize whenever the user changes (login/logout/switch)
+    // Only listen to auth changes. The first event will trigger the load.
     FirebaseAuth.instance.authStateChanges().listen((user) {
-      debugPrint('[ReminderProvider] authStateChanged: ${user?.email}');
-      refresh();
+      if (user != null) {
+        debugPrint('[ReminderProvider] User logged in: ${user.email}, fetching data...');
+        _initialized = false;
+        _initializeReminders();
+      } else {
+        debugPrint('[ReminderProvider] User logged out, clearing data...');
+        reminders.clear();
+        NotificationService.instance.cancelAll();
+        notifyListeners();
+      }
     });
   }
 
@@ -206,6 +212,28 @@ class ReminderProvider extends ChangeNotifier {
       NotificationService.instance.cancelForReminder(r);
       notifyListeners();
     }
+  }
+
+  /// Delete all reminders for the current user.
+  Future<void> clearAll() async {
+    isLoading = true;
+    notifyListeners();
+
+    try {
+      for (final r in List.from(reminders)) {
+        if (r.id != null) {
+          await _firestoreService.deleteReminder(r.id!);
+          await NotificationService.instance.cancelForReminder(r);
+        }
+      }
+      reminders.clear();
+      debugPrint('[ReminderProvider] All reminders cleared');
+    } catch (e) {
+      debugPrint('[ReminderProvider] clearAll error: $e');
+    }
+
+    isLoading = false;
+    notifyListeners();
   }
 
   /// Internal: persist status changes to Firestore without triggering

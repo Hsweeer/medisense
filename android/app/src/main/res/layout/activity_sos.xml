@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#D03A30"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/tvSosTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="SOS ACTIVATED"
+        android:textColor="#FFFFFF"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="64dp"/>
+
+    <ImageView
+        android:id="@+id/ivSosIcon"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:src="@drawable/ic_sos"
+        app:layout_constraintTop_toBottomOf="@id/tvSosTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="48dp"
+        tools:ignore="ContentDescription" />
+
+    <TextView
+        android:id="@+id/tvSosMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Emergency contacts have been notified with your live location."
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/ivSosIcon"
+        android:layout_marginTop="32dp"/>
+
+    <Button
+        android:id="@+id/btnOpenDashboard"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:text="Open Emergency Dashboard"
+        android:backgroundTint="#FFFFFF"
+        android:textColor="#D03A30"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginBottom="16dp"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

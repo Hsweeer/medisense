@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 
 class SosOverlayButton extends StatefulWidget {
@@ -114,12 +116,27 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
   void _triggerSos() async {
     HapticFeedback.vibrate();
     
-    // Sends trigger to Native Android code
+    debugPrint('SOS_DEBUG: Triggering SOS from Overlay Engine');
+    
+    // 1. Try built-in shareData (works if main app is backgrounded/alive)
     try {
-      await _channel.invokeMethod('triggerSosNow');
+      await FlutterOverlayWindow.shareData('trigger_sos');
+      debugPrint('SOS_DEBUG: shareData sent');
     } catch (e) {
-      debugPrint('SOS Trigger Error: $e');
+      debugPrint('SOS_DEBUG: shareData error: $e');
     }
+
+    // 2. Try deep link (works even if app is KILLED)
+    try {
+      final url = Uri.parse('medisense://sos');
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalNonBrowserApplication);
+        debugPrint('SOS_DEBUG: deep link launched');
+      }
+    } catch (e) {
+      debugPrint('SOS_DEBUG: deep link error: $e');
+    }
+
     _resetTimer();
   }
 }

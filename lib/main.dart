@@ -24,12 +24,35 @@ import 'providers/reminder_provider.dart';
 import 'providers/sos_provider.dart';
 import 'services/notification_service.dart';
 
+// GLOBAL MASTER KEY FOR NAVIGATION
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.instance.initialize();
+  
+  // STEP 2: REGISTER LISTENER AT ROOT LEVEL (BEFORE RUNAPP)
+  debugPrint('SOS_DEBUG: Global setup -> Registering overlayListener');
+  FlutterOverlayWindow.overlayListener.listen((event) async {
+    debugPrint('SOS_DEBUG: ROOT overlayListener received event: $event');
+    if (event == "trigger_sos") {
+      debugPrint('SOS_DEBUG: ROOT -> Triggering SOS Sequence');
+      
+      const native = MethodChannel('medisense_native_channel');
+      try {
+        await native.invokeMethod('triggerSosNow');
+        debugPrint('SOS_DEBUG: ROOT -> triggerSosNow invoked');
+      } catch (e) {
+        debugPrint('SOS_DEBUG: ROOT -> triggerSosNow ERROR: $e');
+      }
+
+      // Navigate if navigator is ready
+      navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (route) => route.isFirst);
+    }
+  });
+  debugPrint('SOS_DEBUG: Global setup -> overlayListener registered and listening');
+
   runApp(const MediSenseApp());
 }
 
@@ -44,8 +67,30 @@ void overlayMain() {
   );
 }
 
-class MediSenseApp extends StatelessWidget {
+class MediSenseApp extends StatefulWidget {
   const MediSenseApp({super.key});
+
+  @override
+  State<MediSenseApp> createState() => _MediSenseAppState();
+}
+
+class _MediSenseAppState extends State<MediSenseApp> {
+  static const _nativeChannel = MethodChannel('medisense_native_channel');
+
+  @override
+  void initState() {
+    super.initState();
+    // Handle native callbacks (e.g. from Notification full-screen intent)
+    _nativeChannel.setMethodCallHandler((call) async {
+      debugPrint('SOS_DEBUG: Main Engine received native call: ${call.method}');
+      if (call.method == "openSosScreen") {
+        if (mounted) {
+          context.read<SosProvider>().triggerImmediate();
+        }
+        navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (route) => route.isFirst);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,58 +121,19 @@ class MediSenseApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          builder: (context, child) => SosSignalListener(child: child!),
-          home: const AuthWrapper(),
+          routes: {
+            '/': (ctx) => const AuthWrapper(),
+            '/sos': (ctx) => const SosScreen(),
+          },
+          initialRoute: '/',
+          builder: (context, child) => Container(
+            color: const Color(0xFF06413A),
+            child: child,
+          ),
         ),
       ),
     );
   }
-}
-
-class SosSignalListener extends StatefulWidget {
-  final Widget child;
-  const SosSignalListener({super.key, required this.child});
-
-  @override
-  State<SosSignalListener> createState() => _SosSignalListenerState();
-}
-
-class _SosSignalListenerState extends State<SosSignalListener> {
-  StreamSubscription? _sub;
-  static const _native = MethodChannel('medisense_native_channel');
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = FlutterOverlayWindow.overlayListener.listen((data) async {
-      if (data == "trigger_sos") {
-        debugPrint('[SosListener] SOS Signal Received');
-        
-        try {
-          await _native.invokeMethod('triggerSosNow');
-        } catch (e) {
-          debugPrint('Native Error: $e');
-        }
-
-        if (mounted) {
-          context.read<SosProvider>().triggerImmediate();
-          navigatorKey.currentState?.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const SosScreen()),
-            (r) => r.isFirst,
-          );
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
 }
 
 class AuthWrapper extends StatefulWidget {
@@ -161,8 +167,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         final user = snapshot.data;
         final Widget screen = user != null 
-            ? const PatientShell(key: ValueKey('home')) 
-            : const LoginScreen(key: ValueKey('login'));
+            ? const PatientShell(key: ValueKey('home_view')) 
+            : const LoginScreen(key: ValueKey('login_view'));
 
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 600),

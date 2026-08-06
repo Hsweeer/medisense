@@ -18,7 +18,25 @@ class RemindersScreen extends StatelessWidget {
     final prov = context.watch<ReminderProvider>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Reminders')),
+      appBar: AppBar(
+        title: const Text('Reminders'),
+        actions: [
+          if (prov.reminders.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(right: 8.w),
+              child: TextButton.icon(
+                onPressed: () => _confirmClearAll(context, prov),
+                icon: Icon(Icons.delete_sweep_rounded,
+                    color: AppColors.danger, size: 20.sp),
+                label: Text('Clear all',
+                    style: TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.sp)),
+              ),
+            ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showEditSheet(context),
         backgroundColor: AppColors.primary,
@@ -103,6 +121,43 @@ class RemindersScreen extends StatelessWidget {
       height: 30.h,
       margin: EdgeInsets.symmetric(horizontal: 4.w),
       color: AppColors.primary.withValues(alpha: .2));
+
+  void _confirmClearAll(BuildContext context, ReminderProvider prov) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+        title: Text('Clear all reminders?',
+            style: GoogleFonts.sora(fontWeight: FontWeight.w800, fontSize: 18.sp)),
+        content: Text(
+            'This will permanently delete all your scheduled reminders and alarms.',
+            style: TextStyle(fontSize: 14.sp, color: AppColors.muted)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel',
+                style:
+                    TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
+          ),
+          Container(
+            margin: EdgeInsets.only(left: 8.w),
+            child: FilledButton(
+              onPressed: () {
+                prov.clearAll();
+                Navigator.pop(ctx);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.danger,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+              ),
+              child: Text('Delete all',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.sp)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Stat extends StatelessWidget {
