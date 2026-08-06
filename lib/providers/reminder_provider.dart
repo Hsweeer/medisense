@@ -85,11 +85,12 @@ class ReminderProvider extends ChangeNotifier {
       ? 0
       : reminders.map((r) => r.streakDays).reduce((a, b) => a > b ? a : b);
 
-  /// This-week adherence, seeded and nudged by today's progress.
+  /// This-week adherence, accurately calculated from today's progress.
   int get adherencePct {
-    final active = reminders.length - skippedCount;
-    if (active <= 0) return 100;
-    return (72 + (takenCount / active) * 28).round().clamp(0, 100);
+    if (reminders.isEmpty) return 100;
+    // Real calculation: (Taken / Total scheduled for today)
+    final pct = (takenCount / reminders.length) * 100;
+    return pct.round().clamp(0, 100);
   }
 
   /// The home hero: first pending dose, else first snoozed one.
@@ -138,7 +139,7 @@ class ReminderProvider extends ChangeNotifier {
   Future<void> add(Reminder r) async {
     final saved = await _firestoreService.createReminder(r);
     if (saved != null) {
-      reminders.add(saved);
+      reminders.insert(0, saved); // Insert at top (newest)
       NotificationService.instance.scheduleReminder(saved);
       notifyListeners();
     }
@@ -150,7 +151,7 @@ class ReminderProvider extends ChangeNotifier {
     for (final r in newOnes) {
       final saved = await _firestoreService.createReminder(r);
       if (saved != null) {
-        reminders.add(saved);
+        reminders.insert(0, saved); // Insert at top
         NotificationService.instance.scheduleReminder(saved);
         count++;
       }

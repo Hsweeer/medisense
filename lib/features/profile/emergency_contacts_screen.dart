@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -19,22 +21,22 @@ class EmergencyContactsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Emergency contacts')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
         children: [
           MCard(
             color: AppColors.dangerSoft,
             border: Border.all(color: AppColors.danger.withValues(alpha: .4)),
-            child: const Row(
+            child: Row(
               children: [
                 Icon(Icons.local_police_rounded,
-                    color: AppColors.danger, size: 26),
-                SizedBox(width: 12),
+                    color: AppColors.danger, size: 26.sp),
+                SizedBox(width: 12.w),
                 Expanded(
                   child: Text(
                     '911 is always dialed first in an SOS. The contacts below '
                     'also get a text with your live location and Medical ID.',
                     style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 12.5.sp,
                         height: 1.4,
                         color: AppColors.inkSoft),
                   ),
@@ -42,28 +44,28 @@ class EmergencyContactsScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           for (final c in prov.contacts)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: EdgeInsets.only(bottom: 10.h),
               child: MCard(
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.all(14.r),
                 child: Row(
                   children: [
-                    InitialsAvatar(c.name, size: 42),
-                    const SizedBox(width: 12),
+                    InitialsAvatar(c.name, size: 42.r),
+                    SizedBox(width: 12.w),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(c.name,
-                              style: const TextStyle(
-                                  fontSize: 14.5,
+                              style: TextStyle(
+                                  fontSize: 14.5.sp,
                                   fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 2),
+                          SizedBox(height: 2.h),
                           Text('${c.relation} · ${c.phone}',
-                              style: const TextStyle(
-                                  fontSize: 12, color: AppColors.muted)),
+                              style: TextStyle(
+                                  fontSize: 12.sp, color: AppColors.muted)),
                         ],
                       ),
                     ),
@@ -72,22 +74,77 @@ class EmergencyContactsScreen extends StatelessWidget {
                         prov.removeContact(c);
                         showToast(context, '${c.name} removed');
                       },
-                      icon: const Icon(Icons.delete_outline_rounded,
-                          size: 20, color: AppColors.muted),
+                      icon: Icon(Icons.delete_outline_rounded,
+                          size: 20.sp, color: AppColors.muted),
                     ),
                   ],
                 ),
               ),
             ),
-          const SizedBox(height: 6),
-          PrimaryButton(
-            label: 'Add emergency contact',
-            icon: Icons.person_add_alt_rounded,
-            onPressed: () => _showAddSheet(context),
+          SizedBox(height: 16.h),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryButton(
+                  label: 'Manual add',
+                  icon: Icons.edit_note_rounded,
+                  onPressed: () => _showAddSheet(context),
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Import',
+                  icon: Icons.contact_page_rounded,
+                  onPressed: () => _importFromContacts(context),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _importFromContacts(BuildContext context) async {
+    try {
+      if (await FlutterContacts.requestPermission()) {
+        final contact = await FlutterContacts.openExternalPick();
+        if (contact != null) {
+          // Re-fetch full contact details to get phones
+          final fullContact = await FlutterContacts.getContact(contact.id);
+          if (fullContact != null && fullContact.phones.isNotEmpty) {
+            final name = fullContact.displayName;
+            final phone = fullContact.phones.first.number;
+
+            if (context.mounted) {
+              context.read<ProfileProvider>().addContact(
+                    EmergencyContact(
+                      name: name,
+                      relation: 'Contact',
+                      phone: phone,
+                    ),
+                  );
+              showToast(context, 'Added $name from contacts');
+            }
+          } else {
+            if (context.mounted) {
+              showToast(context, 'Contact has no phone number',
+                  color: AppColors.danger);
+            }
+          }
+        }
+      } else {
+        if (context.mounted) {
+          showToast(context, 'Contacts permission denied',
+              color: AppColors.danger);
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showToast(context, 'Error picking contact', color: AppColors.danger);
+      }
+    }
   }
 
   void _showAddSheet(BuildContext context) {
@@ -98,48 +155,51 @@ class EmergencyContactsScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24.r))),
       builder: (sheetCtx) => Padding(
         padding: EdgeInsets.fromLTRB(
-            20, 20, 20, 20 + MediaQuery.of(sheetCtx).viewInsets.bottom),
+            20.w, 20.h, 20.w, 20.h + MediaQuery.of(sheetCtx).viewInsets.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Add emergency contact',
                 style: GoogleFonts.sora(
-                    fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text('They will be texted your location during an SOS.',
-                style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
-            const SizedBox(height: 14),
+                    fontSize: 17.sp, fontWeight: FontWeight.w700)),
+            SizedBox(height: 4.h),
+            Text('They will be texted your location during an SOS.',
+                style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted)),
+            SizedBox(height: 14.h),
             TextField(
                 controller: name,
                 textCapitalization: TextCapitalization.words,
+                style: TextStyle(fontSize: 15.sp),
                 decoration:
                     const InputDecoration(hintText: 'Full name')),
-            const SizedBox(height: 10),
+            SizedBox(height: 10.h),
             TextField(
                 controller: relation,
                 textCapitalization: TextCapitalization.words,
+                style: TextStyle(fontSize: 15.sp),
                 decoration: const InputDecoration(
                     hintText: 'Relationship (e.g. Spouse, Neighbor)')),
-            const SizedBox(height: 10),
+            SizedBox(height: 10.h),
             TextField(
                 controller: phone,
                 keyboardType: TextInputType.phone,
+                style: TextStyle(fontSize: 15.sp),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[\d\s()\-+]')),
                 ],
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                     hintText: 'Phone — (555) 000-0000',
                     prefixText: '+1  ',
                     prefixStyle: TextStyle(
                         color: AppColors.ink,
-                        fontSize: 15,
+                        fontSize: 15.sp,
                         fontWeight: FontWeight.w600))),
-            const SizedBox(height: 16),
+            SizedBox(height: 16.h),
             PrimaryButton(
               label: 'Save contact',
               onPressed: () {

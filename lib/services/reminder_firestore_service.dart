@@ -31,6 +31,7 @@ class ReminderFirestoreService {
           .collection('users')
           .doc(uid)
           .collection('reminders')
+          .orderBy('createdAt', descending: true)
           .get();
 
       final reminders = snapshot.docs

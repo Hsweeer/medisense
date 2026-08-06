@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -12,10 +13,16 @@ enum RideStage { none, searching, assigned, pickedUp, arrived }
 
 class SosProvider extends ChangeNotifier {
   SosProvider() {
+    _init();
     FirebaseAuth.instance.authStateChanges().listen((user) {
       debugPrint('[SosProvider] authStateChanged: ${user?.email}');
-      cancel();
+      _init();
     });
+  }
+
+  void _init() async {
+    cancel();
+    await _loadSettings();
   }
 
   SosPhase phase = SosPhase.idle;
@@ -33,6 +40,39 @@ class SosProvider extends ChangeNotifier {
 
   Timer? _timer;
   Timer? _rideTimer;
+
+  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
+
+  Future<void> _loadSettings() async {
+    final uid = _uid;
+    if (uid == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (doc.exists) {
+        final data = doc.data();
+        showAccessibilityButton = data?['sosAccessibilityEnabled'] ?? false;
+        if (showAccessibilityButton) {
+          _startOverlay();
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[SosProvider] _loadSettings error: $e');
+    }
+  }
+
+  Future<void> _persistSettings(bool value) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'sosAccessibilityEnabled': value,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[SosProvider] _persistSettings error: $e');
+    }
+  }
 
   void trigger() {
     phase = SosPhase.countdown;
@@ -69,6 +109,10 @@ class SosProvider extends ChangeNotifier {
   }
 
   void toggleAccessibilityButton(bool value) async {
+    // 1. Update UI state immediately
+    showAccessibilityButton = value;
+    notifyListeners();
+
     if (value) {
       final status = await FlutterOverlayWindow.isPermissionGranted();
       if (!status) {
@@ -80,29 +124,32 @@ class SosProvider extends ChangeNotifier {
         }
       }
       
-      // Request Battery Exemption for background reliability
       try {
-        const channel = MethodChannel('com.medisense.medisense_app/native_alarm');
+        const channel = MethodChannel('medisense_native_channel');
         await channel.invokeMethod('requestIgnoreBatteryOptimizations');
       } catch (e) {}
 
-      if (!await FlutterOverlayWindow.isActive()) {
-        await FlutterOverlayWindow.showOverlay(
-          enableDrag: true,
-          overlayTitle: "SOS Button",
-          overlayContent: "MediSense Emergency Button",
-          flag: OverlayFlag.defaultFlag,
-          visibility: NotificationVisibility.visibilityPublic,
-          height: 160,
-          width: 160,
-        );
-      }
+      await _startOverlay();
     } else {
       await FlutterOverlayWindow.closeOverlay();
     }
 
-    showAccessibilityButton = value;
-    notifyListeners();
+    // 2. Persist to cloud
+    _persistSettings(value);
+  }
+
+  Future<void> _startOverlay() async {
+    if (!await FlutterOverlayWindow.isActive()) {
+      await FlutterOverlayWindow.showOverlay(
+        enableDrag: true,
+        overlayTitle: "SOS Button",
+        overlayContent: "MediSense Emergency Button",
+        flag: OverlayFlag.defaultFlag,
+        visibility: NotificationVisibility.visibilityPublic,
+        height: 160,
+        width: 160,
+      );
+    }
   }
 
   void bookRide() {
@@ -140,6 +187,10 @@ class SosProvider extends ChangeNotifier {
     stage = RideStage.none;
     countdown = 5;
     contactsNotified = false;
+    if (FirebaseAuth.instance.currentUser == null) {
+      showAccessibilityButton = false;
+      FlutterOverlayWindow.closeOverlay();
+    }
     notifyListeners();
   }
 

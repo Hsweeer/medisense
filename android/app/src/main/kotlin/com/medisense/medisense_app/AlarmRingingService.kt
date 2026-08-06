@@ -1,6 +1,5 @@
 package com.medisense.medisense_app
 
-import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -20,17 +19,6 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 
-/**
- * Rings the alarm: loops the system default alarm sound, vibrates
- * continuously, keeps the CPU awake, and shows a full-screen-intent
- * notification that launches [AlarmActivity]. Everything stops the moment
- * Stop or Snooze is pressed on that activity.
- *
- * This channel/notification is entirely separate from
- * `medisense_reminders` (owned by the Dart NotificationService) and from
- * the JSON notification-history feature — neither is touched by this
- * service.
- */
 class AlarmRingingService : Service() {
 
     companion object {
@@ -80,8 +68,10 @@ class AlarmRingingService : Service() {
         currentDisplayTime = intent?.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""
         currentSoundRawResName = intent?.getStringExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME) ?: ""
 
+        // 1. Immediate Wake Lock to light up screen
         acquireWakeLock()
 
+        // 2. Build and Start Foreground Service immediately
         val notification = buildForegroundNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -89,35 +79,23 @@ class AlarmRingingService : Service() {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification)
         }
 
-        // Exactly ONE of these two ever opens AlarmActivity for a given ring —
-        // never both. When the device is locked, Android auto-promotes the
-        // notification's full-screen intent (below) to a full-screen launch
-        // on its own; calling startActivity() ourselves at the same moment
-        // raced it and produced two overlapping copies of the alarm screen.
-        // When unlocked, Android only ever shows that same intent as a
-        // heads-up banner (never auto-launches it), so we open the screen
-        // ourselves instead.
-        if (!isDeviceLocked()) {
-            launchAlarmActivity()
-        }
+        // 3. FORCE launch AlarmActivity immediately (removing the locked check for better reliability)
+        launchAlarmActivity()
 
+        // 4. Start Sound and Vibration
         startSound()
         startVibration()
     }
 
-    private fun isDeviceLocked(): Boolean {
-        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        return keyguardManager.isKeyguardLocked
-    }
-
     private fun acquireWakeLock() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        @Suppress("DEPRECATION")
         wakeLock = pm.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "medisense:alarm_ringing",
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+            "medisense:alarm_ringing_wakeup",
         ).apply {
             setReferenceCounted(false)
-            acquire(10 * 60 * 1000L) // safety cap: 10 minutes
+            acquire(60 * 1000L) // 1 minute is plenty
         }
     }
 
@@ -125,7 +103,8 @@ class AlarmRingingService : Service() {
         val activityIntent = Intent(this, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             putExtra(AlarmScheduler.EXTRA_ALARM_ID, currentAlarmId)
             putExtra(AlarmScheduler.EXTRA_REMINDER_ID, currentReminderId)
             putExtra(AlarmScheduler.EXTRA_TITLE, currentTitle)
@@ -133,7 +112,11 @@ class AlarmRingingService : Service() {
             putExtra(AlarmScheduler.EXTRA_DISPLAY_TIME, currentDisplayTime)
             putExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME, currentSoundRawResName)
         }
-        startActivity(activityIntent)
+        try {
+            startActivity(activityIntent)
+        } catch (e: Exception) {
+            // Log if needed
+        }
     }
 
     private fun buildForegroundNotification(): android.app.Notification {
@@ -145,8 +128,8 @@ class AlarmRingingService : Service() {
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
                 description = "Full-screen medicine alarm"
-                enableVibration(false) // vibration is handled manually so it never stops early
-                setSound(null, null) // sound is handled manually via looping MediaPlayer
+                setSound(null, null)
+                enableVibration(false)
             }
             nm.createNotificationChannel(channel)
         }
@@ -164,24 +147,18 @@ class AlarmRingingService : Service() {
             this,
             currentAlarmId,
             fullScreenIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
-        val message = if (currentDose.isBlank()) {
-            "Time to take $currentTitle"
-        } else {
-            "Time to take $currentTitle · $currentDose"
-        }
+        val message = if (currentDose.isBlank()) "Time to take $currentTitle" else "Time to take $currentTitle · $currentDose"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Medicine Alarm")
             .setContentText(message)
-            .setSubText(currentDisplayTime)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreenPendingIntent, true)
-            .setContentIntent(fullScreenPendingIntent)
             .setOngoing(true)
             .setAutoCancel(false)
             .build()
@@ -189,8 +166,7 @@ class AlarmRingingService : Service() {
 
     private fun startSound() {
         try {
-            val alarmUri = selectedSoundUri()
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val alarmUri = selectedSoundUri() ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
@@ -200,47 +176,30 @@ class AlarmRingingService : Service() {
                 )
                 setDataSource(this@AlarmRingingService, alarmUri)
                 isLooping = true
-                setVolume(1.0f, 1.0f)
                 prepare()
                 start()
             }
-        } catch (_: Exception) {
-            // Device has no accessible alarm sound URI — vibration still runs,
-            // and the full-screen UI + notification still get the user's attention.
-        }
+        } catch (_: Exception) {}
     }
 
-    /**
-     * Uses the selected bundled raw sound when it exists. The id comes from
-     * Dart preferences, so validate it and fall back to the phone alarm sound
-     * for old schedules or a missing/corrupt resource.
-     */
     private fun selectedSoundUri(): Uri? {
         val rawName = currentSoundRawResName
-        if (!rawName.matches(Regex("[a-z0-9_]+"))) {
-            return RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
-        }
+        if (!rawName.matches(Regex("[a-z0-9_]+"))) return RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
         val resourceId = resources.getIdentifier(rawName, "raw", packageName)
-        return if (resourceId != 0) {
-            Uri.parse("android.resource://$packageName/$resourceId")
-        } else {
-            RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
-        }
+        return if (resourceId != 0) Uri.parse("android.resource://$packageName/$resourceId") else RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
     }
 
     private fun startVibration() {
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
         } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            @Suppress("DEPRECATION") getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
-        val pattern = longArrayOf(0, 800, 400) // wait, buzz, pause — repeats
+        val pattern = longArrayOf(0, 1000, 500)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
         } else {
-            @Suppress("DEPRECATION")
-            vibrator?.vibrate(pattern, 0)
+            @Suppress("DEPRECATION") vibrator?.vibrate(pattern, 0)
         }
     }
 
@@ -248,10 +207,6 @@ class AlarmRingingService : Service() {
         if (currentReminderId.isBlank()) return
         val snoozeAt = System.currentTimeMillis() + SNOOZE_MINUTES * 60 * 1000L
         val cal = java.util.Calendar.getInstance().apply { timeInMillis = snoozeAt }
-        // Uses the reserved snooze sub-id (never the recurring alarm's own
-        // id) and repeatType "once", so this single extra fire in 10
-        // minutes can never overwrite the stored hour/minute of the
-        // reminder's real daily/weekly schedule.
         val entry = AlarmStore.AlarmEntry(
             alarmId = AlarmScheduler.snoozeIdFor(currentReminderId),
             reminderId = currentReminderId,
@@ -268,30 +223,15 @@ class AlarmRingingService : Service() {
     }
 
     private fun stopRinging() {
-        mediaPlayer?.let {
-            try {
-                if (it.isPlaying) it.stop()
-                it.release()
-            } catch (_: Exception) {
-            }
-        }
+        mediaPlayer?.let { try { if (it.isPlaying) it.stop(); it.release() } catch (_: Exception) {} }
         mediaPlayer = null
-
         vibrator?.cancel()
         vibrator = null
-
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
-
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(FOREGROUND_NOTIFICATION_ID)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     }
 
     override fun onDestroy() {

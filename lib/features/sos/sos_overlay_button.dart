@@ -38,7 +38,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
                 opacity: opacity,
                 child: AnimatedScale(
                   duration: const Duration(milliseconds: 200),
-                  scale: _isHolding ? 1.15 : 1.0, 
+                  scale: 1.0,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -93,7 +93,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
     const duration = Duration(milliseconds: 40);
     _timer = Timer.periodic(duration, (t) {
       setState(() {
-        _progress += 0.02; // 2 seconds total
+        _progress += 0.04; // 1 second total (1.0 / 25 ticks)
         if (_progress >= 1.0) {
           _progress = 1.0;
           t.cancel();

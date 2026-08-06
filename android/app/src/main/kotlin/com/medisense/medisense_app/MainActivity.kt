@@ -38,6 +38,57 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
+                "scheduleAlarm" -> {
+                    try {
+                        val reminderId = call.argument<String>("reminderId")
+                        val title = call.argument<String>("title")
+                        val dose = call.argument<String>("dose") ?: ""
+                        val displayTime = call.argument<String>("displayTime") ?: ""
+                        val hour = call.argument<Int>("hour")
+                        val minute = call.argument<Int>("minute")
+                        val repeatType = call.argument<String>("repeatType") ?: "daily"
+                        val weekday = call.argument<Int>("weekday") ?: 0
+                        val soundRawResName = call.argument<String>("soundRawResName") ?: ""
+
+                        if (reminderId != null && title != null && hour != null && minute != null) {
+                            val entry = AlarmStore.AlarmEntry(
+                                alarmId = AlarmScheduler.idFor(reminderId, if (weekday == 0) null else weekday),
+                                reminderId = reminderId,
+                                title = title,
+                                dose = dose,
+                                displayTime = displayTime,
+                                hour = hour,
+                                minute = minute,
+                                repeatType = repeatType,
+                                weekday = weekday,
+                                soundRawResName = soundRawResName
+                            )
+                            AlarmScheduler.schedule(this, entry)
+                            result.success(null)
+                        } else {
+                            result.error("INVALID_ARGUMENTS", "Missing required arguments", null)
+                        }
+                    } catch (e: Exception) {
+                        result.error("EXCEPTION", e.message, null)
+                    }
+                }
+                "cancelAlarm" -> {
+                    val reminderId = call.argument<String>("reminderId")
+                    if (reminderId != null) {
+                        AlarmScheduler.cancelAllForReminder(this, reminderId)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "reminderId is null", null)
+                    }
+                }
+                "cancelAllAlarms" -> {
+                    AlarmScheduler.cancelAllStored(this)
+                    result.success(null)
+                }
+                "ensureFullScreenIntentPermission" -> {
+                    // Handled via manifest, but can be added here if needed for API 34+
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -62,12 +113,11 @@ class MainActivity : FlutterActivity() {
         )
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "critical_emergency_channel"
+        val channelId = "critical_sos_alert"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Emergency SOS", NotificationManager.IMPORTANCE_HIGH).apply {
                 setBypassDnd(true)
-                enableLights(true)
                 enableVibration(true)
             }
             nm.createNotificationChannel(channel)
@@ -75,7 +125,7 @@ class MainActivity : FlutterActivity() {
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(applicationInfo.icon)
-            .setContentTitle("CRITICAL SOS ALERT")
+            .setContentTitle("SOS TRIGGERED")
             .setContentText("Emergency Dashboard is opening...")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)

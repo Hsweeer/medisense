@@ -15,7 +15,7 @@ class NativeAlarmBridge {
   NativeAlarmBridge._();
   static final NativeAlarmBridge instance = NativeAlarmBridge._();
 
-  static const _channel = MethodChannel('com.medisense.medisense_app/native_alarm');
+  static const _channel = MethodChannel('medisense_native_channel');
 
   bool get _supported => defaultTargetPlatform == TargetPlatform.android;
 

@@ -71,6 +71,55 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
+/// Outlined button for secondary actions.
+class SecondaryButton extends StatelessWidget {
+  const SecondaryButton({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.color = AppColors.primary,
+    this.icon,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color.withValues(alpha: .4), width: 1.5.w),
+          padding: EdgeInsets.symmetric(vertical: 16.h),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14.r),
+          ),
+          textStyle: TextStyle(
+            fontSize: 15.sp,
+            fontWeight: FontWeight.w700,
+            letterSpacing: .3,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 20.sp),
+              SizedBox(width: 8.w),
+            ],
+            Flexible(child: Text(label, textAlign: TextAlign.center)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Professional social sign-in button (Google, Apple, etc.)
 class SocialButton extends StatelessWidget {
   const SocialButton({

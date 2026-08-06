@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSCameraUsageDescription</key>
-	<string>MediSense uses your camera to estimate your heart rate.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>MediSense uses your location while the app is open to show nearby hospitals and pharmacies.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -30,8 +26,18 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>MediSense uses your camera to estimate your heart rate and scan prescriptions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MediSense uses your microphone to record voice health notes.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>MediSense uses your contacts to allow you to select emergency contacts easily.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>MediSense uses your location while the app is open to show nearby hospitals and pharmacies.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>MediSense uses your location to provide accurate nearby care information during emergencies.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MediSense uses your photo library to allow you to upload a profile picture.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

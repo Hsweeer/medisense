@@ -42,7 +42,7 @@ class _PatientShellState extends State<PatientShell>
     
     _sosAnim = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: const Duration(seconds: 1),
     );
     _sosAnim.addListener(() {
       setState(() => _sosProgress = _sosAnim.value);
@@ -158,7 +158,7 @@ class _PatientShellState extends State<PatientShell>
         behavior: HitTestBehavior.opaque,
         onTapDown: (_) {
           _sosAnim.forward();
-          _sosTimer = Timer(const Duration(seconds: 2), () {
+          _sosTimer = Timer(const Duration(seconds: 1), () {
             context.read<SosProvider>().triggerImmediate();
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const SosScreen()),
