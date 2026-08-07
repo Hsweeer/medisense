@@ -41,9 +41,15 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
         : widget.initialMeds;
   }
 
-  void _addBlank() => setState(() => _meds.add(ParsedMedicine.blank()));
+  void _addBlank() {
+    FocusScope.of(context).unfocus();
+    setState(() => _meds.add(ParsedMedicine.blank()));
+  }
 
-  void _remove(int i) => setState(() => _meds.removeAt(i));
+  void _remove(int i) {
+    FocusScope.of(context).unfocus();
+    setState(() => _meds.removeAt(i));
+  }
 
   void _setFrequency(int i, int newCount) {
     setState(() {
@@ -51,9 +57,10 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
       final oldTimes = med.times;
       // Keep any times the user already customized; only fill/trim the
       // difference so changing 2→3 doesn't discard the two they set.
+      final defaults = defaultTimesFor(newCount);
       final newTimes = List<TimeOfDay>.generate(newCount, (idx) {
         if (idx < oldTimes.length) return oldTimes[idx];
-        return defaultTimesFor(newCount)[idx];
+        return defaults[idx];
       });
       med.timesPerDay = newCount;
       med.times = newTimes;
@@ -61,6 +68,7 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
   }
 
   Future<void> _pickTime(int medIndex, int timeIndex) async {
+    FocusScope.of(context).unfocus();
     final med = _meds[medIndex];
     final picked = await showTimePicker(
       context: context,
@@ -78,6 +86,9 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
       .fold(0, (sum, m) => sum + m.times.length);
 
   Future<void> _saveReminders() async {
+    if (_saving) return;
+    FocusScope.of(context).unfocus();
+
     final valid = _meds.where((m) => m.name.trim().isNotEmpty).toList();
     if (valid.isEmpty) return;
 
@@ -85,14 +96,17 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
 
     final reminders = <Reminder>[];
     for (final med in valid) {
-      final scheduleLabel =
-          med.durationDays != null ? 'Daily · ${med.durationDays} days' : 'Daily';
+      final scheduleLabel = med.durationDays != null
+          ? 'Daily · ${med.durationDays} days'
+          : 'Daily';
       for (final t in med.times) {
         reminders.add(Reminder(
           title: med.name.trim(),
           dose: med.dose.trim(),
-          time: formatTimeOfDay(t), // one exact clock time per reminder —
-          // required for the alarm scheduler to actually pick it up.
+          // One exact clock time per reminder — required for the alarm
+          // scheduler to actually pick it up (a combined "8 AM & 8 PM"
+          // string does not parse).
+          time: formatTimeOfDay(t),
           schedule: scheduleLabel,
           instructions: med.instructions,
           addedBy: 'MedAI',
@@ -100,10 +114,14 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
       }
     }
 
-    final count = await context.read<ReminderProvider>().addAll(reminders);
+    int count = 0;
+    try {
+      count = await context.read<ReminderProvider>().addAll(reminders);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
 
     if (!mounted) return;
-    setState(() => _saving = false);
     Navigator.of(context).pop(count);
   }
 
@@ -115,112 +133,70 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         backgroundColor: AppColors.paper,
+        surfaceTintColor: AppColors.paper,
         elevation: 0,
+        scrolledUnderElevation: 0,
         foregroundColor: AppColors.ink,
+        titleSpacing: 0,
         title: Text('Review prescription',
-            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w800)),
+            style: TextStyle(
+                fontSize: 16.5.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink)),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 4.h),
-              child: Container(
-                padding: EdgeInsets.all(12.r),
-                decoration: BoxDecoration(
-                  color: AppColors.aiSoft,
-                  borderRadius: BorderRadius.circular(14.r),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline_rounded,
-                        color: AppColors.ai, size: 18.sp),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: Text(
-                        'MedAI read these from your photo — OCR can misread '
-                        'handwriting. Check every name, dose, and time '
-                        'below, then set the exact times before adding '
-                        'reminders.',
-                        style: TextStyle(
-                            fontSize: 12.sp,
-                            color: AppColors.ai,
-                            fontWeight: FontWeight.w600,
-                            height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 100.h),
-                children: [
-                  for (var i = 0; i < _meds.length; i++)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: 14.h),
-                      child: _MedicineEditorCard(
-                        med: _meds[i],
-                        allergyFlag: _matchingAllergy(_meds[i].name, allergies),
-                        onChanged: () => setState(() {}),
-                        onFrequencyChanged: (n) => _setFrequency(i, n),
-                        onPickTime: (t) => _pickTime(i, t),
-                        onRemove: _meds.length > 1 ? () => _remove(i) : null,
-                      ),
-                    ),
-                  OutlinedButton.icon(
-                    onPressed: _addBlank,
-                    icon: Icon(Icons.add_rounded, size: 18.sp),
-                    label: const Text('Add another medicine'),
-                    style: OutlinedButton.styleFrom(
-                      padding: EdgeInsets.symmetric(vertical: 13.h),
-                      side: const BorderSide(color: AppColors.line),
-                      foregroundColor: AppColors.ink,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14.r)),
-                    ),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 32.h),
+            children: [
+              _InfoBanner(),
+              SizedBox(height: 18.h),
+              _SectionLabel(
+                  'Medicines · ${_meds.length}'.toUpperCase()),
+              SizedBox(height: 10.h),
+              for (var i = 0; i < _meds.length; i++)
+                Padding(
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: _MedicineEditorCard(
+                    index: i,
+                    med: _meds[i],
+                    allergyFlag:
+                        _matchingAllergy(_meds[i].name, allergies),
+                    onChanged: () => setState(() {}),
+                    onFrequencyChanged: (n) => _setFrequency(i, n),
+                    onPickTime: (t) => _pickTime(i, t),
+                    onRemove: _meds.length > 1 ? () => _remove(i) : null,
                   ),
-                  if (widget.ocrText.trim().isNotEmpty) ...[
-                    SizedBox(height: 18.h),
-                    ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      title: Text("Didn't come out right? See raw scan text",
-                          style: TextStyle(
-                              fontSize: 12.5.sp,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.muted)),
-                      children: [
-                        MCard(
-                          child: SelectableText(
-                            widget.ocrText,
-                            style: TextStyle(
-                                fontSize: 12.5.sp,
-                                color: AppColors.inkSoft,
-                                height: 1.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
+                ),
+              _AddMedicineButton(onTap: _addBlank),
+              if (widget.ocrText.trim().isNotEmpty) ...[
+                SizedBox(height: 22.h),
+                _RawTextPanel(text: widget.ocrText),
+              ],
+              SizedBox(height: 26.h),
+              PrimaryButton(
+                label: _saving
+                    ? 'Adding…'
+                    : _totalReminderCount == 0
+                        ? 'Add reminders'
+                        : 'Add $_totalReminderCount reminder'
+                            '${_totalReminderCount == 1 ? '' : 's'}',
+                icon: Icons.alarm_add_rounded,
+                onPressed:
+                    (_hasValidMeds && !_saving) ? _saveReminders : null,
               ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 14.h),
-          child: PrimaryButton(
-            label: _saving
-                ? 'Adding…'
-                : _totalReminderCount == 0
-                    ? 'Add reminders'
-                    : 'Add $_totalReminderCount reminder${_totalReminderCount == 1 ? '' : 's'}',
-            icon: Icons.alarm_add_rounded,
-            onPressed: (_hasValidMeds && !_saving) ? _saveReminders : null,
+              SizedBox(height: 10.h),
+              Center(
+                child: Text(
+                  'You choose the exact time for every dose — nothing is '
+                  'scheduled automatically.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -242,8 +218,72 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
   }
 }
 
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(14.r),
+      decoration: BoxDecoration(
+        color: AppColors.aiSoft,
+        borderRadius: BorderRadius.circular(16.r),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30.r,
+            height: 30.r,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .6),
+              borderRadius: BorderRadius.circular(9.r),
+            ),
+            child: Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 16.sp),
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              'MedAI read these from your photo. OCR can misread '
+              'handwriting — check every name, dose, and time, then set '
+              'exact times before adding reminders.',
+              style: TextStyle(
+                  fontSize: 12.5.sp,
+                  color: AppColors.ai,
+                  fontWeight: FontWeight.w600,
+                  height: 1.42),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 2.w),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11.sp,
+          fontWeight: FontWeight.w800,
+          color: AppColors.muted,
+          letterSpacing: .6,
+        ),
+      ),
+    );
+  }
+}
+
 class _MedicineEditorCard extends StatelessWidget {
   const _MedicineEditorCard({
+    required this.index,
     required this.med,
     required this.onChanged,
     required this.onFrequencyChanged,
@@ -252,6 +292,7 @@ class _MedicineEditorCard extends StatelessWidget {
     this.allergyFlag,
   });
 
+  final int index;
   final ParsedMedicine med;
   final String? allergyFlag;
   final VoidCallback onChanged;
@@ -261,15 +302,36 @@ class _MedicineEditorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final flagged = allergyFlag != null;
     return MCard(
-      border: allergyFlag != null
-          ? Border.all(color: AppColors.warning, width: 1.2.w)
-          : null,
+      padding: EdgeInsets.all(16.r),
+      border: Border.all(
+        color: flagged ? AppColors.warning.withValues(alpha: .55) : AppColors.line,
+        width: flagged ? 1.3.w : 1.w,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 26.r,
+                height: 26.r,
+                margin: EdgeInsets.only(top: 4.h),
+                decoration: BoxDecoration(
+                  color: AppColors.soft,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text('${index + 1}',
+                      style: TextStyle(
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.onSoft)),
+                ),
+              ),
+              SizedBox(width: 10.w),
               Expanded(
                 child: TextFormField(
                   initialValue: med.name,
@@ -277,43 +339,59 @@ class _MedicineEditorCard extends StatelessWidget {
                     med.name = v;
                     onChanged();
                   },
-                  style: TextStyle(fontSize: 14.5.sp, fontWeight: FontWeight.w700),
+                  style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700),
                   decoration: const InputDecoration(
                     labelText: 'Medicine name',
                     isDense: true,
+                    border: UnderlineInputBorder(),
                   ),
                 ),
               ),
               if (onRemove != null)
-                IconButton(
-                  onPressed: onRemove,
-                  icon: Icon(Icons.close_rounded, size: 20.sp, color: AppColors.muted),
+                InkWell(
+                  onTap: onRemove,
+                  borderRadius: BorderRadius.circular(20.r),
+                  child: Padding(
+                    padding: EdgeInsets.all(4.r),
+                    child: Icon(Icons.close_rounded, size: 19.sp, color: AppColors.muted),
+                  ),
                 ),
             ],
           ),
-          if (allergyFlag != null) ...[
-            SizedBox(height: 4.h),
-            Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, size: 15.sp, color: AppColors.warning),
-                SizedBox(width: 5.w),
-                Expanded(
-                  child: Text(
-                    'Possible match with your listed allergy "$allergyFlag" — '
-                    'confirm with your doctor before adding this.',
-                    style: TextStyle(
-                        fontSize: 11.5.sp,
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w600),
+          if (flagged) ...[
+            SizedBox(height: 10.h),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: AppColors.warningSoft,
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 15.sp, color: AppColors.warning),
+                  SizedBox(width: 6.w),
+                  Expanded(
+                    child: Text(
+                      'Possible match with your listed allergy "$allergyFlag" — '
+                      'confirm with your doctor before adding this.',
+                      style: TextStyle(
+                          fontSize: 11.5.sp,
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
-          SizedBox(height: 10.h),
+          SizedBox(height: 14.h),
           Row(
             children: [
               Expanded(
+                flex: 3,
                 child: TextFormField(
                   initialValue: med.dose,
                   onChanged: (v) {
@@ -322,13 +400,15 @@ class _MedicineEditorCard extends StatelessWidget {
                   },
                   style: TextStyle(fontSize: 13.sp),
                   decoration: const InputDecoration(
-                    labelText: 'Dose (e.g. 400 mg)',
+                    labelText: 'Dose',
+                    hintText: '400 mg',
                     isDense: true,
                   ),
                 ),
               ),
               SizedBox(width: 10.w),
               Expanded(
+                flex: 2,
                 child: TextFormField(
                   initialValue: med.durationDays?.toString() ?? '',
                   keyboardType: TextInputType.number,
@@ -338,14 +418,15 @@ class _MedicineEditorCard extends StatelessWidget {
                   },
                   style: TextStyle(fontSize: 13.sp),
                   decoration: const InputDecoration(
-                    labelText: 'Days (optional)',
+                    labelText: 'Days',
+                    hintText: 'Optional',
                     isDense: true,
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 10.h),
+          SizedBox(height: 12.h),
           TextFormField(
             initialValue: med.instructions,
             onChanged: (v) {
@@ -354,32 +435,34 @@ class _MedicineEditorCard extends StatelessWidget {
             },
             style: TextStyle(fontSize: 13.sp),
             decoration: const InputDecoration(
-              labelText: 'Instructions (optional) — e.g. after food',
+              labelText: 'Instructions',
+              hintText: 'e.g. after food (optional)',
               isDense: true,
             ),
           ),
+          SizedBox(height: 16.h),
+          Divider(height: 1.h, color: AppColors.line),
           SizedBox(height: 14.h),
           Row(
             children: [
+              Icon(Icons.repeat_rounded, size: 15.sp, color: AppColors.muted),
+              SizedBox(width: 6.w),
               Text('Times per day',
-                  style: TextStyle(fontSize: 12.5.sp, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.inkSoft)),
               const Spacer(),
-              _Stepper(
-                value: med.timesPerDay,
-                onChanged: onFrequencyChanged,
-              ),
+              _Stepper(value: med.timesPerDay, onChanged: onFrequencyChanged),
             ],
           ),
-          SizedBox(height: 10.h),
+          SizedBox(height: 12.h),
           Wrap(
             spacing: 8.w,
             runSpacing: 8.h,
             children: [
               for (var i = 0; i < med.times.length; i++)
-                _TimeChip(
-                  time: med.times[i],
-                  onTap: () => onPickTime(i),
-                ),
+                _TimeChip(time: med.times[i], onTap: () => onPickTime(i)),
             ],
           ),
         ],
@@ -395,34 +478,43 @@ class _Stepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _stepBtn(Icons.remove_rounded, value > 1 ? () => onChanged(value - 1) : null),
-        SizedBox(
-          width: 26.w,
-          child: Text('$value',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w800)),
-        ),
-        _stepBtn(Icons.add_rounded, value < 6 ? () => onChanged(value + 1) : null),
-      ],
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: AppColors.paper,
+        borderRadius: BorderRadius.circular(10.r),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _stepBtn(Icons.remove_rounded, value > 1 ? () => onChanged(value - 1) : null),
+          SizedBox(
+            width: 22.w,
+            child: Text('$value',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13.5.sp, fontWeight: FontWeight.w800)),
+          ),
+          _stepBtn(Icons.add_rounded, value < 6 ? () => onChanged(value + 1) : null),
+        ],
+      ),
     );
   }
 
   Widget _stepBtn(IconData icon, VoidCallback? onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(7.r),
       child: Container(
-        width: 28,
-        height: 28,
+        width: 24.r,
+        height: 24.r,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: onTap == null ? AppColors.line.withValues(alpha: .5) : AppColors.soft,
-          borderRadius: BorderRadius.circular(8),
+          color: onTap == null ? Colors.transparent : AppColors.soft,
+          borderRadius: BorderRadius.circular(7.r),
         ),
         child: Icon(icon,
-            size: 16, color: onTap == null ? AppColors.muted : AppColors.primary),
+            size: 15.sp, color: onTap == null ? AppColors.line : AppColors.primary),
       ),
     );
   }
@@ -443,7 +535,7 @@ class _TimeChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.soft,
           borderRadius: BorderRadius.circular(10.r),
-          border: Border.all(color: AppColors.primary.withValues(alpha: .3)),
+          border: Border.all(color: AppColors.primary.withValues(alpha: .25)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -457,6 +549,70 @@ class _TimeChip extends StatelessWidget {
                     color: AppColors.onSoft)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AddMedicineButton extends StatelessWidget {
+  const _AddMedicineButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14.r),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(vertical: 13.h),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14.r),
+          border: Border.all(color: AppColors.line, width: 1.2.w),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_rounded, size: 18.sp, color: AppColors.ink),
+            SizedBox(width: 7.w),
+            Text('Add another medicine',
+                style: TextStyle(
+                    fontSize: 13.sp, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RawTextPanel extends StatelessWidget {
+  const _RawTextPanel({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.only(top: 8.h),
+        title: Text("Didn't come out right? See raw scan text",
+            style: TextStyle(
+                fontSize: 12.5.sp,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted)),
+        iconColor: AppColors.muted,
+        collapsedIconColor: AppColors.muted,
+        children: [
+          MCard(
+            color: AppColors.paper,
+            child: SelectableText(
+              text,
+              style: TextStyle(
+                  fontSize: 12.5.sp, color: AppColors.inkSoft, height: 1.5),
+            ),
+          ),
+        ],
       ),
     );
   }

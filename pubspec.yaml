@@ -58,8 +58,9 @@ dependencies:
   record: ^6.0.0
   package_info_plus: ^9.0.1
   path_provider: ^2.1.5
+  image: ^4.5.4
   audioplayers: ^6.5.1
-  google_mlkit_text_recognition: ^0.16.0
+  flutter_tesseract_ocr: ^0.4.23
   flutter_tts: ^4.2.0
   android_intent_plus: ^5.0.2
 
