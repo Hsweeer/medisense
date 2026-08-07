@@ -470,6 +470,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.9.3"
+  flutter_tesseract_ocr:
+    dependency: "direct main"
+    description:
+      name: flutter_tesseract_ocr
+      sha256: "63552ab444f3fa3b2e86485ad3a40cfcf70408fcd14cd061d87bfd3c7ff22a0e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.31"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -624,14 +632,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.14.0"
-  google_mlkit_text_recognition:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_text_recognition
-      sha256: "8324fdc2628ebeb63568ad06437b984b716d938d87e4ce63ab24dfd3eeebf08a"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.16.0"
   google_sign_in:
     dependency: "direct main"
     description:
@@ -704,6 +704,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
+  image:
+    dependency: "direct main"
+    description:
+      name: image
+      sha256: f9881ff4998044947ec38d098bc7c8316ae1186fa786eddffdb867b9bc94dfce
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.8.0"
   image_picker:
     dependency: "direct main"
     description:

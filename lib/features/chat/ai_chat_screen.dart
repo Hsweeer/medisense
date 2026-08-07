@@ -113,26 +113,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       fontSize: 16.sp, fontWeight: FontWeight.w700)),
               SizedBox(height: 10.h),
               _AttachRow(
-                icon: Icons.photo_camera_rounded,
+                icon: Icons.add_a_photo_rounded,
                 color: AppColors.primary,
                 soft: AppColors.soft,
-                title: 'Camera',
-                sub: 'Take a photo of anything',
-                onTap: () => _pickAndStage(chat,
-                    source: ImageSource.camera,
-                    intent: AttachmentIntent.general,
-                    detail: 'Camera · JPG'),
-              ),
-              _AttachRow(
-                icon: Icons.photo_library_rounded,
-                color: AppColors.primary,
-                soft: AppColors.soft,
-                title: 'Photo library',
-                sub: 'Pick from your gallery',
-                onTap: () => _pickAndStage(chat,
-                    source: ImageSource.gallery,
-                    intent: AttachmentIntent.general,
-                    detail: 'Photo'),
+                title: 'Add a photo',
+                sub: 'Take a new photo or choose one from your phone',
+                onTap: () => _chooseAndStageImage(
+                  chat,
+                  intent: AttachmentIntent.general,
+                  pickerTitle: 'Add a photo',
+                ),
               ),
               _AttachRow(
                 icon: Icons.description_rounded,
@@ -147,11 +137,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 color: AppColors.ai,
                 soft: AppColors.aiSoft,
                 title: 'Scan prescription',
-                sub: 'MedAI reads the doctor\'s note & sets alarms itself',
-                onTap: () => _pickAndStage(chat,
-                    source: ImageSource.camera,
-                    intent: AttachmentIntent.prescription,
-                    detail: 'Scan · JPG'),
+                sub: 'Photograph or choose a prescription for MedAI to read',
+                onTap: () => _chooseAndStageImage(
+                  chat,
+                  intent: AttachmentIntent.prescription,
+                  pickerTitle: 'Scan prescription',
+                ),
               ),
               _AttachRow(
                 icon: Icons.face_retouching_natural_rounded,
@@ -159,7 +150,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.aiSoft,
                 title: 'Skin check',
                 sub: 'Detect a skin condition from a photo',
-                onTap: () => _pickAndStage(chat,
+                onTap: () => _closeAndPickImage(chat,
                     source: ImageSource.camera,
                     intent: AttachmentIntent.skin,
                     detail: 'Camera · JPG'),
@@ -179,20 +170,91 @@ class _AiChatScreenState extends State<AiChatScreen> {
     );
   }
 
-  /// Opens the real device camera or gallery and stages whatever the user
-  /// actually picks — replaces the old placeholder that staged a fake
-  /// hardcoded filename without ever opening anything.
+  /// Presents one consistent camera-or-library choice before staging an image.
+  /// This keeps the main MedAI sheet compact while allowing both sources for
+  /// ordinary photos and prescription OCR.
+  Future<void> _chooseAndStageImage(
+    ChatProvider chat, {
+    required AttachmentIntent intent,
+    required String pickerTitle,
+  }) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 14.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(pickerTitle,
+                  style: GoogleFonts.sora(
+                      fontSize: 16.sp, fontWeight: FontWeight.w700)),
+              SizedBox(height: 10.h),
+              _AttachRow(
+                icon: Icons.photo_camera_rounded,
+                color: AppColors.primary,
+                soft: AppColors.soft,
+                title: 'Open camera',
+                sub: 'Take a new photo',
+                onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+              ),
+              _AttachRow(
+                icon: Icons.photo_library_rounded,
+                color: AppColors.primary,
+                soft: AppColors.soft,
+                title: 'Choose from phone',
+                sub: 'Select an existing photo',
+                onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    // Dismiss the original attachment sheet before invoking the platform picker.
+    Navigator.of(context).pop();
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+
+    await _pickAndStage(
+      chat,
+      source: source,
+      intent: intent,
+      detail: source == ImageSource.camera ? 'Camera · JPG' : 'Photo · JPG',
+    );
+  }
+
+  Future<void> _closeAndPickImage(
+    ChatProvider chat, {
+    required ImageSource source,
+    required AttachmentIntent intent,
+    required String detail,
+  }) async {
+    Navigator.of(context).pop();
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    await _pickAndStage(chat, source: source, intent: intent, detail: detail);
+  }
+
+  /// Opens the selected real device source and stages the actual picked file.
   Future<void> _pickAndStage(
     ChatProvider chat, {
     required ImageSource source,
     required AttachmentIntent intent,
     required String detail,
   }) async {
-    Navigator.of(context).pop(); // close the attach sheet first
     try {
       final picked = await ImagePicker().pickImage(
         source: source,
-        imageQuality: 85, // keeps upload size reasonable once wired to a real AI call
+        // Prescription OCR is sensitive to compression around small characters.
+        imageQuality: intent == AttachmentIntent.prescription ? 100 : 85,
       );
       if (picked == null || !mounted) return; // user cancelled
       final fileName = picked.path.split(Platform.pathSeparator).last;

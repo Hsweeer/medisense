@@ -37,7 +37,7 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>MediSense uses your location to provide accurate nearby care information during emergencies.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>MediSense uses your photo library to allow you to upload a profile picture.</string>
+	<string>MediSense uses your photo library to scan prescriptions and add health photos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

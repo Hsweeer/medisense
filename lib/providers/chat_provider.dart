@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import '../core/services/groq_service.dart';
+import '../core/services/language_pack_manager.dart';
 import '../core/services/prescription_parser.dart';
+import '../core/services/tesseract_ocr_service.dart';
 import '../data/models/models.dart';
 import 'profile_provider.dart';
 import 'reminder_provider.dart';
@@ -21,10 +22,6 @@ import 'reminder_provider.dart';
 /// before anything becomes a real reminder (see PrescriptionReviewScreen).
 /// Skin-photo/lab-report "analysis" replies stay scripted for now — that
 /// needs a vision-capable model, a separate task from OCR.
-/// must not depend on an LLM call succeeding). Attachment "analysis" replies
-/// (prescription/skin photo/lab report) stay scripted for now — the text
-/// model here can't see the actual image/PDF content; wiring that up for
-/// real needs a vision-capable model plus file-content extraction.
 class ChatProvider extends ChangeNotifier {
   ChatProvider({this.reminderEngine, this.profileProvider}) {
     _initChat();
@@ -173,11 +170,12 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
-    final textRecognizer =
-        TextRecognizer(script: TextRecognitionScript.latin);
     try {
-      final inputImage = InputImage.fromFilePath(path);
-      final raw = (await textRecognizer.processImage(inputImage)).text;
+      final langCode = await LanguagePackManager.instance.activeLanguage();
+      final raw = await TesseractOcrService.extractText(
+        path,
+        language: langCode,
+      );
       final cleaned = raw.trim();
       typing = false;
 
@@ -221,8 +219,6 @@ class ChatProvider extends ChangeNotifier {
         text: 'Something went wrong reading that photo. Please try again.',
       ));
       notifyListeners();
-    } finally {
-      await textRecognizer.close();
     }
   }
 
