@@ -44,11 +44,11 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <intent-filter>
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="medisense" />
+                <data android:scheme="medisense" android:host="sos" />
             </intent-filter>
         </activity>
 
@@ -112,6 +112,14 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="SOS Button Overlay" />
         </service>
+
+        <receiver
+            android:name=".SosTriggerReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.medisense.medisense_app.ACTION_SOS_TRIGGER" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

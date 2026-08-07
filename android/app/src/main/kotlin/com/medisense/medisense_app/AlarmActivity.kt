@@ -18,12 +18,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * The alarm itself, shown full-screen over the lock screen exactly like the
- * Android Clock app. Launched either directly by [AlarmRingingService] (app
- * in foreground/background) or via the notification's full-screen intent
- * (app terminated / device locked) — both paths land here the same way.
- */
 class AlarmActivity : Activity() {
 
     private var currentTimeHandler: Handler? = null
@@ -31,12 +25,12 @@ class AlarmActivity : Activity() {
     private var pulseAnimatorInner: ValueAnimator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // Move window flags to the VERY TOP, before super.onCreate
         showOverLockScreen()
+        super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_alarm)
 
         applyIntentExtras(intent)
-
         startClock()
         startPulse()
 
@@ -50,13 +44,6 @@ class AlarmActivity : Activity() {
         }
     }
 
-    /**
-     * singleInstance means a second alarm (e.g. the original reminder firing
-     * again right as a snooze from it comes due) is delivered here instead
-     * of creating a new screen. Without this override that second intent
-     * would be silently dropped and the screen would keep showing stale
-     * medicine info — so refresh the displayed content from it instead.
-     */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -74,7 +61,6 @@ class AlarmActivity : Activity() {
             if (displayTime.isBlank()) "Medicine time" else "Scheduled for $displayTime"
     }
 
-    /** Wakes the device, shows over the lock screen, and keeps the screen on — same as a real alarm clock. */
     private fun showOverLockScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -87,10 +73,13 @@ class AlarmActivity : Activity() {
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON,
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
             )
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Ensure screen brightness and instant pop-up
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
     }
 
     private fun startClock() {
@@ -119,11 +108,10 @@ class AlarmActivity : Activity() {
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
         }
-        // Keep X/Y scale in lockstep and fade slightly as it grows, without a second animator per axis.
         animator.addUpdateListener {
             val v = it.animatedValue as Float
             target.scaleY = v
-            target.alpha = 1.4f - v // fades out as it expands, like a sonar ping
+            target.alpha = 1.4f - v
         }
         animator.start()
         return animator
@@ -141,8 +129,5 @@ class AlarmActivity : Activity() {
         super.onDestroy()
     }
 
-    // Back button must not dismiss the alarm silently — Stop/Snooze are the only ways out.
-    override fun onBackPressed() {
-        // no-op, intentionally
-    }
+    override fun onBackPressed() {}
 }

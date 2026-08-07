@@ -17,16 +17,19 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
+import com.medisense.medisense_app.R
+import java.util.Locale
 
-class AlarmRingingService : Service() {
+class AlarmRingingService : Service(), TextToSpeech.OnInitListener {
 
     companion object {
         const val ACTION_RING = "com.medisense.medisense_app.action.RING"
         const val ACTION_STOP = "com.medisense.medisense_app.action.STOP"
         const val ACTION_SNOOZE = "com.medisense.medisense_app.action.SNOOZE"
 
-        private const val CHANNEL_ID = "medisense_alarm_ringing"
+        private const val CHANNEL_ID = "medisense_alarm_ringing_v2"
         private const val FOREGROUND_NOTIFICATION_ID = 991_001
         private const val SNOOZE_MINUTES = 10
     }
@@ -34,6 +37,8 @@ class AlarmRingingService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var tts: TextToSpeech? = null
+    private var ttsInitialized = false
 
     private var currentAlarmId: Int = -1
     private var currentReminderId: String = ""
@@ -60,6 +65,28 @@ class AlarmRingingService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts?.let {
+                val result = it.setLanguage(Locale.US)
+                if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
+                    ttsInitialized = true
+                    speakMedicineTime()
+                }
+            }
+        }
+    }
+
+    private fun speakMedicineTime() {
+        if (ttsInitialized) {
+            val text = "It's your medicine time."
+            for (i in 1..3) {
+                tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "medicine_alert_$i")
+                tts?.playSilentUtterance(1500, TextToSpeech.QUEUE_ADD, null)
+            }
+        }
+    }
+
     private fun startRinging(intent: Intent?) {
         currentAlarmId = intent?.getIntExtra(AlarmScheduler.EXTRA_ALARM_ID, -1) ?: -1
         currentReminderId = intent?.getStringExtra(AlarmScheduler.EXTRA_REMINDER_ID) ?: ""
@@ -68,10 +95,13 @@ class AlarmRingingService : Service() {
         currentDisplayTime = intent?.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""
         currentSoundRawResName = intent?.getStringExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME) ?: ""
 
-        // 1. Immediate Wake Lock to light up screen
+        // 1. UI FIRST: Launch activity before anything else
+        launchAlarmActivity()
+        
+        // 2. IMMEDIATE WAKE LOCK
         acquireWakeLock()
 
-        // 2. Build and Start Foreground Service immediately
+        // 3. START FOREGROUND
         val notification = buildForegroundNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -79,12 +109,10 @@ class AlarmRingingService : Service() {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification)
         }
 
-        // 3. FORCE launch AlarmActivity immediately (removing the locked check for better reliability)
-        launchAlarmActivity()
-
-        // 4. Start Sound and Vibration
+        // 4. AUDIO / VIBE
         startSound()
         startVibration()
+        tts = TextToSpeech(this, this)
     }
 
     private fun acquireWakeLock() {
@@ -92,10 +120,10 @@ class AlarmRingingService : Service() {
         @Suppress("DEPRECATION")
         wakeLock = pm.newWakeLock(
             PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-            "medisense:alarm_ringing_wakeup",
+            "medisense:alarm_instant_wakeup",
         ).apply {
             setReferenceCounted(false)
-            acquire(60 * 1000L) // 1 minute is plenty
+            acquire(60 * 1000L)
         }
     }
 
@@ -104,7 +132,8 @@ class AlarmRingingService : Service() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_NO_USER_ACTION
             putExtra(AlarmScheduler.EXTRA_ALARM_ID, currentAlarmId)
             putExtra(AlarmScheduler.EXTRA_REMINDER_ID, currentReminderId)
             putExtra(AlarmScheduler.EXTRA_TITLE, currentTitle)
@@ -112,11 +141,7 @@ class AlarmRingingService : Service() {
             putExtra(AlarmScheduler.EXTRA_DISPLAY_TIME, currentDisplayTime)
             putExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME, currentSoundRawResName)
         }
-        try {
-            startActivity(activityIntent)
-        } catch (e: Exception) {
-            // Log if needed
-        }
+        startActivity(activityIntent)
     }
 
     private fun buildForegroundNotification(): android.app.Notification {
@@ -127,9 +152,10 @@ class AlarmRingingService : Service() {
                 "Medicine Alarm",
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "Full-screen medicine alarm"
+                description = "Urgent medicine reminder"
                 setSound(null, null)
                 enableVibration(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             nm.createNotificationChannel(channel)
         }
@@ -137,11 +163,6 @@ class AlarmRingingService : Service() {
         val fullScreenIntent = Intent(this, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(AlarmScheduler.EXTRA_ALARM_ID, currentAlarmId)
-            putExtra(AlarmScheduler.EXTRA_REMINDER_ID, currentReminderId)
-            putExtra(AlarmScheduler.EXTRA_TITLE, currentTitle)
-            putExtra(AlarmScheduler.EXTRA_DOSE, currentDose)
-            putExtra(AlarmScheduler.EXTRA_DISPLAY_TIME, currentDisplayTime)
-            putExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME, currentSoundRawResName)
         }
         val fullScreenPendingIntent = PendingIntent.getActivity(
             this,
@@ -150,17 +171,14 @@ class AlarmRingingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
-        val message = if (currentDose.isBlank()) "Time to take $currentTitle" else "Time to take $currentTitle · $currentDose"
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Medicine Alarm")
-            .setContentText(message)
+            .setContentText("Time for your medication")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .setOngoing(true)
-            .setAutoCancel(false)
             .build()
     }
 
@@ -229,9 +247,16 @@ class AlarmRingingService : Service() {
         vibrator = null
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
+        tts?.let { it.stop(); it.shutdown() }
+        tts = null
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(FOREGROUND_NOTIFICATION_ID)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(Service.STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 
     override fun onDestroy() {

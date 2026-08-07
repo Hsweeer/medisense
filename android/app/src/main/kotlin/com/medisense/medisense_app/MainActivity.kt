@@ -14,11 +14,13 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "medisense_native_channel"
     private var methodChannel: MethodChannel? = null
+    private var pendingSos = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -29,39 +31,36 @@ class MainActivity : FlutterActivity() {
             Log.d("SOS_DEBUG", "MainActivity: Native method call received: ${call.method}")
             try {
                 when (call.method) {
+                    "flutterReady" -> {
+                        Log.d("SOS_DEBUG", "MainActivity: Flutter reported ready")
+                        if (pendingSos) {
+                            Log.d("SOS_DEBUG", "MainActivity: Triggering stored pending SOS")
+                            triggerSosInFlutter()
+                        }
+                        result.success(null)
+                    }
                     "triggerSosNow" -> {
-                        Log.d("SOS_DEBUG", "MainActivity: triggerSosNow entry")
-                        triggerNativeSos()
+                        triggerNativeSosWithDeepLink()
                         result.success(null)
                     }
                     "bringToForeground" -> {
-                        Log.d("SOS_DEBUG", "MainActivity: bringToForeground entry")
                         forceAppToFront()
                         result.success(null)
                     }
                     "scheduleAlarm" -> {
-                        Log.d("SOS_DEBUG", "MainActivity: scheduleAlarm entry")
                         handleScheduleAlarm(call, result)
                     }
                     "cancelAlarm" -> {
-                        Log.d("SOS_DEBUG", "MainActivity: cancelAlarm entry")
                         handleCancelAlarm(call, result)
                     }
                     "cancelAllAlarms" -> {
-                        Log.d("SOS_DEBUG", "MainActivity: cancelAllAlarms entry")
                         AlarmScheduler.cancelAllStored(this)
                         result.success(null)
                     }
-                    "ensureFullScreenIntentPermission" -> {
-                        Log.d("SOS_DEBUG", "MainActivity: ensureFullScreenIntentPermission entry")
-                        result.success(null)
-                    }
                     "requestIgnoreBatteryOptimizations" -> {
-                        Log.d("SOS_DEBUG", "MainActivity: requestIgnoreBatteryOptimizations entry")
                         handleRequestIgnoreBatteryOptimizations(result)
                     }
                     else -> {
-                        Log.w("SOS_DEBUG", "MainActivity: Method not implemented: ${call.method}")
                         result.notImplemented()
                     }
                 }
@@ -71,13 +70,15 @@ class MainActivity : FlutterActivity() {
             }
         }
         
-        // Handle cold start
-        handleIntent(intent)
+        checkIntentForSos(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d("SOS_DEBUG", "MainActivity: onCreate entry")
+        
+        createNotificationChannel()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -88,89 +89,89 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            val channel = NotificationChannel(
+                "sos_channel",
+                "SOS Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Used to launch the SOS screen instantly, including over the lock screen"
+                setBypassDnd(true)
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(channel)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         Log.d("SOS_DEBUG", "MainActivity: onNewIntent entry")
         setIntent(intent)
-        handleIntent(intent)
+        checkIntentForSos(intent)
     }
 
-    private fun handleIntent(intent: Intent?) {
-        val action = intent?.getStringExtra("action")
+    private fun checkIntentForSos(intent: Intent?) {
+        val action = intent?.action
         val data = intent?.data
-        Log.d("SOS_DEBUG", "MainActivity: handleIntent entry. action: $action, data: $data")
+        Log.d("SOS_DEBUG", "MainActivity: checkIntentForSos. action: $action, data: $data")
         
-        if (action == "OPEN_SOS" || data?.scheme == "medisense") {
-            Log.d("SOS_DEBUG", "MainActivity: SOS signal detected, notifying Flutter")
+        if (data?.scheme == "medisense" && data?.host == "sos") {
+            Log.d("SOS_DEBUG", "MainActivity: SOS deep link detected")
+            pendingSos = true
+            triggerSosInFlutter()
+        } else if (intent?.getStringExtra("action") == "OPEN_SOS") {
+            Log.d("SOS_DEBUG", "MainActivity: SOS intent extra detected")
+            pendingSos = true
+            triggerSosInFlutter()
+        }
+    }
+
+    private fun triggerSosInFlutter() {
+        if (methodChannel != null) {
+            Log.d("SOS_DEBUG", "MainActivity: Notifying Flutter engine to open SOS screen")
             methodChannel?.invokeMethod("openSosScreen", null)
+            pendingSos = false
+        } else {
+            Log.d("SOS_DEBUG", "MainActivity: Engine not ready yet, SOS remains pending")
         }
     }
 
     private fun forceAppToFront() {
-        Log.d("SOS_DEBUG", "MainActivity: forceAppToFront entry")
         val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-        if (intent != null) {
-            Log.d("SOS_DEBUG", "MainActivity: forceAppToFront - launching")
-            startActivity(intent)
-        }
+        if (intent != null) startActivity(intent)
     }
 
-    private fun triggerNativeSos() {
-        Log.d("SOS_DEBUG", "MainActivity: triggerNativeSos (Full Screen Alert) starting")
-        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra("action", "OPEN_SOS")
-        }
-
-        if (intent == null) {
-            Log.e("SOS_DEBUG", "MainActivity: triggerNativeSos - launch intent is null")
-            return
+    private fun triggerNativeSosWithDeepLink() {
+        Log.d("SOS_DEBUG", "MainActivity: triggerNativeSosWithDeepLink starting")
+        val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse("medisense://sos")).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            setPackage(packageName)
         }
 
         val pendingIntent = PendingIntent.getActivity(
-            this, 911, intent,
+            this, 0, deepLinkIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "sos_alert_pro_v1"
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "SOS Emergency System", NotificationManager.IMPORTANCE_HIGH).apply {
-                setBypassDnd(true)
-                enableVibration(true)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-            }
-            nm.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = NotificationCompat.Builder(this, "sos_channel")
             .setSmallIcon(applicationInfo.icon)
-            .setContentTitle("CRITICAL SOS ALERT")
-            .setContentText("Emergency Dashboard is opening...")
+            .setContentTitle("SOS Activated")
+            .setContentText("Opening SOS screen...")
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(pendingIntent, true) // THE NUCLEAR OPTION
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(pendingIntent, true)
             .setAutoCancel(true)
-            .setOngoing(false)
             .build()
 
-        Log.d("SOS_DEBUG", "MainActivity: Posting full-screen notification")
-        nm.notify(911, notification)
-        
-        // Backup: Try to start directly
-        try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.e("SOS_DEBUG", "MainActivity: triggerNativeSos direct startActivity failed: ${e.message}")
-        }
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(1001, notification)
     }
 
-    private fun handleScheduleAlarm(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
+    private fun handleScheduleAlarm(call: MethodCall, result: MethodChannel.Result) {
         try {
             val reminderId = call.argument<String>("reminderId")
             val title = call.argument<String>("title")
@@ -201,12 +202,11 @@ class MainActivity : FlutterActivity() {
                 result.error("INVALID_ARGUMENTS", "Missing required arguments", null)
             }
         } catch (e: Exception) {
-            Log.e("SOS_DEBUG", "MainActivity: handleScheduleAlarm ERROR: ${e.message}")
             result.error("EXCEPTION", e.message, null)
         }
     }
 
-    private fun handleCancelAlarm(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
+    private fun handleCancelAlarm(call: MethodCall, result: MethodChannel.Result) {
         val reminderId = call.argument<String>("reminderId")
         if (reminderId != null) {
             AlarmScheduler.cancelAllForReminder(this, reminderId)

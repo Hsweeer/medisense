@@ -1,8 +1,7 @@
 import 'dart:async';
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 
 class SosOverlayButton extends StatefulWidget {
@@ -17,7 +16,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
   double _progress = 0.0;
   Timer? _timer;
 
-  // FIXED: Must match MainActivity.kt exactly
+  // This channel communicates directly with Kotlin from the overlay
   static const _channel = MethodChannel('medisense_native_channel');
 
   @override
@@ -40,7 +39,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
                 opacity: opacity,
                 child: AnimatedScale(
                   duration: const Duration(milliseconds: 200),
-                  scale: 1.0,
+                  scale: 1.0, 
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -92,10 +91,10 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
     _progress = 0.0;
     HapticFeedback.mediumImpact();
     
-    const duration = Duration(milliseconds: 40);
+    const duration = Duration(milliseconds: 30);
     _timer = Timer.periodic(duration, (t) {
       setState(() {
-        _progress += 0.04; // 1 second total (1.0 / 25 ticks)
+        _progress += 0.1; // 0.3 seconds total (1.0 / 10 ticks)
         if (_progress >= 1.0) {
           _progress = 1.0;
           t.cancel();
@@ -113,29 +112,30 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
     });
   }
 
+  bool _isTriggered = false;
+
   void _triggerSos() async {
+    if (_isTriggered) return;
+    _isTriggered = true;
+
     HapticFeedback.vibrate();
+    debugPrint('SOS_DEBUG: Triggering SOS via Native Broadcast (Approach B)');
     
-    debugPrint('SOS_DEBUG: Triggering SOS from Overlay Engine');
-    
-    // 1. Try built-in shareData (works if main app is backgrounded/alive)
     try {
-      await FlutterOverlayWindow.shareData('trigger_sos');
-      debugPrint('SOS_DEBUG: shareData sent');
+      const intent = AndroidIntent(
+        action: 'com.medisense.medisense_app.ACTION_SOS_TRIGGER',
+        package: 'com.medisense.medisense_app', // Explicit target to bypass Android 8+ restrictions
+      );
+      await intent.sendBroadcast();
+      debugPrint('SOS_DEBUG: Explicit broadcast intent sent successfully');
     } catch (e) {
-      debugPrint('SOS_DEBUG: shareData error: $e');
+      debugPrint('SOS_DEBUG: Broadcast failed: $e');
     }
 
-    // 2. Try deep link (works even if app is KILLED)
-    try {
-      final url = Uri.parse('medisense://sos');
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalNonBrowserApplication);
-        debugPrint('SOS_DEBUG: deep link launched');
-      }
-    } catch (e) {
-      debugPrint('SOS_DEBUG: deep link error: $e');
-    }
+    // Reset after delay to allow future triggers
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _isTriggered = false);
+    });
 
     _resetTimer();
   }

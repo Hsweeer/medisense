@@ -159,54 +159,25 @@ class _PatientShellState extends State<PatientShell>
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTapDown: (_) {
-          _sosAnim.forward();
-          _sosTimer = Timer(const Duration(seconds: 1), () {
-            context.read<SosProvider>().triggerImmediate();
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SosScreen()),
-            );
-            _sosAnim.reset();
-            _sosProgress = 0;
-          });
-        },
-        onTapUp: (_) {
-          _sosTimer?.cancel();
-          _sosAnim.reverse();
-        },
-        onTapCancel: () {
-          _sosTimer?.cancel();
-          _sosAnim.reverse();
+        onTap: () {
+          context.read<SosProvider>().triggerImmediate();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const SosScreen()),
+          );
         },
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 48.w,
-                  height: 48.w,
-                  child: CircularProgressIndicator(
-                    value: _sosProgress,
-                    strokeWidth: 3.w,
-                    backgroundColor: AppColors.danger.withValues(alpha: .15),
-                    valueColor: const AlwaysStoppedAnimation(AppColors.danger),
-                  ),
+            Container(
+              width: 40.w,
+              height: 40.w,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.danger, Color(0xFFE0554B)],
                 ),
-                Container(
-                  width: 40.w,
-                  height: 40.w,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.danger, Color(0xFFE0554B)],
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child:
-                      Icon(Icons.sos_rounded, color: Colors.white, size: 22.sp),
-                ),
-              ],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.sos_rounded, color: Colors.white, size: 22.sp),
             ),
             SizedBox(height: 2.h),
             Text(

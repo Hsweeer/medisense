@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -33,64 +34,66 @@ class SosPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         Log.d("SOS_DEBUG", "SosPlugin: onMethodCall: ${call.method}")
         when (call.method) {
             "triggerSosNow" -> {
-                triggerNativeSos()
+                triggerNativeSosWithDeepLink()
                 result.success(null)
             }
             else -> result.notImplemented()
         }
     }
 
-    private fun triggerNativeSos() {
+    private fun triggerNativeSosWithDeepLink() {
         val ctx = context ?: return
-        Log.d("SOS_DEBUG", "SosPlugin: triggerNativeSos entry")
+        Log.d("SOS_DEBUG", "SosPlugin: triggerNativeSosWithDeepLink starting")
 
-        val intent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra("action", "OPEN_SOS")
-        }
-
-        if (intent == null) {
-            Log.e("SOS_DEBUG", "SosPlugin: launch intent is null")
-            return
+        // 1. Create a deep link Intent that opens the app's SOS screen
+        val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse("medisense://sos")).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            setPackage(ctx.packageName)
         }
 
         val pendingIntent = PendingIntent.getActivity(
-            ctx, 911, intent,
+            ctx, 0, deepLinkIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "sos_emergency_channel_v4"
+        val channelId = "sos_channel"
 
+        // 2. Ensure high-importance channel exists
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "SOS Emergency Alert", NotificationManager.IMPORTANCE_HIGH).apply {
+            val channel = NotificationChannel(
+                channelId,
+                "SOS Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Used to launch the SOS screen instantly, including over the lock screen"
                 setBypassDnd(true)
                 enableVibration(true)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             nm.createNotificationChannel(channel)
         }
 
+        // 3. Post high-priority full-screen notification
+        // Note: CATEGORY_CALL is used to get "VIP" treatment for background launch
         val notification = NotificationCompat.Builder(ctx, channelId)
             .setSmallIcon(ctx.applicationInfo.icon)
-            .setContentTitle("CRITICAL SOS ALERT")
-            .setContentText("Emergency Dashboard is activating...")
+            .setContentTitle("SOS Activated")
+            .setContentText("Tap to open emergency dashboard")
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(pendingIntent, true)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(pendingIntent, true) 
             .setAutoCancel(true)
             .setOngoing(false)
             .build()
 
-        Log.d("SOS_DEBUG", "SosPlugin: posting notification")
-        nm.notify(911, notification)
+        nm.notify(1001, notification)
+        Log.d("SOS_DEBUG", "SosPlugin: Full-screen SOS notification posted with deep link")
         
+        // backup direct wake up (might fail on Android 14 but good to try)
         try {
-            ctx.startActivity(intent)
+            ctx.startActivity(deepLinkIntent)
         } catch (e: Exception) {
-            Log.e("SOS_DEBUG", "SosPlugin: startActivity failed: ${e.message}")
+            Log.e("SOS_DEBUG", "SosPlugin: direct startActivity failed (expected on background): ${e.message}")
         }
     }
 }

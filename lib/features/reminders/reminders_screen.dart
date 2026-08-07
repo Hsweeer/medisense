@@ -158,6 +158,47 @@ class RemindersScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _confirmDelete(BuildContext context, ReminderProvider prov, Reminder reminder) {
+    _confirmDeleteDialog(context, prov, reminder);
+  }
+}
+
+void _confirmDeleteDialog(BuildContext context, ReminderProvider prov, Reminder reminder) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+      title: Text('Delete reminder?',
+          style: GoogleFonts.sora(fontWeight: FontWeight.w800, fontSize: 18.sp)),
+      content: Text(
+          'Are you sure you want to delete "${reminder.title}"? This cannot be undone.',
+          style: TextStyle(fontSize: 14.sp, color: AppColors.muted)),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: Text('Cancel',
+              style:
+                  TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
+        ),
+        Container(
+          margin: EdgeInsets.only(left: 8.w),
+          child: FilledButton(
+            onPressed: () {
+              prov.remove(reminder);
+              Navigator.pop(ctx);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+            child: Text('Delete',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.sp)),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _Stat extends StatelessWidget {
@@ -273,6 +314,22 @@ class _ReminderCard extends StatelessWidget {
                         '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
                         style: TextStyle(
                             fontSize: 12.sp, color: AppColors.muted)),
+                    SizedBox(height: 8.h),
+                    Row(
+                      children: [
+                        _QuickAction(
+                          icon: Icons.edit_rounded,
+                          color: AppColors.primary,
+                          onTap: () => _showEditSheet(context, reminder: r),
+                        ),
+                        SizedBox(width: 10.w),
+                        _QuickAction(
+                          icon: Icons.delete_outline_rounded,
+                          color: AppColors.danger,
+                          onTap: () => _confirmDeleteDialog(context, prov, r),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -355,6 +412,29 @@ class _ReminderCard extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({required this.icon, required this.color, required this.onTap});
+
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(6.r),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .1),
+          borderRadius: BorderRadius.circular(8.r),
+        ),
+        child: Icon(icon, size: 18.sp, color: color),
       ),
     );
   }

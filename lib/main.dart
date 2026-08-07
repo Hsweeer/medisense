@@ -11,7 +11,7 @@ import 'core/theme/app_theme.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/shell/patient_shell.dart';
-import 'features/sos/sos_screen.dart';
+import 'features/sos/emergency_ride_screen.dart';
 import 'features/sos/sos_overlay_button.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
@@ -32,27 +32,6 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.instance.initialize();
   
-  // STEP 2: REGISTER LISTENER AT ROOT LEVEL (BEFORE RUNAPP)
-  debugPrint('SOS_DEBUG: Global setup -> Registering overlayListener');
-  FlutterOverlayWindow.overlayListener.listen((event) async {
-    debugPrint('SOS_DEBUG: ROOT overlayListener received event: $event');
-    if (event == "trigger_sos") {
-      debugPrint('SOS_DEBUG: ROOT -> Triggering SOS Sequence');
-      
-      const native = MethodChannel('medisense_native_channel');
-      try {
-        await native.invokeMethod('triggerSosNow');
-        debugPrint('SOS_DEBUG: ROOT -> triggerSosNow invoked');
-      } catch (e) {
-        debugPrint('SOS_DEBUG: ROOT -> triggerSosNow ERROR: $e');
-      }
-
-      // Navigate if navigator is ready
-      navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (route) => route.isFirst);
-    }
-  });
-  debugPrint('SOS_DEBUG: Global setup -> overlayListener registered and listening');
-
   runApp(const MediSenseApp());
 }
 
@@ -76,20 +55,84 @@ class MediSenseApp extends StatefulWidget {
 
 class _MediSenseAppState extends State<MediSenseApp> {
   static const _nativeChannel = MethodChannel('medisense_native_channel');
+  StreamSubscription? _overlaySub;
 
   @override
   void initState() {
     super.initState();
-    // Handle native callbacks (e.g. from Notification full-screen intent)
-    _nativeChannel.setMethodCallHandler((call) async {
-      debugPrint('SOS_DEBUG: Main Engine received native call: ${call.method}');
-      if (call.method == "openSosScreen") {
-        if (mounted) {
-          context.read<SosProvider>().triggerImmediate();
-        }
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (route) => route.isFirst);
+    _setupListeners();
+    
+    // Notify native side that Flutter is ready AFTER the first frame is built
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _nativeChannel.invokeMethod('flutterReady');
+        debugPrint('SOS_DEBUG: Notified native that flutter is ready (Post Frame)');
+      } catch (e) {
+        debugPrint('SOS_DEBUG: Error notifying native: $e');
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _overlaySub?.cancel();
+    super.dispose();
+  }
+
+  void _setupListeners() {
+    debugPrint('SOS_DEBUG: ROOT _setupListeners started');
+
+    // 1. Handle signals from Overlay
+    _overlaySub = FlutterOverlayWindow.overlayListener.listen((event) async {
+      debugPrint('SOS_DEBUG: overlayListener received event: $event');
+      if (event == "trigger_sos") {
+        _handleSosNavigation();
+      }
+    });
+
+    // 2. Handle signals from Native (MethodChannel)
+    _nativeChannel.setMethodCallHandler((call) async {
+      debugPrint('SOS_DEBUG: Received native call: ${call.method}');
+      if (call.method == "openSosScreen") {
+        _handleSosNavigation();
+      }
+    });
+  }
+
+  Future<void> _handleSosNavigation() async {
+    debugPrint('SOS_DEBUG: _handleSosNavigation triggered');
+
+    try {
+      // 1. Get Navigator State
+      var state = navigatorKey.currentState;
+      debugPrint('SOS_DEBUG: navigatorKey.currentState is ${state == null ? "NULL" : "attached"}');
+
+      // 2. Retry Logic: If null, wait a tiny bit (handles killed app startup race)
+      if (state == null) {
+        debugPrint('SOS_DEBUG: Navigator not ready, retrying in 500ms...');
+        await Future.delayed(const Duration(milliseconds: 500));
+        state = navigatorKey.currentState;
+        debugPrint('SOS_DEBUG: Retry result -> ${state == null ? "STILL NULL" : "attached"}');
+      }
+
+      if (state != null) {
+        // 3. Trigger Provider Logic using Navigator's context (which is below MultiProvider)
+        final navContext = state.context;
+        debugPrint('SOS_DEBUG: Triggering provider logic via navigator context');
+        
+        // Ensure SOS data is ready
+        navContext.read<SosProvider>().triggerImmediate();
+
+        // 4. Execute Navigation - Clears entire stack for DIRECT access
+        debugPrint('SOS_DEBUG: Executing pushNamedAndRemoveUntil(/sos)');
+        state.pushNamedAndRemoveUntil('/sos', (route) => false);
+      } else {
+        debugPrint('SOS_DEBUG: ERROR - navigatorKey never attached!');
+      }
+    } catch (e, st) {
+      debugPrint('SOS_DEBUG: Fatal error in _handleSosNavigation: $e');
+      debugPrint('SOS_DEBUG: $st');
+    }
   }
 
   @override
@@ -120,12 +163,12 @@ class _MediSenseAppState extends State<MediSenseApp> {
         ],
         child: MaterialApp(
           title: 'MediSense',
-          navigatorKey: navigatorKey,
+          navigatorKey: navigatorKey, // THE MASTER KEY
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
           routes: {
             '/': (ctx) => const AuthWrapper(),
-            '/sos': (ctx) => const SosScreen(),
+            '/sos': (ctx) => const EmergencyRideScreen(),
           },
           initialRoute: '/',
           builder: (context, child) => Container(
@@ -167,17 +210,16 @@ class _AuthWrapperState extends State<AuthWrapper> {
           return const SplashScreen(key: ValueKey('splash_view'));
         }
 
-        // 2. Decide destination based on Firebase user presence
-        final Widget destination = snapshot.hasData
-            ? const PatientShell(key: ValueKey('home_view'))
-            : const LoginScreen(key: ValueKey('login_view'));
+        final user = snapshot.data;
+        final Widget screen = user != null 
+            ? const PatientShell(key: ValueKey('home_shell')) 
+            : const LoginScreen(key: ValueKey('login_shell'));
 
-        // 3. One smooth cross-fade transition
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 600),
           switchInCurve: Curves.easeIn,
           switchOutCurve: Curves.easeOut,
-          child: destination,
+          child: screen,
         );
       },
     );

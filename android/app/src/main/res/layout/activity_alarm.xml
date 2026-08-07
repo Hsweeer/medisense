@@ -11,13 +11,14 @@
     android:paddingRight="24dp"
     android:paddingBottom="24dp">
 
-    <!-- اوپر موجودہ وقت -->
+    <!-- اوپر موجودہ وقت (تھوڑا نیچے منتقل کیا گیا ہے) -->
     <TextView
         android:id="@+id/tvCurrentTime"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="48dp"
         android:textColor="#FFFFFF"
-        android:textSize="16sp"
+        android:textSize="18sp"
         android:alpha="0.85"
         android:fontFamily="sans-serif-medium"
         tools:text="8:00 AM"
