@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -7,7 +8,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/services/language_pack_manager.dart';
-import '../../core/services/tesseract_ocr_service.dart';
+import '../../core/services/native_tesseract_ocr.dart';
 import '../../core/services/tesseract_languages.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
@@ -88,9 +89,7 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
 
   Future<void> _pick(ImageSource source) async {
     try {
-      // OCR needs every available pixel; compression noticeably damages small
-      // characters and light text, so keep the source photo at full quality.
-      final picked = await _picker.pickImage(source: source, imageQuality: 100);
+      final picked = await _picker.pickImage(source: source, imageQuality: 90);
       if (picked == null) return; // user cancelled
       await _tts.stop();
       setState(() {
@@ -116,8 +115,12 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
       _error = '';
     });
     try {
-      final result = await TesseractOcrService.extractText(
-        image.path,
+      await LanguagePackManager.instance.ensureBundledEnglishReady();
+      final tessdataParentPath =
+          await LanguagePackManager.instance.tessdataParentDir();
+      final result = await NativeTesseractOcr.extractText(
+        imagePath: image.path,
+        tessdataParentPath: tessdataParentPath,
         language: _langCode,
       );
       final cleaned = result.trim();
@@ -128,6 +131,7 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
         _error = cleaned.isEmpty ? 'No readable text was found in that photo.' : '';
       });
     } catch (e) {
+      debugPrint('[ScanReader] OCR error ($_langCode): $e');
       if (!mounted) return;
       setState(() {
         _stage = _Stage.error;

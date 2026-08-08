@@ -170,6 +170,8 @@ class _LanguagePickerScreenState extends State<LanguagePickerScreen> {
                     lang: lang,
                     isActive: _activeCode == lang.code,
                     isInstalled: _installed.contains(lang.code),
+                    isLargerDownload:
+                        LanguagePackManager.instance.prefersBestQuality(lang.code),
                     downloadProgress: _downloading[lang.code],
                     hasError: _errorCode == lang.code,
                     onTap: () => _select(lang),
@@ -192,6 +194,7 @@ class _LanguageRow extends StatelessWidget {
     required this.lang,
     required this.isActive,
     required this.isInstalled,
+    required this.isLargerDownload,
     required this.downloadProgress,
     required this.hasError,
     required this.onTap,
@@ -201,6 +204,7 @@ class _LanguageRow extends StatelessWidget {
   final TesseractLanguage lang;
   final bool isActive;
   final bool isInstalled;
+  final bool isLargerDownload;
   final double? downloadProgress;
   final bool hasError;
   final VoidCallback onTap;
@@ -221,8 +225,27 @@ class _LanguageRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(lang.name,
-                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)),
+                Row(
+                  children: [
+                    Text(lang.name,
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)),
+                    if (isLargerDownload && !isInstalled) ...[
+                      SizedBox(width: 7.w),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                        decoration: BoxDecoration(
+                          color: AppColors.aiSoft,
+                          borderRadius: BorderRadius.circular(6.r),
+                        ),
+                        child: Text('High accuracy · larger download',
+                            style: TextStyle(
+                                fontSize: 9.5.sp,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.ai)),
+                      ),
+                    ],
+                  ],
+                ),
                 SizedBox(height: 2.h),
                 Text(lang.code,
                     style: TextStyle(fontSize: 11.sp, color: AppColors.muted)),

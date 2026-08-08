@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 
 import '../core/services/groq_service.dart';
 import '../core/services/language_pack_manager.dart';
+import '../core/services/native_tesseract_ocr.dart';
 import '../core/services/prescription_parser.dart';
-import '../core/services/tesseract_ocr_service.dart';
 import '../data/models/models.dart';
 import 'profile_provider.dart';
 import 'reminder_provider.dart';
@@ -172,8 +172,12 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final langCode = await LanguagePackManager.instance.activeLanguage();
-      final raw = await TesseractOcrService.extractText(
-        path,
+      await LanguagePackManager.instance.ensureBundledEnglishReady();
+      final tessdataParentPath =
+          await LanguagePackManager.instance.tessdataParentDir();
+      final raw = await NativeTesseractOcr.extractText(
+        imagePath: path,
+        tessdataParentPath: tessdataParentPath,
         language: langCode,
       );
       final cleaned = raw.trim();
