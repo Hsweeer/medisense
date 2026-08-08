@@ -31,12 +31,18 @@ class ReminderFirestoreService {
           .collection('users')
           .doc(uid)
           .collection('reminders')
-          .orderBy('createdAt', descending: true)
           .get();
 
       final reminders = snapshot.docs
           .map((doc) => Reminder.fromMap(doc.data(), doc.id))
           .toList();
+
+      // Sort in Dart to avoid issues with missing 'createdAt' fields in existing docs
+      reminders.sort((a, b) {
+        final dateA = a.createdAt ?? DateTime(2000);
+        final dateB = b.createdAt ?? DateTime(2000);
+        return dateB.compareTo(dateA); // Descending
+      });
 
       debugPrint(
           '[ReminderFirestoreService] fetchReminders: loaded ${reminders.length} reminders');
@@ -56,6 +62,9 @@ class ReminderFirestoreService {
     }
 
     try {
+      // Ensure createdAt is set before saving
+      reminder.createdAt ??= DateTime.now();
+
       final docRef = await _firestore
           .collection('users')
           .doc(uid)

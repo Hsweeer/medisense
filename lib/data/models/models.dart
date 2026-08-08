@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -118,6 +119,7 @@ class Reminder {
     this.snoozeLabel,
     this.streakDays = 0,
     this.enabled = true,
+    this.createdAt,
   });
 
   String? id; // Firestore document ID
@@ -131,6 +133,7 @@ class Reminder {
   String? snoozeLabel; // "rings again 9:10 AM"
   int streakDays;
   bool enabled; // controls whether alarm is scheduled
+  DateTime? createdAt;
 
   bool get taken => status == DoseStatus.taken;
 
@@ -150,6 +153,9 @@ class Reminder {
       snoozeLabel: map['snoozeLabel'],
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -163,6 +169,7 @@ class Reminder {
     'status': status.toString().split('.').last,
     'streakDays': streakDays,
     'enabled': enabled,
+    'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
   };
 }
 

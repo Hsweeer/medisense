@@ -16,16 +16,25 @@ class ReminderProvider extends ChangeNotifier {
   bool _initialized = false;
 
   ReminderProvider() {
-    // Only listen to auth changes. The first event will trigger the load.
+    // Immediate check for current user on startup
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      debugPrint('[ReminderProvider] User already logged in: ${currentUser.email}, fetching...');
+      _initializeReminders();
+    }
+
+    // Listen to future auth changes (login/logout)
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
-        debugPrint('[ReminderProvider] User logged in: ${user.email}, fetching data...');
+        debugPrint('[ReminderProvider] Auth change: User logged in: ${user.email}');
+        // Reset initialization to force a reload for the new user
         _initialized = false;
         _initializeReminders();
       } else {
-        debugPrint('[ReminderProvider] User logged out, clearing data...');
+        debugPrint('[ReminderProvider] Auth change: User logged out, clearing data...');
         reminders.clear();
         NotificationService.instance.cancelAll();
+        _initialized = false;
         notifyListeners();
       }
     });
