@@ -9,10 +9,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/services/language_pack_manager.dart';
 import '../../core/services/native_tesseract_ocr.dart';
-import '../../core/services/tesseract_languages.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
-import 'language_picker_screen.dart';
 
 enum _Stage { idle, extracting, done, error }
 
@@ -38,12 +36,10 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
   _Stage _stage = _Stage.idle;
   _SpeechState _speech = _SpeechState.stopped;
 
-  String _langCode = 'eng';
-  String _langName = 'English';
-
   @override
   void initState() {
     super.initState();
+    _tts.setLanguage('en-US');
     _tts.setSpeechRate(0.48); // a bit slower than default — easier to follow
     _tts.setPitch(1.0);
     _tts.setCompletionHandler(() {
@@ -57,27 +53,6 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
     });
     _tts.setContinueHandler(() {
       if (mounted) setState(() => _speech = _SpeechState.playing);
-    });
-    _loadActiveLanguage();
-  }
-
-  Future<void> _loadActiveLanguage() async {
-    final code = await LanguagePackManager.instance.activeLanguage();
-    final match = kTesseractLanguages.where((l) => l.code == code);
-    if (!mounted) return;
-    setState(() {
-      _langCode = code;
-      _langName = match.isNotEmpty ? match.first.name : 'English';
-    });
-  }
-
-  Future<void> _openLanguagePicker() async {
-    final picked = await Navigator.of(context)
-        .push<TesseractLanguage>(MaterialPageRoute(builder: (_) => const LanguagePickerScreen()));
-    if (picked == null || !mounted) return;
-    setState(() {
-      _langCode = picked.code;
-      _langName = picked.name;
     });
   }
 
@@ -121,7 +96,7 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
       final result = await NativeTesseractOcr.extractText(
         imagePath: image.path,
         tessdataParentPath: tessdataParentPath,
-        language: _langCode,
+        language: 'eng',
       );
       final cleaned = result.trim();
       if (!mounted) return;
@@ -131,7 +106,7 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
         _error = cleaned.isEmpty ? 'No readable text was found in that photo.' : '';
       });
     } catch (e) {
-      debugPrint('[ScanReader] OCR error ($_langCode): $e');
+      debugPrint('[ScanReader] OCR error: $e');
       if (!mounted) return;
       setState(() {
         _stage = _Stage.error;
@@ -143,7 +118,6 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
 
   Future<void> _speak() async {
     if (_text.trim().isEmpty) return;
-    await _tts.setLanguage(ttsLocaleFor(_langCode));
     if (_speech == _SpeechState.paused) {
       final resumed = await _tts.speak(_text); // most platforms just replay
       if (resumed == 1 && mounted) setState(() => _speech = _SpeechState.playing);
@@ -192,8 +166,7 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
                         SizedBox(width: 8.w),
                         Expanded(
                           child: Text(
-                            'The photo never leaves your phone — OCR runs '
-                            'fully on-device.',
+                            'Works fully offline — the photo never leaves your phone.',
                             style: TextStyle(
                                 fontSize: 12.sp,
                                 color: AppColors.onSoft,
@@ -201,41 +174,6 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                  SizedBox(height: 10.h),
-                  InkWell(
-                    onTap: _openLanguagePicker,
-                    borderRadius: BorderRadius.circular(14.r),
-                    child: Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: BorderRadius.circular(14.r),
-                        border: Border.all(color: AppColors.line),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.translate_rounded,
-                              size: 17.sp, color: AppColors.primary),
-                          SizedBox(width: 9.w),
-                          Text('Scanning language',
-                              style: TextStyle(
-                                  fontSize: 13.sp,
-                                  color: AppColors.inkSoft,
-                                  fontWeight: FontWeight.w600)),
-                          const Spacer(),
-                          Text(_langName,
-                              style: TextStyle(
-                                  fontSize: 13.sp,
-                                  color: AppColors.ink,
-                                  fontWeight: FontWeight.w700)),
-                          SizedBox(width: 4.w),
-                          Icon(Icons.chevron_right_rounded,
-                              size: 18.sp, color: AppColors.muted),
-                        ],
-                      ),
                     ),
                   ),
                   SizedBox(height: 16.h),

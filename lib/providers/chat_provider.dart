@@ -171,14 +171,13 @@ class ChatProvider extends ChangeNotifier {
     }
 
     try {
-      final langCode = await LanguagePackManager.instance.activeLanguage();
       await LanguagePackManager.instance.ensureBundledEnglishReady();
       final tessdataParentPath =
           await LanguagePackManager.instance.tessdataParentDir();
       final raw = await NativeTesseractOcr.extractText(
         imagePath: path,
         tessdataParentPath: tessdataParentPath,
-        language: langCode,
+        language: 'eng',
       );
       final cleaned = raw.trim();
       typing = false;
