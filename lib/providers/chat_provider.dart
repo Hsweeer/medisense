@@ -37,14 +37,29 @@ class ChatProvider extends ChangeNotifier {
   ChatProvider({this.reminderEngine, this.profileProvider}) {
     _initChat();
 
-    // Reload chat whenever the user changes
+    // authStateChanges() fires once immediately with the CURRENT user as
+    // soon as we start listening, in addition to firing on real
+    // login/logout — so without this guard, _initChat() runs twice on
+    // every cold start (once from the constructor above, once from this
+    // listener's first event), both racing to read an empty Firestore
+    // history and both adding their own greeting. Only re-init when the
+    // uid actually changes.
     FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user?.uid == _initializedForUid) return;
       debugPrint('[ChatProvider] authStateChanged: ${user?.email}');
       _initChat();
     });
   }
 
+  String? _initializedForUid;
+  bool _initializing = false;
+
   Future<void> _initChat() async {
+    if (_initializing) return; // guards against overlapping calls too
+    _initializing = true;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    _initializedForUid = uid;
+
     messages.clear();
     pendingAttachments.clear();
     typing = false;
@@ -52,31 +67,42 @@ class ChatProvider extends ChangeNotifier {
     transcribing = false;
     notifyListeners();
 
-    final history = await ChatFirestoreService.instance.fetchRecentMessages();
-    if (history.isNotEmpty) {
-      messages.addAll(history);
+    try {
+      final history = await ChatFirestoreService.instance.fetchRecentMessages();
+      if (history.isNotEmpty) {
+        messages.addAll(history);
+        notifyListeners();
+        return;
+      }
+
+      // First time this user has ever opened MedAI — show and save the
+      // greeting so it's part of their real, persisted history too.
+      final user = FirebaseAuth.instance.currentUser;
+      final name = user?.displayName?.split(' ').first ?? 'there';
+
+      final greeting = ChatMessage(
+        role: ChatRole.ai,
+        text: learnFromData
+            ? "Hi $name, I'm MedAI — your personal health assistant. I can "
+                'answer health questions, read lab reports or photos you '
+                'upload, and listen to voice notes. Personal insights are '
+                "on, so my guidance will account for your health profile — "
+                "allergies, conditions, medications, age, and more."
+                '\n\nHow are you feeling today?'
+            : "Hi $name, I'm MedAI — your personal health assistant. I can "
+                'answer health questions, read lab reports or photos you '
+                'upload, and listen to voice notes. Personal insights are '
+                "off right now, so I can't read your health profile — turn "
+                'that on above anytime for guidance tailored to you.'
+                '\n\nHow are you feeling today?',
+        personalized: learnFromData,
+      );
+      messages.add(greeting);
       notifyListeners();
-      return;
+      await _persist(greeting);
+    } finally {
+      _initializing = false;
     }
-
-    // First time this user has ever opened MedAI — show and save the
-    // greeting so it's part of their real, persisted history too.
-    final user = FirebaseAuth.instance.currentUser;
-    final name = user?.displayName?.split(' ').first ?? 'there';
-
-    final greeting = ChatMessage(
-      role: ChatRole.ai,
-      text:
-          "Hi $name, I'm MedAI — your personal health assistant. I can answer "
-          "health questions, read lab reports or photos you upload, and listen "
-          "to voice notes. I've learned your health profile, so my guidance "
-          "will account for any allergies or conditions you've listed."
-          "\n\nHow are you feeling today?",
-      personalized: true,
-    );
-    messages.add(greeting);
-    notifyListeners();
-    _persist(greeting);
   }
 
   /// Lets MedAI create alarms itself after scanning a prescription.
@@ -321,23 +347,29 @@ class ChatProvider extends ChangeNotifier {
     final message =
         ChatMessage(role: ChatRole.user, text: text, attachments: attachments);
     messages.add(message);
-    notifyListeners();
-    _persist(message);
+    notifyListeners(); // shows instantly, before the save completes
+    await _persist(message);
   }
 
   /// Adds an AI message to the thread, persists it, and clears typing.
   Future<void> _reply(ChatMessage message) async {
     typing = false;
     messages.add(message);
-    notifyListeners();
-    _persist(message);
+    notifyListeners(); // shows instantly, before the save completes
+    await _persist(message);
   }
 
-  /// Fire-and-forget save — the chat already shows the message locally, so
-  /// a slow or failed save shouldn't block or freeze the UI. Errors are
-  /// logged inside ChatFirestoreService itself.
-  void _persist(ChatMessage message) {
-    ChatFirestoreService.instance.saveMessage(message);
+  /// Saves a message to Firestore and actually waits for it to land.
+  ///
+  /// This used to be fire-and-forget, which is why chats could vanish if
+  /// the app got killed (e.g. swiped from Android's recents) right after a
+  /// message was sent — the write was still in flight when the process
+  /// died. Awaiting it here means the message is genuinely durable by the
+  /// time send()/stopRecording() consider that turn finished. The UI never
+  /// waits on this — messages already appear locally via notifyListeners()
+  /// the instant before this runs.
+  Future<void> _persist(ChatMessage message) async {
+    await ChatFirestoreService.instance.saveMessage(message);
   }
 
   /// Scripted, simulated-delay reply (red-flags, attachment "analysis").

@@ -51,6 +51,10 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
         val imagePath = call.argument<String>("imagePath")
         val tessdataParentPath = call.argument<String>("tessdataParentPath")
         val language = call.argument<String>("language")
+        // Numeric Tesseract PSM code (see TessBaseAPI.PageSegMode, which is
+        // a set of plain Int constants in this library, not a Kotlin enum).
+        // Defaults to PSM_AUTO (3) if the Dart side doesn't specify one.
+        val psm = call.argument<Int>("psm") ?: TessBaseAPI.PageSegMode.PSM_AUTO
 
         if (imagePath == null || tessdataParentPath == null || language == null) {
             result.error(
@@ -67,7 +71,7 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
         // MethodChannel result (required by the Flutter engine).
         Thread {
             try {
-                val text = runTesseract(imagePath, tessdataParentPath, language)
+                val text = runTesseract(imagePath, tessdataParentPath, language, psm)
                 mainHandler.post { result.success(text) }
             } catch (e: Exception) {
                 mainHandler.post {
@@ -80,7 +84,8 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
     private fun runTesseract(
         imagePath: String,
         tessdataParentPath: String,
-        language: String
+        language: String,
+        psm: Int
     ): String {
         val bitmap = BitmapFactory.decodeFile(imagePath)
             ?: throw IllegalArgumentException("Could not decode image at $imagePath")
@@ -110,7 +115,18 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
                         "${langFile.absolutePath} is a valid, complete .traineddata file."
                 )
             }
-            api.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
+            // Numeric PSM codes (Tesseract's own numbering, e.g. 11 = sparse
+            // text, 6 = single uniform block) ARE what PageSegMode's Int
+            // constants hold, so the value passed from Dart can be assigned
+            // directly — no enum lookup needed. The Dart side now tries
+            // more than one mode per scan and keeps whichever reads better,
+            // instead of always forcing PSM_AUTO.
+            api.pageSegMode = psm
+            // Hint the real DPI (phone photos carry no reliable DPI metadata
+            // on their own) and keep natural word spacing — both measurably
+            // improve accuracy on prescription-style text.
+            api.setVariable("user_defined_dpi", "300")
+            api.setVariable("preserve_interword_spaces", "1")
             api.setImage(bitmap)
             return api.getUTF8Text() ?: ""
         } finally {
