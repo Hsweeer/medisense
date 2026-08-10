@@ -8,41 +8,63 @@ import '../core/services/language_pack_manager.dart';
 import '../core/services/native_tesseract_ocr.dart';
 import '../core/services/prescription_parser.dart';
 import '../data/models/models.dart';
+import '../services/chat_firestore_service.dart';
 import 'profile_provider.dart';
 import 'reminder_provider.dart';
 
 /// MedAI — the in-app health assistant.
 ///
-/// Free-text replies are generated live by Groq (llama-3.3-70b-versatile),
-/// personalized with the user's health profile when "Personal insights" is
-/// on. Red-flag → SOS escalation stays local and rule-based (safety-critical,
-/// must not depend on an LLM call succeeding). Prescription scans run real,
-/// fully-offline OCR (Tesseract) on the photo and a heuristic parser guesses
-/// medicine/dose/frequency — the user reviews and picks the exact times
-/// before anything becomes a real reminder (see PrescriptionReviewScreen).
-/// Skin-photo/lab-report "analysis" replies stay scripted for now — that
-/// needs a vision-capable model, a separate task from OCR.
+/// Chat history is real and persisted (Firestore, users/{uid}/medai_chat) —
+/// it survives app restarts and syncs across devices, not just in-memory
+/// for the current session. Free-text replies are generated live by Groq
+/// (llama-3.3-70b-versatile), personalized with the user's health profile
+/// when "Personal insights" is on, using recent chat history as real
+/// context — this is the practical form of "learning from the user's
+/// chats" that's actually achievable through an API (there is no per-user
+/// model fine-tuning here; Groq doesn't offer that, and it isn't something
+/// a mobile app can do on its own). Voice notes are really transcribed
+/// (Groq Whisper) — not a scripted guess — and the transcribed text is
+/// sent through the exact same reply pipeline as typed text. Red-flag →
+/// SOS escalation stays local and rule-based (safety-critical, must not
+/// depend on any network call succeeding). Prescription scans run real,
+/// fully-offline OCR (Tesseract) on the photo and a heuristic parser
+/// guesses medicine/dose/frequency — the user reviews and picks the exact
+/// times before anything becomes a real reminder (see
+/// PrescriptionReviewScreen). Skin-photo/lab-report "analysis" replies
+/// stay scripted for now — that needs a vision-capable model, a separate
+/// task from OCR.
 class ChatProvider extends ChangeNotifier {
   ChatProvider({this.reminderEngine, this.profileProvider}) {
     _initChat();
 
-    // Reset chat whenever the user changes
+    // Reload chat whenever the user changes
     FirebaseAuth.instance.authStateChanges().listen((user) {
       debugPrint('[ChatProvider] authStateChanged: ${user?.email}');
       _initChat();
     });
   }
 
-  void _initChat() {
+  Future<void> _initChat() async {
     messages.clear();
     pendingAttachments.clear();
     typing = false;
     recording = false;
+    transcribing = false;
+    notifyListeners();
 
+    final history = await ChatFirestoreService.instance.fetchRecentMessages();
+    if (history.isNotEmpty) {
+      messages.addAll(history);
+      notifyListeners();
+      return;
+    }
+
+    // First time this user has ever opened MedAI — show and save the
+    // greeting so it's part of their real, persisted history too.
     final user = FirebaseAuth.instance.currentUser;
     final name = user?.displayName?.split(' ').first ?? 'there';
 
-    messages.add(ChatMessage(
+    final greeting = ChatMessage(
       role: ChatRole.ai,
       text:
           "Hi $name, I'm MedAI — your personal health assistant. I can answer "
@@ -51,8 +73,10 @@ class ChatProvider extends ChangeNotifier {
           "will account for any allergies or conditions you've listed."
           "\n\nHow are you feeling today?",
       personalized: true,
-    ));
+    );
+    messages.add(greeting);
     notifyListeners();
+    _persist(greeting);
   }
 
   /// Lets MedAI create alarms itself after scanning a prescription.
@@ -72,6 +96,12 @@ class ChatProvider extends ChangeNotifier {
   final pendingAttachments = <ChatAttachment>[];
 
   bool recording = false;
+
+  /// True while a just-recorded voice note is being sent to Groq for
+  /// transcription — separate from [typing], which covers waiting for the
+  /// reply itself.
+  bool transcribing = false;
+
   Timer? _timer;
 
   void toggleLearn() {
@@ -94,39 +124,85 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Ends the hold-to-talk gesture; sends a voice message when long enough.
-  /// [filePath] is the on-device path of the actual recorded audio file, so
-  /// it can be played back later from the chat bubble.
-  void stopRecording({
+  /// Ends the hold-to-talk gesture. [filePath] is the on-device path of the
+  /// actual recorded audio file — stages it as a normal voice-note bubble
+  /// (so it can be played back), then sends the real audio to Groq's
+  /// Whisper endpoint for genuine transcription, and finally routes the
+  /// transcribed text through the exact same reply pipeline as if the user
+  /// had typed it (including red-flag detection).
+  Future<void> stopRecording({
     required int seconds,
     bool cancelled = false,
     String? filePath,
-  }) {
+  }) async {
     recording = false;
-    if (!cancelled && seconds >= 1) {
-      _sendUser(
-        '',
-        [
-          ChatAttachment(
-              type: AttachmentType.voice,
-              name: 'Voice note',
-              detail: '0:${seconds.toString().padLeft(2, '0')}',
-              durationSeconds: seconds,
-              filePath: filePath),
-        ],
-      );
-      _replyDelayed(_voiceReply());
-    }
     notifyListeners();
+    if (cancelled || seconds < 1) return;
+
+    final attachment = ChatAttachment(
+      type: AttachmentType.voice,
+      name: 'Voice note',
+      detail: '0:${seconds.toString().padLeft(2, '0')}',
+      durationSeconds: seconds,
+      filePath: filePath,
+    );
+    await _sendUser('', [attachment]);
+
+    if (filePath == null) {
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: "I couldn't access that recording — please try again.",
+      ));
+      return;
+    }
+
+    transcribing = true;
+    notifyListeners();
+    String transcript;
+    try {
+      transcript = await GroqService.transcribeAudio(filePath);
+    } catch (e) {
+      debugPrint('[ChatProvider] transcription error: $e');
+      transcribing = false;
+      notifyListeners();
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text:
+            "I couldn't make out that voice note — please check your "
+            'connection and try recording again, or type your question '
+            'instead.',
+      ));
+      return;
+    }
+    transcribing = false;
+    notifyListeners();
+
+    if (transcript.trim().isEmpty) {
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: "I couldn't hear anything clear in that voice note — mind "
+            'trying again somewhere quieter?',
+      ));
+      return;
+    }
+
+    // Route the real transcribed words through the normal pipeline —
+    // red-flag detection first, exactly like typed text.
+    await _routeReply(transcript.trim(), const []);
   }
 
-  void send(String text) {
+  Future<void> send(String text) async {
     final t = text.trim();
     if (t.isEmpty && pendingAttachments.isEmpty) return;
     final attachments = [...pendingAttachments];
     pendingAttachments.clear();
-    _sendUser(t, attachments);
+    notifyListeners();
+    await _sendUser(t, attachments);
+    await _routeReply(t, attachments);
+  }
 
+  /// Shared by typed messages and transcribed voice notes.
+  Future<void> _routeReply(String text, List<ChatAttachment> attachments) async {
     // A prescription photo always goes through real OCR, not the scripted
     // or Groq paths — even if the user typed a caption along with it.
     ChatAttachment? rxPhoto;
@@ -137,15 +213,15 @@ class ChatProvider extends ChangeNotifier {
       }
     }
     if (rxPhoto != null) {
-      _replyFromPrescriptionScan(rxPhoto);
+      await _replyFromPrescriptionScan(rxPhoto);
       return;
     }
 
-    final scripted = _scriptedReply(t, attachments);
+    final scripted = _scriptedReply(text, attachments);
     if (scripted != null) {
-      _replyDelayed(scripted);
+      await _replyDelayed(scripted);
     } else {
-      _replyFromGroq();
+      await _replyFromGroq();
     }
   }
 
@@ -162,11 +238,10 @@ class ChatProvider extends ChangeNotifier {
     final path = photo.filePath;
     if (path == null) {
       typing = false;
-      messages.add(const ChatMessage(
+      await _reply(const ChatMessage(
         role: ChatRole.ai,
         text: "I couldn't access that photo — please try scanning again.",
       ));
-      notifyListeners();
       return;
     }
 
@@ -183,14 +258,13 @@ class ChatProvider extends ChangeNotifier {
       typing = false;
 
       if (cleaned.isEmpty) {
-        messages.add(const ChatMessage(
+        await _reply(const ChatMessage(
           role: ChatRole.ai,
           text:
               "I couldn't make out any text on that photo. Try again with "
               'better lighting, a flatter angle, and the note filling the '
               "frame — or use 'Document / PDF' if you have a typed copy.",
         ));
-        notifyListeners();
         return;
       }
 
@@ -206,30 +280,28 @@ class ChatProvider extends ChangeNotifier {
               'please double-check everything below and set the exact '
               'times before adding reminders.';
 
-      messages.add(ChatMessage(
+      await _reply(ChatMessage(
         role: ChatRole.ai,
         card: ChatCardType.prescription,
         personalized: learnFromData,
         text: summary,
         ocrText: cleaned,
       ));
-      notifyListeners();
     } catch (e) {
       debugPrint('[ChatProvider] OCR error: $e');
       typing = false;
-      messages.add(const ChatMessage(
+      await _reply(const ChatMessage(
         role: ChatRole.ai,
         text: 'Something went wrong reading that photo. Please try again.',
       ));
-      notifyListeners();
     }
   }
 
   /// Called by the chat screen after the user returns from the prescription
   /// review screen, so the confirmation shows up as a real MedAI message.
-  void noteRemindersAdded(int count) {
+  Future<void> noteRemindersAdded(int count) async {
     if (count <= 0) return;
-    messages.add(ChatMessage(
+    await _reply(ChatMessage(
       role: ChatRole.ai,
       text: count == 1
           ? 'Added 1 reminder — find it, snooze it, or edit it anytime in '
@@ -237,25 +309,48 @@ class ChatProvider extends ChangeNotifier {
           : 'Added $count reminders — find, snooze, or edit them anytime '
               'in Reminders.',
     ));
-    notifyListeners();
   }
 
-  void _sendUser(String text, List<ChatAttachment> attachments) {
-    messages.add(ChatMessage(
-        role: ChatRole.user, text: text, attachments: attachments));
+  /// Wipes chat history in Firestore and starts fresh with the greeting.
+  Future<void> clearChat() async {
+    await ChatFirestoreService.instance.clearHistory();
+    await _initChat();
+  }
+
+  Future<void> _sendUser(String text, List<ChatAttachment> attachments) async {
+    final message =
+        ChatMessage(role: ChatRole.user, text: text, attachments: attachments);
+    messages.add(message);
     notifyListeners();
+    _persist(message);
+  }
+
+  /// Adds an AI message to the thread, persists it, and clears typing.
+  Future<void> _reply(ChatMessage message) async {
+    typing = false;
+    messages.add(message);
+    notifyListeners();
+    _persist(message);
+  }
+
+  /// Fire-and-forget save — the chat already shows the message locally, so
+  /// a slow or failed save shouldn't block or freeze the UI. Errors are
+  /// logged inside ChatFirestoreService itself.
+  void _persist(ChatMessage message) {
+    ChatFirestoreService.instance.saveMessage(message);
   }
 
   /// Scripted, simulated-delay reply (red-flags, attachment "analysis").
-  void _replyDelayed(ChatMessage message) {
+  Future<void> _replyDelayed(ChatMessage message) async {
     typing = true;
     notifyListeners();
+    final completer = Completer<void>();
     _timer?.cancel();
     _timer = Timer(const Duration(milliseconds: 1400), () {
-      typing = false;
-      messages.add(message);
-      notifyListeners();
+      completer.complete();
     });
+    await completer.future;
+    await _reply(message);
   }
 
   /// Real reply from Groq for free-text questions.
@@ -267,20 +362,17 @@ class ChatProvider extends ChangeNotifier {
         systemPrompt: _buildSystemPrompt(),
         history: _buildHistory(),
       );
-      typing = false;
-      messages.add(ChatMessage(
+      await _reply(ChatMessage(
           role: ChatRole.ai, text: reply, personalized: learnFromData));
-      notifyListeners();
     } catch (e) {
       debugPrint('[ChatProvider] Groq error: $e');
       typing = false;
-      messages.add(const ChatMessage(
+      await _reply(const ChatMessage(
         role: ChatRole.ai,
         text:
             "I'm having trouble reaching MedAI's servers right now — please "
             "check your connection and try again in a moment.",
       ));
-      notifyListeners();
     }
   }
 
@@ -296,15 +388,33 @@ class ChatProvider extends ChangeNotifier {
 
     if (learnFromData) {
       final p = profileProvider?.profile;
+      final age = p != null ? _ageFromDob(p.dob) : null;
       final hasContext = p != null &&
           (p.allergies.isNotEmpty ||
               p.conditions.isNotEmpty ||
-              p.medications.isNotEmpty);
+              p.medications.isNotEmpty ||
+              p.bloodType.trim().isNotEmpty ||
+              p.weightLb > 0 ||
+              p.heightIn > 0 ||
+              age != null);
       if (hasContext) {
         buffer.write(
-            "\n\nThe user's health profile (use it to tailor advice — e.g. "
-            "flag allergy/medication conflicts — but don't just recite it "
-            'back unless relevant):');
+            "\n\nThe user's health profile, from their MediSense profile "
+            'tab (use it to tailor advice — e.g. flag allergy/medication '
+            "conflicts, or factor in age/weight for dosing-style guidance "
+            "— but don't just recite it back unless relevant):");
+        if (age != null) {
+          buffer.write('\n- Age: $age');
+        }
+        if (p!.bloodType.trim().isNotEmpty) {
+          buffer.write('\n- Blood type: ${p.bloodType}');
+        }
+        if (p.weightLb > 0) {
+          buffer.write('\n- Weight: ${p.weightLb} lb');
+        }
+        if (p.heightIn > 0) {
+          buffer.write('\n- Height: ${p.heightIn} in');
+        }
         if (p.allergies.isNotEmpty) {
           buffer.write('\n- Allergies: ${p.allergies.join(', ')}');
         }
@@ -319,11 +429,41 @@ class ChatProvider extends ChangeNotifier {
     return buffer.toString();
   }
 
-  /// Last ~12 text messages as {role, content} pairs for conversation
-  /// context (Groq has no memory of its own between calls).
+  /// Parses the profile's "D Mon YYYY" date-of-birth string (same format
+  /// used by the Edit Health Profile screen) into a whole-years age.
+  /// Returns null if [dob] is empty or not in that format.
+  int? _ageFromDob(String dob) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final trimmed = dob.trim();
+    if (trimmed.isEmpty) return null;
+    final parts = trimmed.split(' ');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final monthIdx =
+        months.indexOf(parts[1].length >= 3 ? parts[1].substring(0, 3) : parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || monthIdx == -1 || year == null) return null;
+
+    final birth = DateTime(year, monthIdx + 1, day);
+    final now = DateTime.now();
+    var age = now.year - birth.year;
+    if (now.month < birth.month ||
+        (now.month == birth.month && now.day < birth.day)) {
+      age--;
+    }
+    return age >= 0 && age < 130 ? age : null;
+  }
+
+  /// Last ~20 text messages as {role, content} pairs for conversation
+  /// context — this is what "MedAI remembers past chats" actually means
+  /// here: real persisted history feeding into each new request, not a
+  /// fine-tuned model. Groq itself has no memory between calls.
   List<Map<String, String>> _buildHistory() {
     final recent =
-        messages.length > 12 ? messages.sublist(messages.length - 12) : messages;
+        messages.length > 20 ? messages.sublist(messages.length - 20) : messages;
     return recent
         .where((m) => m.text.trim().isNotEmpty)
         .map((m) => {
@@ -345,7 +485,8 @@ class ChatProvider extends ChangeNotifier {
   ];
 
   /// Returns a scripted reply for red-flags and attachment "analysis";
-  /// returns null for everything else so [send] routes it to Groq instead.
+  /// returns null for everything else so [_routeReply] routes it to Groq
+  /// instead.
   ChatMessage? _scriptedReply(String text, List<ChatAttachment> attachments) {
     final lower = text.toLowerCase();
 
@@ -408,21 +549,9 @@ class ChatProvider extends ChangeNotifier {
       );
     }
 
-    // Everything else — plain questions — goes to Groq for a real reply.
+    // Everything else — plain questions (typed or transcribed) — goes to
+    // Groq for a real reply.
     return null;
-  }
-
-  ChatMessage _voiceReply() {
-    return ChatMessage(
-      role: ChatRole.ai,
-      personalized: learnFromData,
-      text:
-          "I listened to your voice note. I heard you mention throat "
-          "discomfort since last night. Warm fluids and rest are the first "
-          "line; most viral sore throats settle in 3–5 days."
-          "${learnFromData ? '\n\nWith your mild asthma, watch for wheezing — '
-              'if it starts, use your Albuterol inhaler as prescribed.' : ''}",
-    );
   }
 
   @override

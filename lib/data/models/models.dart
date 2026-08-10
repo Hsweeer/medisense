@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -30,18 +29,45 @@ class ChatAttachment {
   final int durationSeconds; // voice notes only
   final AttachmentIntent intent;
   final String? filePath; // real on-device file path, when actually captured/picked
+
+  Map<String, dynamic> toMap() => {
+        'type': type.name,
+        'name': name,
+        'detail': detail,
+        'durationSeconds': durationSeconds,
+        'intent': intent.name,
+        'filePath': filePath,
+      };
+
+  factory ChatAttachment.fromMap(Map<String, dynamic> map) => ChatAttachment(
+        type: AttachmentType.values.firstWhere(
+          (e) => e.name == map['type'],
+          orElse: () => AttachmentType.image,
+        ),
+        name: map['name'] ?? '',
+        detail: map['detail'] ?? '',
+        durationSeconds: map['durationSeconds'] ?? 0,
+        intent: AttachmentIntent.values.firstWhere(
+          (e) => e.name == map['intent'],
+          orElse: () => AttachmentIntent.general,
+        ),
+        filePath: map['filePath'],
+      );
 }
 
 class ChatMessage {
   const ChatMessage({
+    this.id, // Firestore document ID, null until saved
     required this.role,
     required this.text,
     this.card = ChatCardType.none,
     this.attachments = const [],
     this.personalized = false,
     this.ocrText,
+    this.timestamp,
   });
 
+  final String? id;
   final ChatRole role;
   final String text;
   final ChatCardType card;
@@ -55,6 +81,43 @@ class ChatMessage {
   /// prescription card re-parses this on demand so the review screen always
   /// works from the real source text, not a cached guess.
   final String? ocrText;
+
+  /// When this message was sent. Null for messages not yet round-tripped
+  /// through Firestore (e.g. the very first frame before saving completes).
+  final DateTime? timestamp;
+
+  Map<String, dynamic> toMap() => {
+        'role': role.name,
+        'text': text,
+        'card': card.name,
+        'attachments': attachments.map((a) => a.toMap()).toList(),
+        'personalized': personalized,
+        'ocrText': ocrText,
+        'timestampMs': (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
+      };
+
+  factory ChatMessage.fromMap(Map<String, dynamic> map, String id) {
+    return ChatMessage(
+      id: id,
+      role: ChatRole.values.firstWhere(
+        (e) => e.name == map['role'],
+        orElse: () => ChatRole.ai,
+      ),
+      text: map['text'] ?? '',
+      card: ChatCardType.values.firstWhere(
+        (e) => e.name == map['card'],
+        orElse: () => ChatCardType.none,
+      ),
+      attachments: ((map['attachments'] as List?) ?? [])
+          .map((a) => ChatAttachment.fromMap(Map<String, dynamic>.from(a as Map)))
+          .toList(),
+      personalized: map['personalized'] ?? false,
+      ocrText: map['ocrText'],
+      timestamp: map['timestampMs'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['timestampMs'])
+          : null,
+    );
+  }
 }
 
 // ── Nearby care ─────────────────────────────────────────────────────────
@@ -119,7 +182,6 @@ class Reminder {
     this.snoozeLabel,
     this.streakDays = 0,
     this.enabled = true,
-    this.createdAt,
   });
 
   String? id; // Firestore document ID
@@ -133,7 +195,6 @@ class Reminder {
   String? snoozeLabel; // "rings again 9:10 AM"
   int streakDays;
   bool enabled; // controls whether alarm is scheduled
-  DateTime? createdAt;
 
   bool get taken => status == DoseStatus.taken;
 
@@ -153,9 +214,6 @@ class Reminder {
       snoozeLabel: map['snoozeLabel'],
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
-      createdAt: map['createdAt'] != null
-          ? (map['createdAt'] as Timestamp).toDate()
-          : null,
     );
   }
 
@@ -169,7 +227,6 @@ class Reminder {
     'status': status.toString().split('.').last,
     'streakDays': streakDays,
     'enabled': enabled,
-    'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
   };
 }
 
