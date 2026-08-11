@@ -1371,7 +1371,7 @@ class _SkinReportCard extends StatelessWidget {
 }
 
 class _TypingBubble extends StatelessWidget {
-  const _TypingBubble({this.label = 'MedAI is thinking…lllllllll'});
+  const _TypingBubble({this.label = 'MedAI is thinking…'});
 
   final String label;
 
