@@ -13,6 +13,34 @@ enum AttachmentType { image, file, voice }
 /// What the user intends an attachment to be analyzed as.
 enum AttachmentIntent { general, prescription, skin }
 
+/// One entry in the MedAI chat-history list (like a ChatGPT/Claude thread).
+class ChatConversationSummary {
+  const ChatConversationSummary({
+    required this.id,
+    required this.title,
+    required this.lastMessagePreview,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String title;
+  final String lastMessagePreview;
+  final DateTime updatedAt;
+
+  factory ChatConversationSummary.fromMap(Map<String, dynamic> map, String id) {
+    return ChatConversationSummary(
+      id: id,
+      title: (map['title'] as String?)?.trim().isNotEmpty == true
+          ? map['title']
+          : 'New chat',
+      lastMessagePreview: map['lastMessagePreview'] ?? '',
+      updatedAt: map['updatedAtMs'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['updatedAtMs'])
+          : DateTime.now(),
+    );
+  }
+}
+
 class ChatAttachment {
   const ChatAttachment({
     required this.type,

@@ -5,7 +5,16 @@ import 'package:flutter/foundation.dart';
 import '../data/models/models.dart';
 
 /// Handles all Firestore operations for MedAI chat history.
-/// Messages are stored at: users/{uid}/medai_chat/{messageId}
+///
+/// Schema (per user, so every user's chats are fully separate):
+///   users/{uid}/medai_conversations/{conversationId}
+///     - title, createdAtMs, updatedAtMs, lastMessagePreview
+///   users/{uid}/medai_conversations/{conversationId}/messages/{messageId}
+///     - the ChatMessage fields
+///
+/// This is the multi-thread model — each conversation is its own saved
+/// chat the user can reopen later, the same way ChatGPT/Claude's history
+/// works, rather than one single endless thread.
 class ChatFirestoreService {
   ChatFirestoreService._();
 
@@ -16,22 +25,66 @@ class ChatFirestoreService {
 
   String? get _uid => _auth.currentUser?.uid;
 
-  bool get isLoggedIn => _uid != null;
-
-  /// Fetch the most recent [limit] messages for the logged-in user, oldest
-  /// first (ready to render directly in a chat list).
-  Future<List<ChatMessage>> fetchRecentMessages({int limit = 60}) async {
+  CollectionReference<Map<String, dynamic>>? _conversationsRef() {
     final uid = _uid;
-    if (uid == null) {
-      debugPrint('[ChatFirestoreService] fetchRecentMessages: user not logged in');
+    if (uid == null) return null;
+    return _firestore.collection('users').doc(uid).collection('medai_conversations');
+  }
+
+  /// Lists all conversations for the logged-in user, most recently active
+  /// first — this is what the chat-history screen shows.
+  Future<List<ChatConversationSummary>> fetchConversations() async {
+    final ref = _conversationsRef();
+    if (ref == null) {
+      debugPrint('[ChatFirestoreService] fetchConversations: user not logged in');
       return [];
     }
-
     try {
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('medai_chat')
+      final snapshot = await ref.orderBy('updatedAtMs', descending: true).get();
+      final list = snapshot.docs
+          .map((doc) => ChatConversationSummary.fromMap(doc.data(), doc.id))
+          .toList();
+      debugPrint('[ChatFirestoreService] fetchConversations: ${list.length} found');
+      return list;
+    } catch (e) {
+      debugPrint('[ChatFirestoreService] fetchConversations: error — $e');
+      return [];
+    }
+  }
+
+  /// Creates a new, empty conversation and returns its ID.
+  Future<String?> createConversation() async {
+    final ref = _conversationsRef();
+    if (ref == null) {
+      debugPrint('[ChatFirestoreService] createConversation: user not logged in');
+      return null;
+    }
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final doc = await ref.add({
+        'title': 'New chat',
+        'createdAtMs': now,
+        'updatedAtMs': now,
+        'lastMessagePreview': '',
+      });
+      debugPrint('[ChatFirestoreService] createConversation: ${doc.id}');
+      return doc.id;
+    } catch (e) {
+      debugPrint('[ChatFirestoreService] createConversation: error — $e');
+      return null;
+    }
+  }
+
+  /// Fetch the most recent [limit] messages in one conversation, oldest
+  /// first (ready to render directly in the chat list).
+  Future<List<ChatMessage>> fetchMessages(String conversationId,
+      {int limit = 200}) async {
+    final ref = _conversationsRef();
+    if (ref == null) return [];
+    try {
+      final snapshot = await ref
+          .doc(conversationId)
+          .collection('messages')
           .orderBy('timestampMs', descending: true)
           .limit(limit)
           .get();
@@ -39,34 +92,58 @@ class ChatFirestoreService {
       final messages = snapshot.docs
           .map((doc) => ChatMessage.fromMap(doc.data(), doc.id))
           .toList()
-          .reversed // we fetched newest-first, flip back to oldest-first
+          .reversed
           .toList();
 
       debugPrint(
-          '[ChatFirestoreService] fetchRecentMessages: loaded ${messages.length} messages');
+          '[ChatFirestoreService] fetchMessages($conversationId): ${messages.length}');
       return messages;
     } catch (e) {
-      debugPrint('[ChatFirestoreService] fetchRecentMessages: error — $e');
+      debugPrint('[ChatFirestoreService] fetchMessages: error — $e');
       return [];
     }
   }
 
-  /// Saves one message and returns it with its assigned Firestore ID.
-  /// Returns the original message unchanged (with a null id) on failure —
-  /// the chat still works locally for that session even if the save fails.
-  Future<ChatMessage> saveMessage(ChatMessage message) async {
-    final uid = _uid;
-    if (uid == null) {
+  /// Saves one message inside a conversation, waits for the write to
+  /// actually complete (so it survives the app being killed right after),
+  /// and updates the parent conversation's preview/title/updatedAt.
+  /// Returns the message with its assigned Firestore ID, or the original
+  /// message unchanged if the save fails (chat still works locally for
+  /// that session either way).
+  Future<ChatMessage> saveMessage(
+      String conversationId, ChatMessage message) async {
+    final ref = _conversationsRef();
+    if (ref == null) {
       debugPrint('[ChatFirestoreService] saveMessage: user not logged in');
       return message;
     }
 
     try {
-      final docRef = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('medai_chat')
-          .add(message.toMap());
+      final conversationDoc = ref.doc(conversationId);
+      final docRef =
+          await conversationDoc.collection('messages').add(message.toMap());
+
+      final preview = message.text.trim().isNotEmpty
+          ? message.text.trim()
+          : (message.attachments.isNotEmpty
+              ? message.attachments.first.name
+              : '');
+      final updates = <String, dynamic>{
+        'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
+        if (preview.isNotEmpty) 'lastMessagePreview': preview,
+      };
+      // Auto-title the conversation from the user's first real message,
+      // same pattern ChatGPT/Claude use — only overwrite the placeholder.
+      if (message.role == ChatRole.user && message.text.trim().isNotEmpty) {
+        final snap = await conversationDoc.get();
+        final currentTitle = (snap.data()?['title'] as String?) ?? 'New chat';
+        if (currentTitle == 'New chat') {
+          final trimmed = message.text.trim();
+          updates['title'] =
+              trimmed.length > 48 ? '${trimmed.substring(0, 48)}…' : trimmed;
+        }
+      }
+      await conversationDoc.update(updates);
 
       return ChatMessage(
         id: docRef.id,
@@ -84,18 +161,16 @@ class ChatFirestoreService {
     }
   }
 
-  /// Wipes the whole chat history for the logged-in user (used by "Clear
-  /// chat" / starting fresh). Deletes in small batches — Firestore batched
-  /// writes cap at 500 operations.
-  Future<void> clearHistory() async {
-    final uid = _uid;
-    if (uid == null) return;
-
+  /// Deletes a whole conversation (all its messages, then the conversation
+  /// doc itself). Firestore batched writes cap at 500 ops, so this deletes
+  /// messages in pages.
+  Future<void> deleteConversation(String conversationId) async {
+    final ref = _conversationsRef();
+    if (ref == null) return;
     try {
-      final collection =
-          _firestore.collection('users').doc(uid).collection('medai_chat');
+      final messagesRef = ref.doc(conversationId).collection('messages');
       while (true) {
-        final snapshot = await collection.limit(300).get();
+        final snapshot = await messagesRef.limit(300).get();
         if (snapshot.docs.isEmpty) break;
         final batch = _firestore.batch();
         for (final doc in snapshot.docs) {
@@ -103,9 +178,10 @@ class ChatFirestoreService {
         }
         await batch.commit();
       }
-      debugPrint('[ChatFirestoreService] clearHistory: done');
+      await ref.doc(conversationId).delete();
+      debugPrint('[ChatFirestoreService] deleteConversation: $conversationId done');
     } catch (e) {
-      debugPrint('[ChatFirestoreService] clearHistory: error — $e');
+      debugPrint('[ChatFirestoreService] deleteConversation: error — $e');
     }
   }
 }

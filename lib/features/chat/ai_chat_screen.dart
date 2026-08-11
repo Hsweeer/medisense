@@ -22,6 +22,7 @@ import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../sos/sos_screen.dart';
 import '../vitals/vitals_scan_screen.dart';
+import 'medai_history_screen.dart';
 import 'prescription_review_screen.dart';
 
 /// MedAI — multimodal health assistant: text, image, file, and voice input,
@@ -56,9 +57,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
   /// Starts a real mic recording to a temp file on hold-down.
   Future<void> _startVoiceRecording(ChatProvider chat) async {
     try {
-      if (!await _recorder.hasPermission()) {
+      final hasPermission = await _recorder.hasPermission();
+      debugPrint('[VoiceRecording] mic permission granted: $hasPermission');
+      if (!hasPermission) {
         if (mounted) {
-          showToast(context, 'Microphone permission is needed to record a voice note',
+          showToast(context,
+              'Microphone permission is needed to record a voice note',
               color: AppColors.danger);
         }
         return;
@@ -66,19 +70,29 @@ class _AiChatScreenState extends State<AiChatScreen> {
       final dir = await getTemporaryDirectory();
       final path =
           '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc),
-          path: path);
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
+        path: path,
+      );
       _recordingPath = path;
       _recordStart = DateTime.now();
+      debugPrint('[VoiceRecording] started → $path');
       chat.startRecording();
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[VoiceRecording] start FAILED: $e');
+      debugPrint('$st');
       if (mounted) {
         showToast(context, 'Could not start recording', color: AppColors.danger);
       }
     }
   }
 
-  /// Stops the mic recording on release and sends the real audio file.
+  /// Stops the mic recording on release, validates it actually captured
+  /// audio, and sends the real file for transcription.
   Future<void> _stopVoiceRecording(ChatProvider chat) async {
     if (!chat.recording) return; // never actually started (e.g. permission denied)
     final secs = DateTime.now()
@@ -87,11 +101,35 @@ class _AiChatScreenState extends State<AiChatScreen> {
     String? path;
     try {
       path = await _recorder.stop();
-    } catch (_) {
+      debugPrint('[VoiceRecording] stopped after ${secs}s → $path');
+    } catch (e, st) {
+      debugPrint('[VoiceRecording] stop FAILED: $e');
+      debugPrint('$st');
       // fall back to the path we started recording to
     }
+
+    final finalPath = path ?? _recordingPath;
+
+    // A real recording is never just a few bytes — this catches taps too
+    // quick to capture anything, or a recorder that silently failed to
+    // write, before wasting a network call on garbage audio.
+    if (finalPath != null) {
+      final file = File(finalPath);
+      final exists = await file.exists();
+      final size = exists ? await file.length() : 0;
+      debugPrint('[VoiceRecording] file exists: $exists, size: $size bytes');
+      if (!exists || size < 1000) {
+        if (mounted) {
+          showToast(context, "That was too short — hold the mic a bit longer",
+              color: AppColors.danger);
+        }
+        await chat.stopRecording(seconds: 0, cancelled: true);
+        return;
+      }
+    }
+
     await chat.stopRecording(
-        seconds: max(secs, 1), filePath: path ?? _recordingPath);
+        seconds: max(secs, 1), filePath: finalPath);
   }
 
   void _openAttachmentSheet() {
@@ -113,26 +151,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       fontSize: 16.sp, fontWeight: FontWeight.w700)),
               SizedBox(height: 10.h),
               _AttachRow(
-                icon: Icons.photo_camera_rounded,
+                icon: Icons.add_a_photo_rounded,
                 color: AppColors.primary,
                 soft: AppColors.soft,
-                title: 'Camera',
-                sub: 'Take a photo of anything',
-                onTap: () => _pickAndStage(chat,
-                    source: ImageSource.camera,
-                    intent: AttachmentIntent.general,
-                    detail: 'Camera · JPG'),
-              ),
-              _AttachRow(
-                icon: Icons.photo_library_rounded,
-                color: AppColors.primary,
-                soft: AppColors.soft,
-                title: 'Photo library',
-                sub: 'Pick from your gallery',
-                onTap: () => _pickAndStage(chat,
-                    source: ImageSource.gallery,
-                    intent: AttachmentIntent.general,
-                    detail: 'Photo'),
+                title: 'Add a photo',
+                sub: 'Take a new photo or choose one from your phone',
+                onTap: () => _chooseAndStageImage(
+                  chat,
+                  intent: AttachmentIntent.general,
+                  pickerTitle: 'Add a photo',
+                ),
               ),
               _AttachRow(
                 icon: Icons.description_rounded,
@@ -148,10 +176,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.aiSoft,
                 title: 'Scan prescription',
                 sub: 'MedAI reads the doctor\'s note & sets alarms itself',
-                onTap: () => _pickAndStage(chat,
-                    source: ImageSource.camera,
-                    intent: AttachmentIntent.prescription,
-                    detail: 'Scan · JPG'),
+                onTap: () => _chooseAndStageImage(
+                  chat,
+                  intent: AttachmentIntent.prescription,
+                  pickerTitle: 'Scan prescription',
+                ),
               ),
               _AttachRow(
                 icon: Icons.face_retouching_natural_rounded,
@@ -159,10 +188,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.aiSoft,
                 title: 'Skin check',
                 sub: 'Detect a skin condition from a photo',
-                onTap: () => _pickAndStage(chat,
-                    source: ImageSource.camera,
-                    intent: AttachmentIntent.skin,
-                    detail: 'Camera · JPG'),
+                onTap: () => _chooseAndStageImage(
+                  chat,
+                  intent: AttachmentIntent.skin,
+                  pickerTitle: 'Skin check',
+                ),
               ),
               _AttachRow(
                 icon: Icons.favorite_rounded,
@@ -179,20 +209,83 @@ class _AiChatScreenState extends State<AiChatScreen> {
     );
   }
 
+  /// One consistent camera-or-library choice, shared by "Add a photo",
+  /// "Scan prescription", and "Skin check" — a single tap opens this, then
+  /// the user picks camera or gallery. Replaces the old setup where
+  /// "Camera" and "Photo library" were two separate top-level buttons, and
+  /// "Scan prescription"/"Skin check" only ever opened the camera directly
+  /// with no gallery option at all.
+  Future<void> _chooseAndStageImage(
+    ChatProvider chat, {
+    required AttachmentIntent intent,
+    required String pickerTitle,
+  }) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 14.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(pickerTitle,
+                  style: GoogleFonts.sora(
+                      fontSize: 16.sp, fontWeight: FontWeight.w700)),
+              SizedBox(height: 10.h),
+              _AttachRow(
+                icon: Icons.photo_camera_rounded,
+                color: AppColors.primary,
+                soft: AppColors.soft,
+                title: 'Open camera',
+                sub: 'Take a new photo',
+                onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+              ),
+              _AttachRow(
+                icon: Icons.photo_library_rounded,
+                color: AppColors.primary,
+                soft: AppColors.soft,
+                title: 'Choose from phone',
+                sub: 'Select an existing photo',
+                onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null || !mounted) return; // user backed out — leave the main sheet open
+
+    // Close the main "Share with MedAI" sheet now that a source is chosen.
+    Navigator.of(context).pop();
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+
+    await _pickAndStage(
+      chat,
+      source: source,
+      intent: intent,
+      detail: source == ImageSource.camera ? 'Camera · JPG' : 'Photo · JPG',
+    );
+  }
+
   /// Opens the real device camera or gallery and stages whatever the user
-  /// actually picks — replaces the old placeholder that staged a fake
-  /// hardcoded filename without ever opening anything.
+  /// actually picks.
   Future<void> _pickAndStage(
     ChatProvider chat, {
     required ImageSource source,
     required AttachmentIntent intent,
     required String detail,
   }) async {
-    Navigator.of(context).pop(); // close the attach sheet first
     try {
       final picked = await ImagePicker().pickImage(
         source: source,
-        imageQuality: 85, // keeps upload size reasonable once wired to a real AI call
+        // Prescription OCR is sensitive to compression around small characters.
+        imageQuality: intent == AttachmentIntent.prescription ? 100 : 85,
       );
       if (picked == null || !mounted) return; // user cancelled
       final fileName = picked.path.split(Platform.pathSeparator).last;
@@ -279,6 +372,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Chat history',
+            icon: Icon(Icons.history_rounded, size: 22.sp, color: AppColors.inkSoft),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MedAiHistoryScreen()),
+            ),
+          ),
           // "Personal insights" — the learn-from-your-data switch.
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -1271,7 +1371,7 @@ class _SkinReportCard extends StatelessWidget {
 }
 
 class _TypingBubble extends StatelessWidget {
-  const _TypingBubble({this.label = 'MedAI is thinking…'});
+  const _TypingBubble({this.label = 'MedAI is thinking…lllllllll'});
 
   final String label;
 

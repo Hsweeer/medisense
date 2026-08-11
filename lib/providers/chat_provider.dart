@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -14,19 +15,22 @@ import 'reminder_provider.dart';
 
 /// MedAI — the in-app health assistant.
 ///
-/// Chat history is real and persisted (Firestore, users/{uid}/medai_chat) —
-/// it survives app restarts and syncs across devices, not just in-memory
-/// for the current session. Free-text replies are generated live by Groq
-/// (llama-3.3-70b-versatile), personalized with the user's health profile
-/// when "Personal insights" is on, using recent chat history as real
-/// context — this is the practical form of "learning from the user's
-/// chats" that's actually achievable through an API (there is no per-user
-/// model fine-tuning here; Groq doesn't offer that, and it isn't something
-/// a mobile app can do on its own). Voice notes are really transcribed
-/// (Groq Whisper) — not a scripted guess — and the transcribed text is
-/// sent through the exact same reply pipeline as typed text. Red-flag →
-/// SOS escalation stays local and rule-based (safety-critical, must not
-/// depend on any network call succeeding). Prescription scans run real,
+/// Chat history is real, persisted per-user, and split into multiple named
+/// conversations — like ChatGPT/Claude's history — not one endless thread.
+/// Each conversation lives at
+/// users/{uid}/medai_conversations/{conversationId}/messages/*, so
+/// switching users or starting a new chat never mixes histories together.
+/// Free-text replies are generated live by Groq (llama-3.3-70b-versatile),
+/// personalized with the user's health profile when "Personal insights" is
+/// on, using the current conversation's recent messages as real context —
+/// this is the practical form of "learning from the user's chats" that's
+/// actually achievable through an API (there is no per-user model
+/// fine-tuning here; Groq doesn't offer that, and it isn't something a
+/// mobile app can do on its own). Voice notes are really transcribed (Groq
+/// Whisper) — not a scripted guess — and the transcribed text is sent
+/// through the exact same reply pipeline as typed text. Red-flag → SOS
+/// escalation stays local and rule-based (safety-critical, must not depend
+/// on any network call succeeding). Prescription scans run real,
 /// fully-offline OCR (Tesseract) on the photo and a heuristic parser
 /// guesses medicine/dose/frequency — the user reviews and picks the exact
 /// times before anything becomes a real reminder (see
@@ -35,75 +39,22 @@ import 'reminder_provider.dart';
 /// task from OCR.
 class ChatProvider extends ChangeNotifier {
   ChatProvider({this.reminderEngine, this.profileProvider}) {
-    _initChat();
+    _initForCurrentUser();
 
     // authStateChanges() fires once immediately with the CURRENT user as
     // soon as we start listening, in addition to firing on real
-    // login/logout — so without this guard, _initChat() runs twice on
-    // every cold start (once from the constructor above, once from this
-    // listener's first event), both racing to read an empty Firestore
-    // history and both adding their own greeting. Only re-init when the
-    // uid actually changes.
+    // login/logout — so without the uid guard below, init runs twice on
+    // every cold start and can create two conversations. Only re-init when
+    // the uid actually changes.
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user?.uid == _initializedForUid) return;
       debugPrint('[ChatProvider] authStateChanged: ${user?.email}');
-      _initChat();
+      _initForCurrentUser();
     });
   }
 
   String? _initializedForUid;
   bool _initializing = false;
-
-  Future<void> _initChat() async {
-    if (_initializing) return; // guards against overlapping calls too
-    _initializing = true;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    _initializedForUid = uid;
-
-    messages.clear();
-    pendingAttachments.clear();
-    typing = false;
-    recording = false;
-    transcribing = false;
-    notifyListeners();
-
-    try {
-      final history = await ChatFirestoreService.instance.fetchRecentMessages();
-      if (history.isNotEmpty) {
-        messages.addAll(history);
-        notifyListeners();
-        return;
-      }
-
-      // First time this user has ever opened MedAI — show and save the
-      // greeting so it's part of their real, persisted history too.
-      final user = FirebaseAuth.instance.currentUser;
-      final name = user?.displayName?.split(' ').first ?? 'there';
-
-      final greeting = ChatMessage(
-        role: ChatRole.ai,
-        text: learnFromData
-            ? "Hi $name, I'm MedAI — your personal health assistant. I can "
-                'answer health questions, read lab reports or photos you '
-                'upload, and listen to voice notes. Personal insights are '
-                "on, so my guidance will account for your health profile — "
-                "allergies, conditions, medications, age, and more."
-                '\n\nHow are you feeling today?'
-            : "Hi $name, I'm MedAI — your personal health assistant. I can "
-                'answer health questions, read lab reports or photos you '
-                'upload, and listen to voice notes. Personal insights are '
-                "off right now, so I can't read your health profile — turn "
-                'that on above anytime for guidance tailored to you.'
-                '\n\nHow are you feeling today?',
-        personalized: learnFromData,
-      );
-      messages.add(greeting);
-      notifyListeners();
-      await _persist(greeting);
-    } finally {
-      _initializing = false;
-    }
-  }
 
   /// Lets MedAI create alarms itself after scanning a prescription.
   final ReminderProvider? reminderEngine;
@@ -129,6 +80,126 @@ class ChatProvider extends ChangeNotifier {
   bool transcribing = false;
 
   Timer? _timer;
+
+  /// The conversation currently open in the chat screen.
+  String? currentConversationId;
+
+  /// All of the logged-in user's saved conversations, most recent first —
+  /// this is what the chat-history screen lists.
+  List<ChatConversationSummary> conversations = [];
+  bool loadingConversations = false;
+
+  // ---------------------------------------------------------------------
+  // Startup / user switching
+  // ---------------------------------------------------------------------
+
+  Future<void> _initForCurrentUser() async {
+    if (_initializing) return; // guards against overlapping calls
+    _initializing = true;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    _initializedForUid = uid;
+
+    messages.clear();
+    conversations = [];
+    currentConversationId = null;
+    pendingAttachments.clear();
+    typing = false;
+    recording = false;
+    transcribing = false;
+    notifyListeners();
+
+    try {
+      await loadConversations();
+      if (conversations.isNotEmpty) {
+        await openConversation(conversations.first.id);
+      } else {
+        await startNewConversation();
+      }
+    } finally {
+      _initializing = false;
+    }
+  }
+
+  /// Refreshes the conversation list from Firestore — call after creating,
+  /// deleting, or renaming a conversation so the history screen stays current.
+  Future<void> loadConversations() async {
+    loadingConversations = true;
+    notifyListeners();
+    conversations = await ChatFirestoreService.instance.fetchConversations();
+    loadingConversations = false;
+    notifyListeners();
+  }
+
+  /// Creates a brand-new, empty conversation with the greeting message and
+  /// makes it the active one — this is the "+ New chat" action.
+  Future<void> startNewConversation() async {
+    messages.clear();
+    pendingAttachments.clear();
+    typing = false;
+    notifyListeners();
+
+    final id = await ChatFirestoreService.instance.createConversation();
+    currentConversationId = id;
+
+    final user = FirebaseAuth.instance.currentUser;
+    final name = user?.displayName?.split(' ').first ?? 'there';
+
+    final greeting = ChatMessage(
+      role: ChatRole.ai,
+      text: learnFromData
+          ? "Hi $name, I'm MedAI — your personal health assistant. I can "
+              'answer health questions, read lab reports or photos you '
+              'upload, and listen to voice notes. Personal insights are '
+              "on, so my guidance will account for your health profile — "
+              "allergies, conditions, medications, age, and more."
+              '\n\nHow are you feeling today?'
+          : "Hi $name, I'm MedAI — your personal health assistant. I can "
+              'answer health questions, read lab reports or photos you '
+              'upload, and listen to voice notes. Personal insights are '
+              "off right now, so I can't read your health profile — turn "
+              'that on above anytime for guidance tailored to you.'
+              '\n\nHow are you feeling today?',
+      personalized: learnFromData,
+    );
+    messages.add(greeting);
+    notifyListeners();
+    await _persist(greeting);
+    await loadConversations(); // refresh so history list shows the new one
+  }
+
+  /// Opens a previously saved conversation and loads its messages — this
+  /// is what tapping a past chat in the history screen does.
+  Future<void> openConversation(String conversationId) async {
+    currentConversationId = conversationId;
+    messages.clear();
+    pendingAttachments.clear();
+    typing = false;
+    notifyListeners();
+
+    final history =
+        await ChatFirestoreService.instance.fetchMessages(conversationId);
+    messages.addAll(history);
+    notifyListeners();
+  }
+
+  /// Deletes a saved conversation entirely. If it was the currently open
+  /// one, starts a fresh conversation so the chat screen never shows a
+  /// deleted thread.
+  Future<void> deleteConversation(String conversationId) async {
+    await ChatFirestoreService.instance.deleteConversation(conversationId);
+    await loadConversations();
+    if (currentConversationId == conversationId) {
+      if (conversations.isNotEmpty) {
+        await openConversation(conversations.first.id);
+      } else {
+        await startNewConversation();
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Sending / replying
+  // ---------------------------------------------------------------------
 
   void toggleLearn() {
     learnFromData = !learnFromData;
@@ -186,7 +257,10 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
     String transcript;
     try {
+      final size = await File(filePath).length();
+      debugPrint('[ChatProvider] transcribing $filePath ($size bytes)');
       transcript = await GroqService.transcribeAudio(filePath);
+      debugPrint('[ChatProvider] transcript: "$transcript"');
     } catch (e) {
       debugPrint('[ChatProvider] transcription error: $e');
       transcribing = false;
@@ -337,12 +411,6 @@ class ChatProvider extends ChangeNotifier {
     ));
   }
 
-  /// Wipes chat history in Firestore and starts fresh with the greeting.
-  Future<void> clearChat() async {
-    await ChatFirestoreService.instance.clearHistory();
-    await _initChat();
-  }
-
   Future<void> _sendUser(String text, List<ChatAttachment> attachments) async {
     final message =
         ChatMessage(role: ChatRole.user, text: text, attachments: attachments);
@@ -359,7 +427,8 @@ class ChatProvider extends ChangeNotifier {
     await _persist(message);
   }
 
-  /// Saves a message to Firestore and actually waits for it to land.
+  /// Saves a message inside the current conversation and actually waits
+  /// for it to land.
   ///
   /// This used to be fire-and-forget, which is why chats could vanish if
   /// the app got killed (e.g. swiped from Android's recents) right after a
@@ -369,7 +438,12 @@ class ChatProvider extends ChangeNotifier {
   /// waits on this — messages already appear locally via notifyListeners()
   /// the instant before this runs.
   Future<void> _persist(ChatMessage message) async {
-    await ChatFirestoreService.instance.saveMessage(message);
+    final id = currentConversationId;
+    if (id == null) {
+      debugPrint('[ChatProvider] _persist: no active conversation, skipping save');
+      return;
+    }
+    await ChatFirestoreService.instance.saveMessage(id, message);
   }
 
   /// Scripted, simulated-delay reply (red-flags, attachment "analysis").
@@ -390,12 +464,25 @@ class ChatProvider extends ChangeNotifier {
     typing = true;
     notifyListeners();
     try {
-      final reply = await GroqService.chat(
+      final result = await GroqService.chatWithTools(
         systemPrompt: _buildSystemPrompt(),
         history: _buildHistory(),
+        tools: _tools,
       );
+
+      if (result.hasToolCalls) {
+        for (final call in result.toolCalls!) {
+          await _executeTool(call);
+        }
+        return;
+      }
+
+      final content = result.content?.trim();
+      if (content == null || content.isEmpty) {
+        throw Exception('Groq returned an empty response');
+      }
       await _reply(ChatMessage(
-          role: ChatRole.ai, text: reply, personalized: learnFromData));
+          role: ChatRole.ai, text: content, personalized: learnFromData));
     } catch (e) {
       debugPrint('[ChatProvider] Groq error: $e');
       typing = false;
@@ -408,6 +495,281 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  /// Tool schemas offered to Groq (OpenAI-style function calling) — this is
+  /// what lets MedAI actually DO things instead of just describing them.
+  static final List<Map<String, dynamic>> _tools = [
+    {
+      'type': 'function',
+      'function': {
+        'name': 'add_reminder',
+        'description':
+            'Creates a real medication/appointment reminder for the user. '
+            'Only call this when the user explicitly asks to be reminded '
+            'about something, e.g. "remind me to take vitamin D at 9am '
+            'every day" or "add a reminder for my checkup at 3pm".',
+        'parameters': {
+          'type': 'object',
+          'properties': {
+            'title': {
+              'type': 'string',
+              'description': 'What to be reminded about, e.g. "Vitamin D".'
+            },
+            'dose': {
+              'type': 'string',
+              'description':
+                  'Dose/amount if mentioned, e.g. "1 tablet". Empty string if not mentioned.'
+            },
+            'time': {
+              'type': 'string',
+              'description':
+                  'Exact clock time as "H:MM AM/PM", e.g. "9:00 AM". If the '
+                  'user gave no time, use "9:00 AM".'
+            },
+            'schedule': {
+              'type': 'string',
+              'description':
+                  'How often, e.g. "Daily", "Weekdays", "Nightly". Default "Daily" if unspecified.'
+            },
+            'instructions': {
+              'type': 'string',
+              'description':
+                  'Any extra note, e.g. "after food". Empty string if none.'
+            },
+          },
+          'required': ['title', 'time'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': {
+        'name': 'update_health_profile',
+        'description':
+            "Updates a field in the user's MediSense health profile. Only "
+            'call this when the user explicitly asks to change/add/update '
+            'it, e.g. "update my weight to 160 lbs" or "add penicillin to '
+            'my allergies".',
+        'parameters': {
+          'type': 'object',
+          'properties': {
+            'field': {
+              'type': 'string',
+              'enum': [
+                'weight',
+                'height',
+                'bloodType',
+                'allergies',
+                'conditions',
+                'medications',
+              ],
+              'description': 'Which profile field to change.',
+            },
+            'value': {
+              'type': 'string',
+              'description':
+                  'The new value. For weight: whole number of lb. For '
+                  'height: whole number of inches. For bloodType: e.g. '
+                  '"O+". For allergies/conditions/medications: a '
+                  'comma-separated list of items.',
+            },
+            'mode': {
+              'type': 'string',
+              'enum': ['add', 'replace'],
+              'description':
+                  'For allergies/conditions/medications only: "add" '
+                  'appends to the existing list, "replace" overwrites it. '
+                  'Default "add". Ignored for weight/height/bloodType, '
+                  'which always replace.',
+            },
+          },
+          'required': ['field', 'value'],
+        },
+      },
+    },
+  ];
+
+  Future<void> _executeTool(GroqToolCall call) async {
+    switch (call.name) {
+      case 'add_reminder':
+        await _executeAddReminder(call.arguments);
+        break;
+      case 'update_health_profile':
+        await _executeUpdateProfile(call.arguments);
+        break;
+      default:
+        typing = false;
+        await _reply(const ChatMessage(
+          role: ChatRole.ai,
+          text: "I tried to do something I don't actually support yet — "
+              'sorry about that.',
+        ));
+    }
+  }
+
+  Future<void> _executeAddReminder(Map<String, dynamic> args) async {
+    typing = false;
+    if (reminderEngine == null) {
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: "I can't set reminders right now — please try again in a "
+            'moment.',
+      ));
+      return;
+    }
+
+    final title = (args['title'] as String?)?.trim() ?? '';
+    if (title.isEmpty) {
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: 'What would you like the reminder to be about?',
+      ));
+      return;
+    }
+
+    final timeRaw = (args['time'] as String?)?.trim() ?? '';
+    final time = _validateReminderTime(timeRaw);
+    final dose = (args['dose'] as String?)?.trim() ?? '';
+    final schedule = (args['schedule'] as String?)?.trim();
+    final instructions = (args['instructions'] as String?)?.trim() ?? '';
+
+    try {
+      await reminderEngine!.addAll([
+        Reminder(
+          title: title,
+          dose: dose,
+          time: time,
+          schedule: (schedule == null || schedule.isEmpty) ? 'Daily' : schedule,
+          instructions: instructions,
+          addedBy: 'MedAI',
+        ),
+      ]);
+      await _reply(ChatMessage(
+        role: ChatRole.ai,
+        text: 'Done — added a reminder for "$title" at $time'
+            '${dose.isNotEmpty ? ' ($dose)' : ''}. You can edit or delete '
+            'it anytime in Reminders.',
+      ));
+    } catch (e) {
+      debugPrint('[ChatProvider] add_reminder error: $e');
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: "Something went wrong adding that reminder — please try "
+            'again, or add it manually in Reminders.',
+      ));
+    }
+  }
+
+  /// Guards against a malformed time from the model — falls back to a
+  /// sensible default rather than creating a reminder the alarm scheduler
+  /// can't parse.
+  String _validateReminderTime(String raw) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false)
+        .firstMatch(raw.trim());
+    if (match == null) return '9:00 AM';
+    final hour = int.tryParse(match.group(1)!) ?? 9;
+    if (hour < 1 || hour > 12) return '9:00 AM';
+    final minute = match.group(2)!;
+    final period = match.group(3)!.toUpperCase();
+    return '$hour:$minute $period';
+  }
+
+  Future<void> _executeUpdateProfile(Map<String, dynamic> args) async {
+    typing = false;
+    if (profileProvider == null) {
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: "I can't edit your profile right now — please try again in "
+            'a moment.',
+      ));
+      return;
+    }
+
+    final field = (args['field'] as String?)?.trim() ?? '';
+    final value = (args['value'] as String?)?.trim() ?? '';
+    final mode = (args['mode'] as String?)?.trim().toLowerCase() ?? 'add';
+    if (field.isEmpty || value.isEmpty) {
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: 'What would you like me to update in your profile?',
+      ));
+      return;
+    }
+
+    final current = profileProvider!.profile;
+    HealthProfile updated;
+    String confirmation;
+
+    try {
+      switch (field) {
+        case 'weight':
+          final lb = int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), ''));
+          if (lb == null) throw const FormatException('weight');
+          updated = current.copyWith(weightLb: lb);
+          confirmation = 'Updated your weight to $lb lb.';
+          break;
+        case 'height':
+          final inches = int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), ''));
+          if (inches == null) throw const FormatException('height');
+          updated = current.copyWith(heightIn: inches);
+          confirmation = "Updated your height to ${updated.heightLabel}.";
+          break;
+        case 'bloodType':
+          updated = current.copyWith(bloodType: value);
+          confirmation = 'Updated your blood type to $value.';
+          break;
+        case 'allergies':
+        case 'conditions':
+        case 'medications':
+          final items = value
+              .split(',')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList();
+          final List<String> newList;
+          if (mode == 'replace') {
+            newList = items;
+          } else {
+            final existing = field == 'allergies'
+                ? current.allergies
+                : field == 'conditions'
+                    ? current.conditions
+                    : current.medications;
+            newList = {...existing, ...items}.toList(); // de-duped
+          }
+          updated = field == 'allergies'
+              ? current.copyWith(allergies: newList)
+              : field == 'conditions'
+                  ? current.copyWith(conditions: newList)
+                  : current.copyWith(medications: newList);
+          confirmation =
+              '${mode == 'replace' ? 'Updated' : 'Added to'} your $field: '
+              '${items.join(', ')}.';
+          break;
+        default:
+          await _reply(ChatMessage(
+            role: ChatRole.ai,
+            text: "I don't know how to update \"$field\" in your profile "
+                'yet — you can edit that in the Profile tab.',
+          ));
+          return;
+      }
+
+      await profileProvider!.updateProfile(updated);
+      await _reply(ChatMessage(
+        role: ChatRole.ai,
+        text:
+            '$confirmation You can review or change it anytime in your Profile tab.',
+      ));
+    } catch (e) {
+      debugPrint('[ChatProvider] update_health_profile error: $e');
+      await _reply(ChatMessage(
+        role: ChatRole.ai,
+        text: "I couldn't make sense of \"$value\" for $field — mind "
+            'trying again, or editing it directly in your Profile tab?',
+      ));
+    }
+  }
+
   String _buildSystemPrompt() {
     final buffer = StringBuffer(
       'You are MedAI, a friendly, careful health-assistant chat feature '
@@ -415,7 +777,13 @@ class ChatProvider extends ChangeNotifier {
       'plain language, under about 120 words unless the question needs '
       'more detail. Always recommend seeing a doctor for anything serious, '
       'uncertain, or worsening. Never claim to give a diagnosis — you are '
-      'a supportive assistant, not a replacement for professional care.',
+      'a supportive assistant, not a replacement for professional care. '
+      'You can take real actions: use add_reminder when the user asks to '
+      'be reminded about something, and update_health_profile when they '
+      'ask to change their weight, height, blood type, allergies, '
+      'conditions, or medications. Only call a tool when the user clearly '
+      'asked for that action — do not call one just because health '
+      'information came up in conversation.',
     );
 
     if (learnFromData) {
@@ -489,10 +857,12 @@ class ChatProvider extends ChangeNotifier {
     return age >= 0 && age < 130 ? age : null;
   }
 
-  /// Last ~20 text messages as {role, content} pairs for conversation
-  /// context — this is what "MedAI remembers past chats" actually means
-  /// here: real persisted history feeding into each new request, not a
-  /// fine-tuned model. Groq itself has no memory between calls.
+  /// Last ~20 text messages in the CURRENT conversation as {role, content}
+  /// pairs for conversation context — this is what "MedAI remembers past
+  /// chats" actually means here: real persisted history feeding into each
+  /// new request, not a fine-tuned model. Groq itself has no memory
+  /// between calls, and different conversations never bleed into each
+  /// other's context.
   List<Map<String, String>> _buildHistory() {
     final recent =
         messages.length > 20 ? messages.sublist(messages.length - 20) : messages;

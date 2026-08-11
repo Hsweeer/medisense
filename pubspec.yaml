@@ -63,6 +63,7 @@ dependencies:
   flutter_tesseract_ocr: ^0.4.23
   flutter_tts: ^4.2.0
   android_intent_plus: ^5.0.2
+  http_parser: ^4.1.2
 
   # Notification feature — local scheduling + local JSON history storage.
   flutter_local_notifications: ^19.4.2
