@@ -11,7 +11,7 @@ import 'core/theme/app_theme.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/shell/patient_shell.dart';
-import 'features/sos/emergency_ride_screen.dart';
+import 'features/sos/sos_screen.dart';
 import 'features/sos/sos_overlay_button.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
@@ -26,6 +26,9 @@ import 'services/notification_service.dart';
 
 // GLOBAL MASTER KEY FOR NAVIGATION
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// GLOBAL FLAG TO HANDLE SOS DEEP LINKING THROUGH SPLASH
+bool gPendingSosNavigation = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,11 +65,11 @@ class _MediSenseAppState extends State<MediSenseApp> {
     super.initState();
     _setupListeners();
     
-    // Notify native side that Flutter is ready AFTER the first frame is built
+    // Notify native side that Flutter is ready
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await _nativeChannel.invokeMethod('flutterReady');
-        debugPrint('SOS_DEBUG: Notified native that flutter is ready (Post Frame)');
+        debugPrint('SOS_DEBUG: Notified native that flutter is ready');
       } catch (e) {
         debugPrint('SOS_DEBUG: Error notifying native: $e');
       }
@@ -101,37 +104,28 @@ class _MediSenseAppState extends State<MediSenseApp> {
 
   Future<void> _handleSosNavigation() async {
     debugPrint('SOS_DEBUG: _handleSosNavigation triggered');
+    
+    // Set global flag so AuthWrapper can see it even if Navigator isn't ready
+    gPendingSosNavigation = true;
 
     try {
-      // 1. Get Navigator State
       var state = navigatorKey.currentState;
       debugPrint('SOS_DEBUG: navigatorKey.currentState is ${state == null ? "NULL" : "attached"}');
 
-      // 2. Retry Logic: If null, wait a tiny bit (handles killed app startup race)
-      if (state == null) {
-        debugPrint('SOS_DEBUG: Navigator not ready, retrying in 500ms...');
-        await Future.delayed(const Duration(milliseconds: 500));
-        state = navigatorKey.currentState;
-        debugPrint('SOS_DEBUG: Retry result -> ${state == null ? "STILL NULL" : "attached"}');
-      }
-
       if (state != null) {
-        // 3. Trigger Provider Logic using Navigator's context (which is below MultiProvider)
+        // If navigator is ready, we might still be on splash.
+        // The AuthWrapper timer will also check this flag.
         final navContext = state.context;
-        debugPrint('SOS_DEBUG: Triggering provider logic via navigator context');
-        
-        // Ensure SOS data is ready
         navContext.read<SosProvider>().triggerImmediate();
-
-        // 4. Execute Navigation - Clears entire stack for DIRECT access
-        debugPrint('SOS_DEBUG: Executing pushNamedAndRemoveUntil(/sos)');
+        
+        // If we are NOT in the splash period anymore, navigate immediately
+        // Otherwise, let AuthWrapper handle it after the timer.
+        debugPrint('SOS_DEBUG: Attempting immediate navigation (flag set)');
         state.pushNamedAndRemoveUntil('/sos', (route) => false);
-      } else {
-        debugPrint('SOS_DEBUG: ERROR - navigatorKey never attached!');
+        gPendingSosNavigation = false; 
       }
     } catch (e, st) {
-      debugPrint('SOS_DEBUG: Fatal error in _handleSosNavigation: $e');
-      debugPrint('SOS_DEBUG: $st');
+      debugPrint('SOS_DEBUG: Navigation attempt error: $e');
     }
   }
 
@@ -168,7 +162,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
           theme: AppTheme.light(),
           routes: {
             '/': (ctx) => const AuthWrapper(),
-            '/sos': (ctx) => const EmergencyRideScreen(),
+            '/sos': (ctx) => const SosScreen(),
           },
           initialRoute: '/',
           builder: (context, child) => Container(
@@ -196,7 +190,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
     super.initState();
     // Professional 2.5s splash delay
     Timer(const Duration(milliseconds: 2500), () {
-      if (mounted) setState(() => _showSplash = false);
+      if (mounted) {
+        setState(() => _showSplash = false);
+        
+        // CRITICAL FIX: If SOS was triggered during splash, navigate NOW
+        if (gPendingSosNavigation) {
+          debugPrint('SOS_DEBUG: AuthWrapper timer finished, pending SOS detected. Redirecting...');
+          gPendingSosNavigation = false;
+          context.read<SosProvider>().triggerImmediate();
+          navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (route) => false);
+        }
+      }
     });
   }
 

@@ -124,6 +124,10 @@ class ReminderProvider extends ChangeNotifier {
     r.snoozeLabel = null;
     r.streakDays++;
     _persist(r);
+    
+    // Stop the alarm for today immediately
+    NotificationService.instance.cancelForReminder(r);
+
     notifyListeners();
   }
 

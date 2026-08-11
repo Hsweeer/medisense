@@ -109,21 +109,23 @@ class SosProvider extends ChangeNotifier {
   }
 
   void toggleAccessibilityButton(bool value) async {
-    // 1. Update UI state immediately
-    showAccessibilityButton = value;
-    notifyListeners();
-
     if (value) {
+      // 1. Check permission first
       final status = await FlutterOverlayWindow.isPermissionGranted();
       if (!status) {
-        final granted = await FlutterOverlayWindow.requestPermission();
-        if (granted == null || !granted) {
-          showAccessibilityButton = false;
-          notifyListeners();
-          return;
-        }
+        // If no permission, request it but DON'T turn on the toggle yet
+        debugPrint('[SosProvider] Permission missing, requesting...');
+        await FlutterOverlayWindow.requestPermission();
+        // Keep toggle OFF
+        showAccessibilityButton = false;
+        notifyListeners();
+        return;
       }
-      
+
+      // 2. Permission exists, now we can turn it on
+      showAccessibilityButton = true;
+      notifyListeners();
+
       try {
         const channel = MethodChannel('medisense_native_channel');
         await channel.invokeMethod('requestIgnoreBatteryOptimizations');
@@ -131,11 +133,14 @@ class SosProvider extends ChangeNotifier {
 
       await _startOverlay();
     } else {
+      // Turn off
+      showAccessibilityButton = false;
+      notifyListeners();
       await FlutterOverlayWindow.closeOverlay();
     }
 
-    // 2. Persist to cloud
-    _persistSettings(value);
+    // 3. Persist to cloud
+    _persistSettings(showAccessibilityButton);
   }
 
   Future<void> _startOverlay() async {
