@@ -59,28 +59,28 @@ class ChatAttachment {
   final String? filePath; // real on-device file path, when actually captured/picked
 
   Map<String, dynamic> toMap() => {
-        'type': type.name,
-        'name': name,
-        'detail': detail,
-        'durationSeconds': durationSeconds,
-        'intent': intent.name,
-        'filePath': filePath,
-      };
+    'type': type.name,
+    'name': name,
+    'detail': detail,
+    'durationSeconds': durationSeconds,
+    'intent': intent.name,
+    'filePath': filePath,
+  };
 
   factory ChatAttachment.fromMap(Map<String, dynamic> map) => ChatAttachment(
-        type: AttachmentType.values.firstWhere(
+    type: AttachmentType.values.firstWhere(
           (e) => e.name == map['type'],
-          orElse: () => AttachmentType.image,
-        ),
-        name: map['name'] ?? '',
-        detail: map['detail'] ?? '',
-        durationSeconds: map['durationSeconds'] ?? 0,
-        intent: AttachmentIntent.values.firstWhere(
+      orElse: () => AttachmentType.image,
+    ),
+    name: map['name'] ?? '',
+    detail: map['detail'] ?? '',
+    durationSeconds: map['durationSeconds'] ?? 0,
+    intent: AttachmentIntent.values.firstWhere(
           (e) => e.name == map['intent'],
-          orElse: () => AttachmentIntent.general,
-        ),
-        filePath: map['filePath'],
-      );
+      orElse: () => AttachmentIntent.general,
+    ),
+    filePath: map['filePath'],
+  );
 }
 
 class ChatMessage {
@@ -115,25 +115,25 @@ class ChatMessage {
   final DateTime? timestamp;
 
   Map<String, dynamic> toMap() => {
-        'role': role.name,
-        'text': text,
-        'card': card.name,
-        'attachments': attachments.map((a) => a.toMap()).toList(),
-        'personalized': personalized,
-        'ocrText': ocrText,
-        'timestampMs': (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
-      };
+    'role': role.name,
+    'text': text,
+    'card': card.name,
+    'attachments': attachments.map((a) => a.toMap()).toList(),
+    'personalized': personalized,
+    'ocrText': ocrText,
+    'timestampMs': (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
+  };
 
   factory ChatMessage.fromMap(Map<String, dynamic> map, String id) {
     return ChatMessage(
       id: id,
       role: ChatRole.values.firstWhere(
-        (e) => e.name == map['role'],
+            (e) => e.name == map['role'],
         orElse: () => ChatRole.ai,
       ),
       text: map['text'] ?? '',
       card: ChatCardType.values.firstWhere(
-        (e) => e.name == map['card'],
+            (e) => e.name == map['card'],
         orElse: () => ChatCardType.none,
       ),
       attachments: ((map['attachments'] as List?) ?? [])
@@ -210,6 +210,14 @@ class Reminder {
     this.snoozeLabel,
     this.streakDays = 0,
     this.enabled = true,
+    this.category = 'medication', // 'medication' | 'measurement' | 'activity'
+    this.unit,
+    this.forWhom,
+    this.conditionTag,
+    this.inventoryEnabled = false,
+    this.inventoryAmount,
+    this.inventoryThreshold,
+    this.durationLabel,
   });
 
   String? id; // Firestore document ID
@@ -224,6 +232,16 @@ class Reminder {
   int streakDays;
   bool enabled; // controls whether alarm is scheduled
 
+  // Category-aware fields (added for the 3-tab Add Reminder flow).
+  String category; // 'medication' | 'measurement' | 'activity'
+  String? unit; // e.g. "pill", "mg", "kg" — medication/measurement
+  String? forWhom; // "Myself" or a care-recipient's name — medication only
+  String? conditionTag; // "What do you take this for?" — medication only
+  bool inventoryEnabled; // refill reminder toggle — medication only
+  int? inventoryAmount;
+  int? inventoryThreshold;
+  String? durationLabel; // e.g. "5 min" — activity only
+
   bool get taken => status == DoseStatus.taken;
 
   factory Reminder.fromMap(Map<String, dynamic> map, String id) {
@@ -236,12 +254,20 @@ class Reminder {
       instructions: map['instructions'] ?? '',
       addedBy: map['addedBy'] ?? 'you',
       status: DoseStatus.values.firstWhere(
-        (e) => e.toString() == 'DoseStatus.${map['status'] ?? 'pending'}',
+            (e) => e.toString() == 'DoseStatus.${map['status'] ?? 'pending'}',
         orElse: () => DoseStatus.pending,
       ),
       snoozeLabel: map['snoozeLabel'],
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
+      category: map['category'] ?? 'medication',
+      unit: map['unit'],
+      forWhom: map['forWhom'],
+      conditionTag: map['conditionTag'],
+      inventoryEnabled: map['inventoryEnabled'] ?? false,
+      inventoryAmount: map['inventoryAmount'],
+      inventoryThreshold: map['inventoryThreshold'],
+      durationLabel: map['durationLabel'],
     );
   }
 
@@ -255,6 +281,14 @@ class Reminder {
     'status': status.toString().split('.').last,
     'streakDays': streakDays,
     'enabled': enabled,
+    'category': category,
+    if (unit != null) 'unit': unit,
+    if (forWhom != null) 'forWhom': forWhom,
+    if (conditionTag != null) 'conditionTag': conditionTag,
+    'inventoryEnabled': inventoryEnabled,
+    if (inventoryAmount != null) 'inventoryAmount': inventoryAmount,
+    if (inventoryThreshold != null) 'inventoryThreshold': inventoryThreshold,
+    if (durationLabel != null) 'durationLabel': durationLabel,
   };
 }
 

@@ -7,6 +7,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../core/services/alarm_sound_catalog.dart';
 import '../core/services/alarm_sound_prefs.dart';
 import '../data/models/models.dart';
 import '../data/models/notification_model.dart';
@@ -141,25 +142,60 @@ class NotificationService {
   Future<void> scheduleReminder(Reminder reminder) async {
     await cancelForReminder(reminder);
 
-    final time = _parseTimeOfDay(reminder.time);
-    if (time == null) {
+    // Medications can carry more than one dose time a day, e.g.
+    // "8:00 AM, 8:00 PM" for "Twice daily" — schedule each separately.
+    final rawTimes = reminder.time
+        .split(',')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    if (rawTimes.isEmpty) {
       debugPrint(
-          '[NotificationService] scheduleReminder: unparseable time "${reminder.time}" for "${reminder.title}" — skipped');
-      return; // unparseable time — nothing to schedule
+          '[NotificationService] scheduleReminder: no time set for "${reminder.title}" — skipped');
+      return;
     }
 
-    final baseId = _baseIdFor(reminder.title);
+    final weekdays = _weekdaysFor(reminder.schedule);
+    final selectedSound = await AlarmSoundPrefs.instance.getSelected();
+
+    for (var timeIndex = 0; timeIndex < rawTimes.length; timeIndex++) {
+      final time = _parseTimeOfDay(rawTimes[timeIndex]);
+      if (time == null) {
+        debugPrint(
+            '[NotificationService] scheduleReminder: unparseable time "${rawTimes[timeIndex]}" for "${reminder.title}" — skipped');
+        continue;
+      }
+      await _scheduleOneTime(
+        reminder: reminder,
+        time: time,
+        displayTime: rawTimes[timeIndex],
+        timeIndex: timeIndex,
+        weekdays: weekdays,
+        selectedSound: selectedSound,
+      );
+    }
+  }
+
+  Future<void> _scheduleOneTime({
+    required Reminder reminder,
+    required TimeOfDay time,
+    required String displayTime,
+    required int timeIndex,
+    required List<int>? weekdays,
+    required AlarmSoundOption selectedSound,
+  }) async {
+    final baseId = _baseIdFor(reminder.title, timeIndex);
     final message = reminder.dose.trim().isEmpty
         ? 'Time to take ${reminder.title}'
         : 'Time to take ${reminder.title} · ${reminder.dose}';
     final payload = jsonEncode({
       'title': 'Medicine Reminder',
       'message': message,
-      'time': reminder.time,
+      'time': displayTime,
     });
     debugPrint(
         '[NotificationService] scheduling "${reminder.title}" baseId=$baseId payload=$payload');
-    final selectedSound = await AlarmSoundPrefs.instance.getSelected();
 
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -178,7 +214,11 @@ class NotificationService {
       ),
     );
 
-    final weekdays = _weekdaysFor(reminder.schedule);
+    // Reminder IDs the native alarm layer needs to be unique per dose time,
+    // not just per reminder — otherwise a second dose time for the same
+    // medication would overwrite the first alarm instead of adding to it.
+    final nativeReminderId =
+        '${reminder.id ?? reminder.title}#$timeIndex';
 
     // The native alarm owns Android's visible alarm notification. Do not also
     // schedule flutter_local_notifications here: two independent Android
@@ -186,10 +226,10 @@ class NotificationService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       if (weekdays == null) {
         await NativeAlarmBridge.instance.scheduleAlarm(
-          reminderId: reminder.id ?? reminder.title,
+          reminderId: nativeReminderId,
           title: reminder.title,
           dose: reminder.dose,
-          displayTime: reminder.time,
+          displayTime: displayTime,
           hour: time.hour,
           minute: time.minute,
           repeatType: 'daily',
@@ -198,10 +238,10 @@ class NotificationService {
       } else {
         for (final weekday in weekdays) {
           await NativeAlarmBridge.instance.scheduleAlarm(
-            reminderId: reminder.id ?? reminder.title,
+            reminderId: nativeReminderId,
             title: reminder.title,
             dose: reminder.dose,
-            displayTime: reminder.time,
+            displayTime: displayTime,
             hour: time.hour,
             minute: time.minute,
             repeatType: 'weekly',
@@ -231,10 +271,10 @@ class NotificationService {
 
       // ── Native Alarm Bridge ──────────────────────────────────────────
       await NativeAlarmBridge.instance.scheduleAlarm(
-        reminderId: reminder.id ?? reminder.title,
+        reminderId: nativeReminderId,
         title: reminder.title,
         dose: reminder.dose,
-        displayTime: reminder.time,
+        displayTime: displayTime,
         hour: time.hour,
         minute: time.minute,
         repeatType: 'daily',
@@ -259,10 +299,10 @@ class NotificationService {
 
         // ── Native Alarm Bridge ──────────────────────────────────────────
         await NativeAlarmBridge.instance.scheduleAlarm(
-          reminderId: reminder.id ?? reminder.title,
+          reminderId: nativeReminderId,
           title: reminder.title,
           dose: reminder.dose,
-          displayTime: reminder.time,
+          displayTime: displayTime,
           hour: time.hour,
           minute: time.minute,
           repeatType: 'weekly',
@@ -274,14 +314,22 @@ class NotificationService {
   }
 
   /// Cancels every alarm belonging to [reminder] (used before rescheduling,
-  /// on edit, and on delete).
+  /// on edit, and on delete). Covers every dose-time slot (a medication can
+  /// have up to a few times a day) crossed with every weekday offset.
   Future<void> cancelForReminder(Reminder reminder) async {
-    final baseId = _baseIdFor(reminder.title);
-    await _plugin.cancel(baseId);
-    for (var weekday = 1; weekday <= 7; weekday++) {
-      await _plugin.cancel(baseId + weekday);
+    const maxTimeSlots = 5;
+    for (var timeIndex = 0; timeIndex < maxTimeSlots; timeIndex++) {
+      final baseId = _baseIdFor(reminder.title, timeIndex);
+      await _plugin.cancel(baseId);
+      for (var weekday = 1; weekday <= 7; weekday++) {
+        await _plugin.cancel(baseId + weekday);
+      }
+      // ── Native Alarm Bridge ──────────────────────────────────────────
+      await NativeAlarmBridge.instance
+          .cancelAlarm('${reminder.id ?? reminder.title}#$timeIndex');
     }
-    // ── Native Alarm Bridge ────────────────────────────────────────────
+    // Cancel the pre-multi-dose id scheme too, for reminders created before
+    // this change (their alarms were registered without a "#index" suffix).
     await NativeAlarmBridge.instance.cancelAlarm(reminder.id ?? reminder.title);
   }
 
@@ -290,10 +338,13 @@ class NotificationService {
     await NativeAlarmBridge.instance.cancelAllAlarms();
   }
 
-  /// A stable id derived from the reminder's title. Titles are locked
-  /// once a reminder is created (see reminders_screen.dart), so this stays
-  /// consistent across edits without needing an `id` field on [Reminder].
-  int _baseIdFor(String title) => (title.hashCode.abs() % 100000) * 10;
+  /// A stable id derived from the reminder's title plus which dose-time
+  /// slot this is (0, 1, 2…) so a medication with several times a day gets
+  /// a distinct alarm per time instead of one overwriting another. Titles
+  /// are locked once a reminder is created (see reminders_screen.dart), so
+  /// this stays consistent across edits without needing an `id` field.
+  int _baseIdFor(String title, [int timeIndex = 0]) =>
+      (title.hashCode.abs() % 100000) * 10 + timeIndex * 1000;
 
   TimeOfDay? _parseTimeOfDay(String input) {
     final text = input.trim().toUpperCase();

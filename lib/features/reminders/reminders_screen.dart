@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/reminder_provider.dart';
+import 'add_reminder_flow_screen.dart';
 
 /// Full reminder system: take / snooze 10 min / skip per dose, streaks,
 /// adherence, edit & delete, and MedAI-created reminders tagged violet.
@@ -38,7 +39,7 @@ class RemindersScreen extends StatelessWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showEditSheet(context),
+        onPressed: () => _openAddReminderFlow(context),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
@@ -48,42 +49,42 @@ class RemindersScreen extends StatelessWidget {
       body: prov.isLoading
           ? const Center(child: CircularProgressIndicator())
           : prov.reminders.isEmpty
-              ? _buildEmptyState(context)
-              : ListView(
-                  padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
-                  children: [
-                    // Stats header: done · streak · adherence
-                    MCard(
-                      color: AppColors.soft,
-                      border: Border.all(
-                          color: AppColors.primary.withValues(alpha: .3)),
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 14.w, vertical: 14.h),
-                      child: Row(
-                        children: [
-                          _Stat(
-                              value:
-                                  '${prov.takenCount}/${prov.reminders.length}',
-                              label: 'Done today'),
-                          _statDivider(),
-                          _Stat(
-                              value: '${prov.bestStreak} days',
-                              label: 'Best streak'),
-                          _statDivider(),
-                          _Stat(
-                              value: '${prov.adherencePct}%',
-                              label: 'This week'),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    for (final r in prov.reminders)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 10.h),
-                        child: _ReminderCard(reminder: r),
-                      ),
-                  ],
-                ),
+          ? _buildEmptyState(context)
+          : ListView(
+        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
+        children: [
+          // Stats header: done · streak · adherence
+          MCard(
+            color: AppColors.soft,
+            border: Border.all(
+                color: AppColors.primary.withValues(alpha: .3)),
+            padding: EdgeInsets.symmetric(
+                horizontal: 14.w, vertical: 14.h),
+            child: Row(
+              children: [
+                _Stat(
+                    value:
+                    '${prov.takenCount}/${prov.reminders.length}',
+                    label: 'Done today'),
+                _statDivider(),
+                _Stat(
+                    value: '${prov.bestStreak} days',
+                    label: 'Best streak'),
+                _statDivider(),
+                _Stat(
+                    value: '${prov.adherencePct}%',
+                    label: 'This week'),
+              ],
+            ),
+          ),
+          SizedBox(height: 16.h),
+          for (final r in prov.reminders)
+            Padding(
+              padding: EdgeInsets.only(bottom: 10.h),
+              child: _ReminderCard(reminder: r),
+            ),
+        ],
+      ),
     );
   }
 
@@ -108,7 +109,7 @@ class RemindersScreen extends StatelessWidget {
             SizedBox(height: 20.h),
             PrimaryButton(
               label: 'Create reminder',
-              onPressed: () => _showEditSheet(context),
+              onPressed: () => _openAddReminderFlow(context),
             ),
           ],
         ),
@@ -137,7 +138,7 @@ class RemindersScreen extends StatelessWidget {
             onPressed: () => Navigator.pop(ctx),
             child: Text('Cancel',
                 style:
-                    TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
+                TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
           ),
           Container(
             margin: EdgeInsets.only(left: 8.w),
@@ -179,7 +180,7 @@ void _confirmDeleteDialog(BuildContext context, ReminderProvider prov, Reminder 
           onPressed: () => Navigator.pop(ctx),
           child: Text('Cancel',
               style:
-                  TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
+              TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
         ),
         Container(
           margin: EdgeInsets.only(left: 8.w),
@@ -220,7 +221,7 @@ class _Stat extends StatelessWidget {
           SizedBox(height: 2.h),
           Text(label,
               style:
-                  TextStyle(fontSize: 11.sp, color: AppColors.onSoft)),
+              TextStyle(fontSize: 11.sp, color: AppColors.onSoft)),
         ],
       ),
     );
@@ -260,23 +261,23 @@ class _ReminderCard extends StatelessWidget {
                     color: r.taken
                         ? AppColors.success
                         : isSnoozed
-                            ? AppColors.warning
-                            : Colors.white,
+                        ? AppColors.warning
+                        : Colors.white,
                     border: Border.all(
                         color: r.taken
                             ? AppColors.success
                             : isSnoozed
-                                ? AppColors.warning
-                                : AppColors.line,
+                            ? AppColors.warning
+                            : AppColors.line,
                         width: 2.w),
                   ),
                   child: r.taken
                       ? Icon(Icons.check_rounded,
-                          size: 16.sp, color: Colors.white)
+                      size: 16.sp, color: Colors.white)
                       : isSnoozed
-                          ? Icon(Icons.snooze_rounded,
-                              size: 15.sp, color: Colors.white)
-                          : null,
+                      ? Icon(Icons.snooze_rounded,
+                      size: 15.sp, color: Colors.white)
+                      : null,
                 ),
               ),
               SizedBox(width: 12.w),
@@ -311,7 +312,7 @@ class _ReminderCard extends StatelessWidget {
                     SizedBox(height: 2.h),
                     Text(
                         '${r.dose} · ${r.schedule}'
-                        '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
+                            '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
                         style: TextStyle(
                             fontSize: 12.sp, color: AppColors.muted)),
                     SizedBox(height: 8.h),
@@ -386,31 +387,31 @@ class _ReminderCard extends StatelessWidget {
                       color: AppColors.muted)),
             )
           else if (isPending)
-            Padding(
-              padding: EdgeInsets.only(top: 10.h),
-              child: Row(
-                children: [
-                  _MiniAction(
-                      label: 'Take now',
-                      color: AppColors.success,
-                      onTap: () => prov.take(r)),
-                  SizedBox(width: 8.w),
-                  _MiniAction(
-                      label: 'Snooze 10 min',
-                      color: AppColors.warning,
-                      onTap: () {
-                        prov.snooze(r);
-                        showToast(context,
-                            '${r.title} snoozed — rings again in 10 min');
-                      }),
-                  SizedBox(width: 8.w),
-                  _MiniAction(
-                      label: 'Skip',
-                      color: AppColors.muted,
-                      onTap: () => prov.skip(r)),
-                ],
+              Padding(
+                padding: EdgeInsets.only(top: 10.h),
+                child: Row(
+                  children: [
+                    _MiniAction(
+                        label: 'Take now',
+                        color: AppColors.success,
+                        onTap: () => prov.take(r)),
+                    SizedBox(width: 8.w),
+                    _MiniAction(
+                        label: 'Snooze 10 min',
+                        color: AppColors.warning,
+                        onTap: () {
+                          prov.snooze(r);
+                          showToast(context,
+                              '${r.title} snoozed — rings again in 10 min');
+                        }),
+                    SizedBox(width: 8.w),
+                    _MiniAction(
+                        label: 'Skip',
+                        color: AppColors.muted,
+                        onTap: () => prov.skip(r)),
+                  ],
+                ),
               ),
-            ),
         ],
       ),
     );
@@ -472,7 +473,7 @@ class _MiniAction extends StatelessWidget {
 /// editing. Returns null (picker falls back to now) if it doesn't match.
 TimeOfDay? _parseTimeLabel(String label) {
   final match =
-      RegExp(r'^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$').firstMatch(label.trim());
+  RegExp(r'^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$').firstMatch(label.trim());
   if (match == null) return null;
   var hour = int.parse(match.group(1)!);
   final minute = int.parse(match.group(2)!);
@@ -513,21 +514,21 @@ Future<void> _pickTime(
           timePickerTheme: TimePickerThemeData(
             backgroundColor: AppColors.card,
             hourMinuteColor: WidgetStateColor.resolveWith((states) =>
-                states.contains(WidgetState.selected)
-                    ? AppColors.primary.withValues(alpha: .12)
-                    : AppColors.paper),
+            states.contains(WidgetState.selected)
+                ? AppColors.primary.withValues(alpha: .12)
+                : AppColors.paper),
             hourMinuteTextColor: WidgetStateColor.resolveWith((states) =>
-                states.contains(WidgetState.selected)
-                    ? AppColors.primary
-                    : AppColors.ink),
+            states.contains(WidgetState.selected)
+                ? AppColors.primary
+                : AppColors.ink),
             dayPeriodColor: WidgetStateColor.resolveWith((states) =>
-                states.contains(WidgetState.selected)
-                    ? AppColors.primary.withValues(alpha: .12)
-                    : AppColors.paper),
+            states.contains(WidgetState.selected)
+                ? AppColors.primary.withValues(alpha: .12)
+                : AppColors.paper),
             dayPeriodTextColor: WidgetStateColor.resolveWith((states) =>
-                states.contains(WidgetState.selected)
-                    ? AppColors.primary
-                    : AppColors.ink),
+            states.contains(WidgetState.selected)
+                ? AppColors.primary
+                : AppColors.ink),
             dialBackgroundColor: AppColors.paper,
             dialHandColor: AppColors.primary,
             entryModeIconColor: AppColors.primary,
@@ -537,7 +538,7 @@ Future<void> _pickTime(
                 borderRadius: BorderRadius.circular(12),
                 side: const BorderSide(color: AppColors.line)),
             shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           ),
           textButtonTheme: TextButtonThemeData(
             style: TextButton.styleFrom(foregroundColor: AppColors.primary),
@@ -553,12 +554,21 @@ Future<void> _pickTime(
 }
 
 /// Add (reminder == null) or edit an existing reminder.
+/// Opens the new 3-tab (Medications / Measurements / Activities) add flow.
+/// The old [_showEditSheet] below is kept as-is and still used for editing
+/// an existing reminder.
+void _openAddReminderFlow(BuildContext context) {
+  Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const AddReminderFlowScreen()),
+  );
+}
+
 void _showEditSheet(BuildContext context, {Reminder? reminder}) {
   final title = TextEditingController(text: reminder?.title ?? '');
   final dose = TextEditingController(text: reminder?.dose ?? '');
   final time = TextEditingController(text: reminder?.time ?? '');
   final instructions =
-      TextEditingController(text: reminder?.instructions ?? '');
+  TextEditingController(text: reminder?.instructions ?? '');
   var schedule = reminder?.schedule ?? 'Daily';
   const scheduleOptions = ['Daily', 'Weekdays', 'Mon · Wed · Fri', 'Custom'];
 
@@ -832,12 +842,12 @@ class _DayButton extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: isSelected
               ? [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                    blurRadius: 8.r,
-                    offset: Offset(0, 4.h),
-                  )
-                ]
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.3),
+              blurRadius: 8.r,
+              offset: Offset(0, 4.h),
+            )
+          ]
               : null,
         ),
         child: Text(
