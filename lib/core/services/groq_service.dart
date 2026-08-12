@@ -37,7 +37,11 @@ class GroqService {
   static const _chatEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
   static const _transcribeEndpoint =
       'https://api.groq.com/openai/v1/audio/transcriptions';
-  static const _model = 'llama-3.3-70b-versatile';
+  // llama-3.3-70b-versatile was deprecated by Groq on June 17, 2026 —
+  // requests to it now fail, which is what was showing up as "trouble
+  // reaching MedAI's servers" on every reply. openai/gpt-oss-120b is
+  // Groq's official recommended replacement and supports tool calling.
+  static const _model = 'openai/gpt-oss-120b';
   static const _whisperModel = 'whisper-large-v3-turbo';
 
   static void _requireApiKey() {

@@ -284,8 +284,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
     try {
       final picked = await ImagePicker().pickImage(
         source: source,
-        // Prescription OCR is sensitive to compression around small characters.
-        imageQuality: intent == AttachmentIntent.prescription ? 100 : 85,
+        // Prescription OCR is sensitive to compression around small
+        // characters, so quality stays high — but pixel dimensions must be
+        // bounded regardless, or a raw camera photo (often 3000×4000px+)
+        // makes Tesseract take minutes on a budget device for no real
+        // accuracy gain. 2400px on the long side is comfortably more than
+        // OCR needs even for small prescription text.
+        imageQuality: intent == AttachmentIntent.prescription ? 95 : 85,
+        maxWidth: intent == AttachmentIntent.prescription ? 2400 : 1600,
+        maxHeight: intent == AttachmentIntent.prescription ? 2400 : 1600,
       );
       if (picked == null || !mounted) return; // user cancelled
       final fileName = picked.path.split(Platform.pathSeparator).last;

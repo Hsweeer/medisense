@@ -64,7 +64,16 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
 
   Future<void> _pick(ImageSource source) async {
     try {
-      final picked = await _picker.pickImage(source: source, imageQuality: 90);
+      final picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 90,
+        // Full camera resolution (often 3000×4000px+) makes Tesseract take
+        // minutes on a budget device for no accuracy benefit — OCR doesn't
+        // need more than ~2200px on the long side, and this makes the
+        // difference between a few seconds and multiple minutes.
+        maxWidth: 2200,
+        maxHeight: 2200,
+      );
       if (picked == null) return; // user cancelled
       await _tts.stop();
       setState(() {
