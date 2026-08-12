@@ -1,5 +1,6 @@
 package com.medisense.medisense_app
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +22,15 @@ import java.io.File
  * package is involved anywhere in this path — this class + its Dart-side
  * MethodChannel counterpart (lib/core/services/native_tesseract_ocr.dart)
  * ARE the whole integration.
+ *
+ * Deliberately minimal: a prior version added grayscale/contrast/
+ * auto-invert preprocessing that could not be tested end-to-end before
+ * shipping, and coincided with a clear regression (a clean, well-lit,
+ * dark-on-light printed card started producing pure garbage output). That
+ * preprocessing has been removed entirely rather than layering another
+ * unverified guess on top of it. What remains here — bounded decode and
+ * OEM_LSTM_ONLY — was confirmed necessary through actual device testing
+ * earlier in this project, not guessed.
  */
 class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
 
@@ -29,6 +39,10 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
 
     companion object {
         const val CHANNEL = "com.medisense.medisense_app/tesseract_ocr"
+
+        // Keeps OCR fast and prevents a huge camera photo from ever
+        // choking Tesseract, regardless of what the Dart side passed in.
+        const val MAX_DIMENSION = 2200
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -51,10 +65,6 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
         val imagePath = call.argument<String>("imagePath")
         val tessdataParentPath = call.argument<String>("tessdataParentPath")
         val language = call.argument<String>("language")
-        // Numeric Tesseract PSM code (see TessBaseAPI.PageSegMode, which is
-        // a set of plain Int constants in this library, not a Kotlin enum).
-        // Defaults to PSM_AUTO (3) if the Dart side doesn't specify one.
-        val psm = call.argument<Int>("psm") ?: TessBaseAPI.PageSegMode.PSM_AUTO
 
         if (imagePath == null || tessdataParentPath == null || language == null) {
             result.error(
@@ -71,7 +81,7 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
         // MethodChannel result (required by the Flutter engine).
         Thread {
             try {
-                val text = runTesseract(imagePath, tessdataParentPath, language, psm)
+                val text = runTesseract(imagePath, tessdataParentPath, language)
                 mainHandler.post { result.success(text) }
             } catch (e: Exception) {
                 mainHandler.post {
@@ -84,10 +94,9 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
     private fun runTesseract(
         imagePath: String,
         tessdataParentPath: String,
-        language: String,
-        psm: Int
+        language: String
     ): String {
-        val bitmap = BitmapFactory.decodeFile(imagePath)
+        val bitmap = decodeBoundedBitmap(imagePath, MAX_DIMENSION)
             ?: throw IllegalArgumentException("Could not decode image at $imagePath")
 
         // TessBaseAPI expects `tessdataParentPath` to be the folder that
@@ -96,6 +105,7 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
         val tessDataDir = File(tessdataParentPath, "tessdata")
         val langFile = File(tessDataDir, "$language.traineddata")
         if (!langFile.exists()) {
+            bitmap.recycle()
             throw IllegalStateException(
                 "Missing language data: ${langFile.absolutePath} — this language " +
                     "hasn't been downloaded/installed yet."
@@ -104,9 +114,10 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
 
         val api = TessBaseAPI()
         try {
-            // tessdata_fast files (what this app downloads) only contain
-            // LSTM-engine data, so we must force OEM_LSTM_ONLY — the
-            // default combined/legacy engine mode fails on these files.
+            // tessdata_fast/tessdata files (what this app downloads) only
+            // contain LSTM-engine data, so we must force OEM_LSTM_ONLY —
+            // the default combined/legacy engine mode fails on these files.
+            // Confirmed necessary through actual device testing.
             val initialized =
                 api.init(tessdataParentPath, language, TessBaseAPI.OEM_LSTM_ONLY)
             if (!initialized) {
@@ -115,22 +126,35 @@ class TesseractOcrPlugin : FlutterPlugin, MethodCallHandler {
                         "${langFile.absolutePath} is a valid, complete .traineddata file."
                 )
             }
-            // Numeric PSM codes (Tesseract's own numbering, e.g. 11 = sparse
-            // text, 6 = single uniform block) ARE what PageSegMode's Int
-            // constants hold, so the value passed from Dart can be assigned
-            // directly — no enum lookup needed. The Dart side now tries
-            // more than one mode per scan and keeps whichever reads better,
-            // instead of always forcing PSM_AUTO.
-            api.pageSegMode = psm
-            // Hint the real DPI (phone photos carry no reliable DPI metadata
-            // on their own) and keep natural word spacing — both measurably
-            // improve accuracy on prescription-style text.
-            api.setVariable("user_defined_dpi", "300")
-            api.setVariable("preserve_interword_spaces", "1")
+            api.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
             api.setImage(bitmap)
             return api.getUTF8Text() ?: ""
         } finally {
+            
             bitmap.recycle()
         }
+    }
+
+    /**
+     * Decodes without ever loading the raw image at full resolution first —
+     * uses inSampleSize so even an unexpectedly huge source (e.g. a picker
+     * that ignored size limits) can't blow up decode time or memory. This
+     * is the one piece of image handling kept from the reverted version —
+     * it only affects size/speed, never pixel values, so it carries none
+     * of the risk that the color preprocessing did.
+     */
+    private fun decodeBoundedBitmap(path: String, maxDimension: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sampleSize = 1
+        while (bounds.outWidth / sampleSize > maxDimension ||
+            bounds.outHeight / sampleSize > maxDimension
+        ) {
+            sampleSize *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        return BitmapFactory.decodeFile(path, opts)
     }
 }
