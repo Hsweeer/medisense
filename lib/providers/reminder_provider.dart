@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/models/models.dart';
+import '../services/native_alarm_bridge.dart';
 import '../services/notification_service.dart';
 import '../services/reminder_firestore_service.dart';
 
@@ -125,8 +126,11 @@ class ReminderProvider extends ChangeNotifier {
     r.streakDays++;
     _persist(r);
     
-    // Stop the alarm for today immediately
+    // 1. Cancel future notifications for today
     NotificationService.instance.cancelForReminder(r);
+    
+    // 2. IMMEDIATELY stop the ringing if it's currently going off
+    NativeAlarmBridge.instance.stopRinging();
 
     notifyListeners();
   }

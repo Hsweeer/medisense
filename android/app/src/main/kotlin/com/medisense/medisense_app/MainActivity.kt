@@ -58,6 +58,13 @@ class MainActivity : FlutterActivity() {
                         AlarmScheduler.cancelAllStored(this)
                         result.success(null)
                     }
+                    "stopRinging" -> {
+                        val stopIntent = Intent(this, AlarmRingingService::class.java).apply {
+                            action = AlarmRingingService.ACTION_STOP
+                        }
+                        startService(stopIntent)
+                        result.success(null)
+                    }
                     "requestIgnoreBatteryOptimizations" -> {
                         handleRequestIgnoreBatteryOptimizations(result)
                     }
