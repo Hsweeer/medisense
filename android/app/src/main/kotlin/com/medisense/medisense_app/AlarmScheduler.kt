@@ -33,6 +33,9 @@ object AlarmScheduler {
     const val EXTRA_REPEAT_TYPE = "extra_repeat_type"
     const val EXTRA_WEEKDAY = "extra_weekday"
     const val EXTRA_SOUND_RAW_RES_NAME = "extra_sound_raw_res_name"
+    // Only used when EXTRA_REPEAT_TYPE == "interval".
+    const val EXTRA_INTERVAL_DAYS = "extra_interval_days"
+    const val EXTRA_ANCHOR_AT_MILLIS = "extra_anchor_at_millis"
 
     /** Reserved sub-id (see [idFor]) for a one-off snooze fire. */
     const val SNOOZE_SUB_ID = 8
@@ -55,29 +58,46 @@ object AlarmScheduler {
     /** Schedules (or replaces) one alarm and records it in [AlarmStore]. */
     fun schedule(context: Context, entry: AlarmStore.AlarmEntry) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAt = nextTriggerMillis(entry.hour, entry.minute, entry.weekday.takeIf { entry.repeatType == "weekly" })
+
+        // "interval" (every N days) alarms are anchored to the millis of
+        // their very first occurrence so repeated re-arms (on fire, or after
+        // a reboot) stay locked to the original N-day cadence instead of
+        // drifting. Establish that anchor once, the first time this
+        // reminder is scheduled; every later call (re-arm, reboot restore)
+        // reuses it unchanged.
+        val resolvedEntry = if (entry.repeatType == "interval" && entry.anchorAtMillis == 0L) {
+            entry.copy(anchorAtMillis = nextTriggerMillis(entry.hour, entry.minute, null))
+        } else entry
+
+        val triggerAt = if (resolvedEntry.repeatType == "interval") {
+            nextIntervalTriggerMillis(resolvedEntry.anchorAtMillis, resolvedEntry.intervalDays)
+        } else {
+            nextTriggerMillis(resolvedEntry.hour, resolvedEntry.minute, resolvedEntry.weekday.takeIf { resolvedEntry.repeatType == "weekly" })
+        }
 
         val intent = Intent(context, AlarmReceiver::class.java).apply {
-            putExtra(EXTRA_ALARM_ID, entry.alarmId)
-            putExtra(EXTRA_REMINDER_ID, entry.reminderId)
-            putExtra(EXTRA_TITLE, entry.title)
-            putExtra(EXTRA_DOSE, entry.dose)
-            putExtra(EXTRA_DISPLAY_TIME, entry.displayTime)
-            putExtra(EXTRA_HOUR, entry.hour)
-            putExtra(EXTRA_MINUTE, entry.minute)
-            putExtra(EXTRA_REPEAT_TYPE, entry.repeatType)
-            putExtra(EXTRA_WEEKDAY, entry.weekday)
-            putExtra(EXTRA_SOUND_RAW_RES_NAME, entry.soundRawResName)
+            putExtra(EXTRA_ALARM_ID, resolvedEntry.alarmId)
+            putExtra(EXTRA_REMINDER_ID, resolvedEntry.reminderId)
+            putExtra(EXTRA_TITLE, resolvedEntry.title)
+            putExtra(EXTRA_DOSE, resolvedEntry.dose)
+            putExtra(EXTRA_DISPLAY_TIME, resolvedEntry.displayTime)
+            putExtra(EXTRA_HOUR, resolvedEntry.hour)
+            putExtra(EXTRA_MINUTE, resolvedEntry.minute)
+            putExtra(EXTRA_REPEAT_TYPE, resolvedEntry.repeatType)
+            putExtra(EXTRA_WEEKDAY, resolvedEntry.weekday)
+            putExtra(EXTRA_SOUND_RAW_RES_NAME, resolvedEntry.soundRawResName)
+            putExtra(EXTRA_INTERVAL_DAYS, resolvedEntry.intervalDays)
+            putExtra(EXTRA_ANCHOR_AT_MILLIS, resolvedEntry.anchorAtMillis)
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
-            entry.alarmId,
+            resolvedEntry.alarmId,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         armExact(am, triggerAt, pendingIntent)
-        AlarmStore.save(context, entry)
+        AlarmStore.save(context, resolvedEntry)
     }
 
     /** Re-arms a single already-fired alarm for its next occurrence. */
@@ -153,6 +173,23 @@ object AlarmScheduler {
             }
         } else {
             if (cal.timeInMillis <= now) cal.add(Calendar.DAY_OF_MONTH, 1)
+        }
+        return cal.timeInMillis
+    }
+
+    /**
+     * Next occurrence at or after now that is exactly [anchor] plus a whole
+     * number of [intervalDays]-day steps — i.e. "every N days" starting
+     * from whenever this reminder was first scheduled. Uses calendar-day
+     * arithmetic (not raw millis) so it stays aligned to the same
+     * wall-clock time across DST changes, matching [nextTriggerMillis].
+     */
+    private fun nextIntervalTriggerMillis(anchor: Long, intervalDays: Int): Long {
+        val step = intervalDays.coerceAtLeast(1)
+        val cal = Calendar.getInstance().apply { timeInMillis = anchor }
+        val now = System.currentTimeMillis()
+        while (cal.timeInMillis <= now) {
+            cal.add(Calendar.DAY_OF_MONTH, step)
         }
         return cal.timeInMillis
     }

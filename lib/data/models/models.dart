@@ -210,14 +210,6 @@ class Reminder {
     this.snoozeLabel,
     this.streakDays = 0,
     this.enabled = true,
-    this.category = 'medication', // 'medication' | 'measurement' | 'activity'
-    this.unit,
-    this.forWhom,
-    this.conditionTag,
-    this.inventoryEnabled = false,
-    this.inventoryAmount,
-    this.inventoryThreshold,
-    this.durationLabel,
   });
 
   String? id; // Firestore document ID
@@ -231,16 +223,6 @@ class Reminder {
   String? snoozeLabel; // "rings again 9:10 AM"
   int streakDays;
   bool enabled; // controls whether alarm is scheduled
-
-  // Category-aware fields (added for the 3-tab Add Reminder flow).
-  String category; // 'medication' | 'measurement' | 'activity'
-  String? unit; // e.g. "pill", "mg", "kg" — medication/measurement
-  String? forWhom; // "Myself" or a care-recipient's name — medication only
-  String? conditionTag; // "What do you take this for?" — medication only
-  bool inventoryEnabled; // refill reminder toggle — medication only
-  int? inventoryAmount;
-  int? inventoryThreshold;
-  String? durationLabel; // e.g. "5 min" — activity only
 
   bool get taken => status == DoseStatus.taken;
 
@@ -260,14 +242,6 @@ class Reminder {
       snoozeLabel: map['snoozeLabel'],
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
-      category: map['category'] ?? 'medication',
-      unit: map['unit'],
-      forWhom: map['forWhom'],
-      conditionTag: map['conditionTag'],
-      inventoryEnabled: map['inventoryEnabled'] ?? false,
-      inventoryAmount: map['inventoryAmount'],
-      inventoryThreshold: map['inventoryThreshold'],
-      durationLabel: map['durationLabel'],
     );
   }
 
@@ -281,14 +255,6 @@ class Reminder {
     'status': status.toString().split('.').last,
     'streakDays': streakDays,
     'enabled': enabled,
-    'category': category,
-    if (unit != null) 'unit': unit,
-    if (forWhom != null) 'forWhom': forWhom,
-    if (conditionTag != null) 'conditionTag': conditionTag,
-    'inventoryEnabled': inventoryEnabled,
-    if (inventoryAmount != null) 'inventoryAmount': inventoryAmount,
-    if (inventoryThreshold != null) 'inventoryThreshold': inventoryThreshold,
-    if (durationLabel != null) 'durationLabel': durationLabel,
   };
 }
 

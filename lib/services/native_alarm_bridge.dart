@@ -19,9 +19,10 @@ class NativeAlarmBridge {
     required String displayTime,
     required int hour,
     required int minute,
-    required String repeatType, // 'daily' | 'weekly'
+    required String repeatType, // 'daily' | 'weekly' | 'interval'
     String? soundRawResName,
     int? weekday,
+    int? intervalDays, // only meaningful when repeatType == 'interval'
   }) async {
     if (!_supported) return;
     try {
@@ -35,6 +36,7 @@ class NativeAlarmBridge {
         'repeatType': repeatType,
         'soundRawResName': soundRawResName?.isEmpty ?? true ? null : soundRawResName,
         'weekday': weekday,
+        'intervalDays': intervalDays,
       });
     } catch (e) {
       debugPrint('[NativeAlarmBridge] scheduleAlarm error: $e');

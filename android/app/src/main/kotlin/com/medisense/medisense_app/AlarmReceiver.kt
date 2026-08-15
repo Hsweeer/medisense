@@ -26,6 +26,8 @@ class AlarmReceiver : BroadcastReceiver() {
         val repeatType = intent.getStringExtra(AlarmScheduler.EXTRA_REPEAT_TYPE) ?: "daily"
         val weekday = intent.getIntExtra(AlarmScheduler.EXTRA_WEEKDAY, 0)
         val soundRawResName = intent.getStringExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME) ?: ""
+        val intervalDays = intent.getIntExtra(AlarmScheduler.EXTRA_INTERVAL_DAYS, 0)
+        val anchorAtMillis = intent.getLongExtra(AlarmScheduler.EXTRA_ANCHOR_AT_MILLIS, 0L)
 
         val serviceIntent = Intent(context, AlarmRingingService::class.java).apply {
             action = AlarmRingingService.ACTION_RING
@@ -60,6 +62,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 repeatType = repeatType,
                 weekday = weekday,
                 soundRawResName = soundRawResName,
+                intervalDays = intervalDays,
+                anchorAtMillis = anchorAtMillis,
             )
             AlarmScheduler.rescheduleNext(context, entry)
         }

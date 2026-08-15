@@ -157,6 +157,7 @@ class NotificationService {
     }
 
     final weekdays = _weekdaysFor(reminder.schedule);
+    final intervalDays = _intervalDaysFor(reminder.schedule);
     final selectedSound = await AlarmSoundPrefs.instance.getSelected();
 
     for (var timeIndex = 0; timeIndex < rawTimes.length; timeIndex++) {
@@ -172,6 +173,7 @@ class NotificationService {
         displayTime: rawTimes[timeIndex],
         timeIndex: timeIndex,
         weekdays: weekdays,
+        intervalDays: intervalDays,
         selectedSound: selectedSound,
       );
     }
@@ -183,6 +185,7 @@ class NotificationService {
     required String displayTime,
     required int timeIndex,
     required List<int>? weekdays,
+    required int? intervalDays,
     required AlarmSoundOption selectedSound,
   }) async {
     final baseId = _baseIdFor(reminder.title, timeIndex);
@@ -224,7 +227,7 @@ class NotificationService {
     // schedule flutter_local_notifications here: two independent Android
     // schedulers firing together produce two notifications for one reminder.
     if (defaultTargetPlatform == TargetPlatform.android) {
-      if (weekdays == null) {
+      if (weekdays == null && intervalDays == null) {
         await NativeAlarmBridge.instance.scheduleAlarm(
           reminderId: nativeReminderId,
           title: reminder.title,
@@ -235,8 +238,20 @@ class NotificationService {
           repeatType: 'daily',
           soundRawResName: selectedSound.id,
         );
+      } else if (weekdays == null && intervalDays != null) {
+        await NativeAlarmBridge.instance.scheduleAlarm(
+          reminderId: nativeReminderId,
+          title: reminder.title,
+          dose: reminder.dose,
+          displayTime: displayTime,
+          hour: time.hour,
+          minute: time.minute,
+          repeatType: 'interval',
+          soundRawResName: selectedSound.id,
+          intervalDays: intervalDays,
+        );
       } else {
-        for (final weekday in weekdays) {
+        for (final weekday in weekdays!) {
           await NativeAlarmBridge.instance.scheduleAlarm(
             reminderId: nativeReminderId,
             title: reminder.title,
@@ -253,7 +268,7 @@ class NotificationService {
       return;
     }
 
-    if (weekdays == null) {
+    if (weekdays == null && intervalDays == null) {
       // "Daily" (and "Custom", as a sane fallback) — repeats every day.
       final when = _nextInstanceOfTime(time);
       await _plugin.zonedSchedule(
@@ -280,9 +295,30 @@ class NotificationService {
         repeatType: 'daily',
         soundRawResName: selectedSound.id,
       );
+    } else if (weekdays == null && intervalDays != null) {
+      // "Every N days" on iOS: flutter_local_notifications has no built-in
+      // N-day repeat trigger (only time-of-day / day-of-week matching), and
+      // this bridge is Android-only, so there is no self-rearming alarm
+      // here the way Android's native AlarmScheduler anchor logic provides.
+      // Schedule a single upcoming occurrence rather than silently firing
+      // daily; ReminderProvider re-runs scheduleReminder() on every app
+      // launch, which will push this forward again as long as the app is
+      // opened at least once per interval.
+      final when = _nextInstanceOfTime(time);
+      await _plugin.zonedSchedule(
+        baseId,
+        'Medicine Reminder',
+        message,
+        when,
+        details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: payload,
+      );
+      debugPrint(
+          '[NotificationService] scheduled id=$baseId (every $intervalDays days, one-shot on iOS) next=$when');
     } else {
       // "Weekdays" or "Mon · Wed · Fri" — one recurring alarm per weekday.
-      for (final weekday in weekdays) {
+      for (final weekday in weekdays!) {
         final when = _nextInstanceOfWeekdayTime(weekday, time);
         await _plugin.zonedSchedule(
           baseId + weekday,
@@ -382,6 +418,14 @@ class NotificationService {
     }
 
     return result.isEmpty ? null : result;
+  }
+
+  /// Parses "Every N days" (produced by the Measurements/Activities
+  /// frequency step) into N. Returns null for every other schedule string.
+  int? _intervalDaysFor(String schedule) {
+    final match = RegExp(r'^Every (\d+) days?$').firstMatch(schedule);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
   }
 
   tz.TZDateTime _nextInstanceOfTime(TimeOfDay time) {

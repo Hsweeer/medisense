@@ -31,10 +31,16 @@ object AlarmStore {
         val displayTime: String,
         val hour: Int,
         val minute: Int,
-        // "daily" repeats every day; "weekly" repeats on [weekday] only.
+        // "daily" repeats every day; "weekly" repeats on [weekday] only;
+        // "interval" repeats every [intervalDays] days, anchored at [anchorAtMillis].
         val repeatType: String,
         val weekday: Int, // 1 (Mon) .. 7 (Sun), only meaningful for "weekly"
         val soundRawResName: String = "",
+        // Only meaningful for repeatType == "interval".
+        val intervalDays: Int = 0,
+        // Epoch millis of this interval's very first occurrence. 0 means
+        // "not yet established" — AlarmScheduler fills it in on first schedule.
+        val anchorAtMillis: Long = 0L,
     ) {
         fun toJson(): String = JSONObject().apply {
             put("alarmId", alarmId)
@@ -47,6 +53,8 @@ object AlarmStore {
             put("repeatType", repeatType)
             put("weekday", weekday)
             put("soundRawResName", soundRawResName)
+            put("intervalDays", intervalDays)
+            put("anchorAtMillis", anchorAtMillis)
         }.toString()
 
         companion object {
@@ -63,6 +71,11 @@ object AlarmStore {
                     repeatType = o.getString("repeatType"),
                     weekday = o.optInt("weekday", 0),
                     soundRawResName = o.optString("soundRawResName", ""),
+                    // optInt/optLong default to 0 for entries saved before this
+                    // field existed — those are all "daily"/"weekly" anyway, so
+                    // the default is inert for them.
+                    intervalDays = o.optInt("intervalDays", 0),
+                    anchorAtMillis = o.optLong("anchorAtMillis", 0L),
                 )
             }
         }

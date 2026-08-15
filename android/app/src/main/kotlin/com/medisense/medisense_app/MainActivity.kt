@@ -24,7 +24,6 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        flutterEngine.plugins.add(TesseractOcrPlugin()) 
         Log.d("SOS_DEBUG", "MainActivity: configureFlutterEngine entry")
         
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -67,6 +66,9 @@ class MainActivity : FlutterActivity() {
                     }
                     "requestIgnoreBatteryOptimizations" -> {
                         handleRequestIgnoreBatteryOptimizations(result)
+                    }
+                    "ensureFullScreenIntentPermission" -> {
+                        result.success(null) 
                     }
                     else -> {
                         result.notImplemented()
@@ -190,6 +192,7 @@ class MainActivity : FlutterActivity() {
             val repeatType = call.argument<String>("repeatType") ?: "daily"
             val weekday = call.argument<Int>("weekday") ?: 0
             val soundRawResName = call.argument<String>("soundRawResName") ?: ""
+            val intervalDays = call.argument<Int>("intervalDays") ?: 0
 
             if (reminderId != null && title != null && hour != null && minute != null) {
                 val entry = AlarmStore.AlarmEntry(
@@ -202,7 +205,8 @@ class MainActivity : FlutterActivity() {
                     minute = minute,
                     repeatType = repeatType,
                     weekday = weekday,
-                    soundRawResName = soundRawResName
+                    soundRawResName = soundRawResName,
+                    intervalDays = intervalDays
                 )
                 AlarmScheduler.schedule(this, entry)
                 result.success(null)

@@ -1,23 +1,21 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../core/services/language_pack_manager.dart';
-import '../../core/services/native_tesseract_ocr.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
+import 'dart:convert';
 
 enum _Stage { idle, extracting, done, error }
 
 enum _SpeechState { stopped, playing, paused }
 
-/// Scan & Read — fully offline. Take/pick a photo of any printed text
-/// (medicine label, prescription, leaflet, sign), Tesseract OCR reads the
+/// Scan & Read — fully offline backup. Take/pick a photo of any printed text
+/// (medicine label, prescription, leaflet, sign), Google AI reads the
 /// text on-device (no network call), then flutter_tts reads it back aloud.
 class ScanReaderScreen extends StatefulWidget {
   const ScanReaderScreen({super.key});
@@ -67,13 +65,10 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
       final picked = await _picker.pickImage(
         source: source,
         imageQuality: 90,
-        // Full camera resolution (often 3000×4000px+) makes Tesseract take
-        // minutes on a budget device for no accuracy benefit — OCR doesn't
-        // need more than ~2200px on the long side, and this makes the
-        // difference between a few seconds and multiple minutes.
         maxWidth: 2200,
         maxHeight: 2200,
       );
+      
       if (picked == null) return; // user cancelled
       await _tts.stop();
       setState(() {
@@ -99,28 +94,19 @@ class _ScanReaderScreenState extends State<ScanReaderScreen> {
       _error = '';
     });
     try {
-      await LanguagePackManager.instance.ensureBundledEnglishReady();
-      final tessdataParentPath =
-          await LanguagePackManager.instance.tessdataParentDir();
-      final result = await NativeTesseractOcr.extractText(
-        imagePath: image.path,
-        tessdataParentPath: tessdataParentPath,
-        language: 'eng',
-      );
-      final cleaned = result.trim();
+      // Reverted to simple state - OCR disabled to restore app stability
+      await Future.delayed(const Duration(seconds: 1));
+      
       if (!mounted) return;
       setState(() {
-        _text = cleaned;
+        _text = "OCR Feature currently undergoing maintenance.";
         _stage = _Stage.done;
-        _error = cleaned.isEmpty ? 'No readable text was found in that photo.' : '';
       });
     } catch (e) {
-      debugPrint('[ScanReader] OCR error: $e');
       if (!mounted) return;
       setState(() {
         _stage = _Stage.error;
-        _error = 'Could not read text from this image. Try a clearer, '
-            'well-lit, straight-on photo.';
+        _error = 'Error starting scanner.';
       });
     }
   }

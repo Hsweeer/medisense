@@ -7,7 +7,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/reminder_provider.dart';
-import 'add_reminder_flow_screen.dart';
 
 /// Full reminder system: take / snooze 10 min / skip per dose, streaks,
 /// adherence, edit & delete, and MedAI-created reminders tagged violet.
@@ -160,9 +159,6 @@ class RemindersScreen extends StatelessWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, ReminderProvider prov, Reminder reminder) {
-    _confirmDeleteDialog(context, prov, reminder);
-  }
 }
 
 void _confirmDeleteDialog(BuildContext context, ReminderProvider prov, Reminder reminder) {
@@ -493,14 +489,14 @@ String _formatTimeOfDay(TimeOfDay t) {
   return '$hour12:$minute $period';
 }
 
-/// Opens the app-themed time picker and writes the result straight into
-/// [controller] in the app's fixed "8:00 PM" format.
-Future<void> _pickTime(
-    BuildContext context, TextEditingController controller) async {
-  final initial = _parseTimeLabel(controller.text) ?? TimeOfDay.now();
-  final picked = await showTimePicker(
+/// Shared themed time picker — returns the picked [TimeOfDay] directly so
+/// callers that manage a list of times (rather than a single controller)
+/// can use it too.
+Future<TimeOfDay?> _pickTimeValue(BuildContext context,
+    {TimeOfDay? initial}) async {
+  return showTimePicker(
     context: context,
-    initialTime: initial,
+    initialTime: initial ?? TimeOfDay.now(),
     builder: (pickerCtx, child) {
       final base = Theme.of(pickerCtx);
       return Theme(
@@ -548,25 +544,27 @@ Future<void> _pickTime(
       );
     },
   );
-  if (picked != null) {
-    controller.text = _formatTimeOfDay(picked);
-  }
 }
 
 /// Add (reminder == null) or edit an existing reminder.
-/// Opens the new 3-tab (Medications / Measurements / Activities) add flow.
-/// The old [_showEditSheet] below is kept as-is and still used for editing
-/// an existing reminder.
+/// Opens the single add/edit bottom sheet — name, dose, time, schedule —
+/// same sheet used for editing, no multi-step onboarding wizard.
 void _openAddReminderFlow(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const AddReminderFlowScreen()),
-  );
+  _showEditSheet(context);
 }
 
 void _showEditSheet(BuildContext context, {Reminder? reminder}) {
   final title = TextEditingController(text: reminder?.title ?? '');
   final dose = TextEditingController(text: reminder?.dose ?? '');
-  final time = TextEditingController(text: reminder?.time ?? '');
+  // A single card can carry more than one dose time a day (e.g. "8:00 AM,
+  // 2:00 PM, 9:00 PM" for a 3x-daily medicine) — each becomes its own
+  // native alarm under the same reminder, so the user never has to create
+  // a separate card just to add another time for the same medication.
+  final List<String> times = (reminder?.time ?? '')
+      .split(',')
+      .map((t) => t.trim())
+      .where((t) => t.isNotEmpty)
+      .toList();
   final instructions =
   TextEditingController(text: reminder?.instructions ?? '');
   var schedule = reminder?.schedule ?? 'Daily';
@@ -665,18 +663,92 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                       letterSpacing: 1.2,
                       color: AppColors.muted)),
               SizedBox(height: 10.h),
-              TextField(
-                controller: time,
-                readOnly: true,
-                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
-                onTap: () => _pickTime(ctx, time),
-                decoration: InputDecoration(
-                  hintText: 'Select time',
-                  prefixIcon: Icon(Icons.access_time_filled_rounded,
-                      color: AppColors.primary, size: 22.sp),
-                  suffixIcon: Icon(Icons.expand_more_rounded, size: 24.sp),
-                ),
+              Wrap(
+                spacing: 8.w,
+                runSpacing: 8.h,
+                children: [
+                  for (final t in times)
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 12.w, vertical: 9.h),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(12.r),
+                        border: Border.all(
+                            color: AppColors.primary.withValues(alpha: .3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.access_time_filled_rounded,
+                              color: AppColors.primary, size: 16.sp),
+                          SizedBox(width: 6.w),
+                          Text(t,
+                              style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.ink)),
+                          SizedBox(width: 4.w),
+                          GestureDetector(
+                            onTap: () {
+                              // Keep at least one time — an alarm card with
+                              // zero times has nothing to schedule.
+                              if (times.length > 1) {
+                                setSheetState(() => times.remove(t));
+                              }
+                            },
+                            child: Icon(Icons.close_rounded,
+                                size: 16.sp, color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await _pickTimeValue(ctx);
+                      if (picked == null) return;
+                      final label = _formatTimeOfDay(picked);
+                      if (!times.contains(label)) {
+                        setSheetState(() {
+                          times.add(label);
+                          int minutesOf(String s) {
+                            final t = _parseTimeLabel(s) ?? TimeOfDay.now();
+                            return t.hour * 60 + t.minute;
+                          }
+                          times.sort(
+                                  (a, b) => minutesOf(a).compareTo(minutesOf(b)));
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 14.w, vertical: 9.h),
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        borderRadius: BorderRadius.circular(12.r),
+                        border: Border.all(
+                            color: AppColors.line, style: BorderStyle.solid),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_rounded,
+                              size: 16.sp, color: AppColors.primary),
+                          SizedBox(width: 4.w),
+                          Text('Add time',
+                              style: TextStyle(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
+              SizedBox(height: 6.h),
+              Text('Add every time this medicine is due — one card handles all of them.',
+                  style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
               SizedBox(height: 24.h),
               Text('SCHEDULE',
                   style: TextStyle(
@@ -785,6 +857,9 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                         sorted.map((d) => dayNames[d]).join(' · ');
                   }
 
+                  final joinedTimes =
+                  times.isEmpty ? '9:00 AM' : times.join(', ');
+
                   if (reminder == null) {
                     if (title.text.trim().isEmpty) return;
                     await prov.add(Reminder(
@@ -792,16 +867,14 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                       dose: dose.text.trim().isEmpty
                           ? '1 dose'
                           : dose.text.trim(),
-                      time: time.text.trim().isEmpty
-                          ? '9:00 AM'
-                          : time.text.trim(),
+                      time: joinedTimes,
                       schedule: finalSchedule,
                       instructions: instructions.text.trim(),
                     ));
                   } else {
                     await prov.update(reminder,
                         dose: dose.text.trim(),
-                        time: time.text.trim(),
+                        time: joinedTimes,
                         schedule: finalSchedule,
                         instructions: instructions.text.trim());
                   }

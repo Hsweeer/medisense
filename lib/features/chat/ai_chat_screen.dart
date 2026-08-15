@@ -176,11 +176,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 soft: AppColors.aiSoft,
                 title: 'Scan prescription',
                 sub: 'MedAI reads the doctor\'s note & sets alarms itself',
-                onTap: () => _chooseAndStageImage(
-                  chat,
-                  intent: AttachmentIntent.prescription,
-                  pickerTitle: 'Scan prescription',
-                ),
+                onTap: () => _scanPrescription(chat),
               ),
               _AttachRow(
                 icon: Icons.face_retouching_natural_rounded,
@@ -206,6 +202,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _scanPrescription(ChatProvider chat) async {
+    Navigator.of(context).pop(); // Close the sheet
+    await _chooseAndStageImage(
+      chat,
+      intent: AttachmentIntent.prescription,
+      pickerTitle: 'Scan prescription',
     );
   }
 

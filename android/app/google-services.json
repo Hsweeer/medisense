@@ -12,7 +12,20 @@
           "package_name": "com.medisense.medisense_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "248593836318-vctkcqpk8fvn7duqbb4b0me291cvk72o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.medisense.medisense_app",
+            "certificate_hash": "9423af715fc6ead9c195ef578177ebcb25eae922"
+          }
+        },
+        {
+          "client_id": "248593836318-hoc63leeg4ld4j3hbkgc4inn17s7l4n7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD3O-aMxP5sJTtsxeBJkv0a-p6QeJ-RWwY"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "248593836318-hoc63leeg4ld4j3hbkgc4inn17s7l4n7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "248593836318-aoff9s6gpcirt2h4o6p20b9j91hiafpi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.medisense.medisenseApp"
+              }
+            }
+          ]
         }
       }
     }
