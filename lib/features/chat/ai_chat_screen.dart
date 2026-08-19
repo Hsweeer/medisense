@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -12,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 
+import '../../core/services/photo_quality_checker.dart';
 import '../../core/services/prescription_parser.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
@@ -206,7 +208,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Future<void> _scanPrescription(ChatProvider chat) async {
-    Navigator.of(context).pop(); // Close the sheet
+    // Note: Don't pop here, let _chooseAndStageImage handle it
     await _chooseAndStageImage(
       chat,
       intent: AttachmentIntent.prescription,
@@ -287,27 +289,61 @@ class _AiChatScreenState extends State<AiChatScreen> {
     required String detail,
   }) async {
     try {
-      final picked = await ImagePicker().pickImage(
-        source: source,
-        // Prescription OCR is sensitive to compression around small
-        // characters, so quality stays high — but pixel dimensions must be
-        // bounded regardless, or a raw camera photo (often 3000×4000px+)
-        // makes Tesseract take minutes on a budget device for no real
-        // accuracy gain. 2400px on the long side is comfortably more than
-        // OCR needs even for small prescription text.
-        imageQuality: intent == AttachmentIntent.prescription ? 95 : 85,
-        maxWidth: intent == AttachmentIntent.prescription ? 2400 : 1600,
-        maxHeight: intent == AttachmentIntent.prescription ? 2400 : 1600,
-      );
-      if (picked == null || !mounted) return; // user cancelled
-      final fileName = picked.path.split(Platform.pathSeparator).last;
+      String? pickedPath;
+
+      // STEP 1: Use Document Scanner for live camera prescriptions
+      if (intent == AttachmentIntent.prescription && source == ImageSource.camera) {
+        final List<String>? pictures = await CunningDocumentScanner.getPictures();
+        if (pictures != null && pictures.isNotEmpty) {
+          pickedPath = pictures.first;
+        }
+      } else {
+        // Normal ImagePicker for gallery or non-prescription intents
+        final picked = await ImagePicker().pickImage(
+          source: source,
+          // Prescription OCR is sensitive to compression around small
+          // characters, so quality stays high — but pixel dimensions must be
+          // bounded regardless, or a raw camera photo (often 3000×4000px+)
+          // makes Tesseract take minutes on a budget device for no real
+          // accuracy gain. 3000px on the long side is comfortably more than
+          // OCR needs even for small prescription text.
+          imageQuality: intent == AttachmentIntent.prescription ? 90 : 85,
+          maxWidth: intent == AttachmentIntent.prescription ? 1600 : 1600,
+          maxHeight: intent == AttachmentIntent.prescription ? 1600 : 1600,
+        );
+        pickedPath = picked?.path;
+      }
+
+      if (pickedPath == null || !mounted) return; // user cancelled
+
+      // STEP 2: Quality Check (Only for prescriptions)
+      if (intent == AttachmentIntent.prescription) {
+        final quality = await PhotoQualityChecker.check(pickedPath);
+        if (quality != QualityResult.ok) {
+          if (mounted) {
+            String msg = "Image is not clear enough";
+            if (quality == QualityResult.tooDark) msg = "Photo is too dark. Try better lighting.";
+            if (quality == QualityResult.tooBlurry) msg = "Photo is too blurry. Hold steady and try again.";
+            if (quality == QualityResult.tooSmall) msg = "Image is too small. Move closer or use a higher-resolution photo.";
+            showToast(context, msg, color: AppColors.warning);
+          }
+          return;
+        }
+      }
+
+      final fileName = pickedPath.split(Platform.pathSeparator).last;
       chat.stageAttachment(ChatAttachment(
         type: AttachmentType.image,
         name: fileName,
         detail: detail,
         intent: intent,
-        filePath: picked.path,
+        filePath: pickedPath,
       ));
+
+      // If it's a prescription, send it immediately to start processing
+      if (intent == AttachmentIntent.prescription) {
+        chat.send('');
+      }
     } catch (_) {
       if (!mounted) return;
       showToast(context, 'Could not open camera/gallery — check app permissions',
@@ -355,11 +391,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
 
+    // Scroll to bottom whenever messages list changes or app opens the chat
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
-        _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut);
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
       }
     });
 
@@ -1100,7 +1139,7 @@ class _PrescriptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final meds = parsePrescriptionText(message.ocrText ?? '');
+    final meds = getMedsFromOcr(message.ocrText ?? '');
     final allergies = context.watch<ProfileProvider>().profile.allergies;
 
     return Padding(
@@ -1133,7 +1172,7 @@ class _PrescriptionCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 12.h),
-                for (final med in meds.take(4))
+                for (final med in meds)
                   _MedRow(
                     name: med.dose.isEmpty ? med.name : '${med.name} ${med.dose}',
                     freq: '${med.timesPerDay}× daily'
@@ -1143,12 +1182,6 @@ class _PrescriptionCard extends StatelessWidget {
                     flag: _matchingAllergy(med.name, allergies) != null
                         ? 'Possible match with "${_matchingAllergy(med.name, allergies)}" allergy'
                         : null,
-                  ),
-                if (meds.length > 4)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 8.h),
-                    child: Text('+ ${meds.length - 4} more — see full review',
-                        style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
                   ),
                 Divider(height: 20.h),
                 Text(message.text,
@@ -1162,6 +1195,7 @@ class _PrescriptionCard extends StatelessWidget {
                         builder: (_) => PrescriptionReviewScreen(
                           ocrText: message.ocrText ?? '',
                           initialMeds: meds,
+                          imagePath: message.imagePath,
                         ),
                       ),
                     );

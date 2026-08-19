@@ -92,6 +92,7 @@ class ChatMessage {
     this.attachments = const [],
     this.personalized = false,
     this.ocrText,
+    this.imagePath,
     this.timestamp,
   });
 
@@ -110,6 +111,9 @@ class ChatMessage {
   /// works from the real source text, not a cached guess.
   final String? ocrText;
 
+  /// Path to the local photo used for OCR, passed to review screen.
+  final String? imagePath;
+
   /// When this message was sent. Null for messages not yet round-tripped
   /// through Firestore (e.g. the very first frame before saving completes).
   final DateTime? timestamp;
@@ -121,6 +125,7 @@ class ChatMessage {
     'attachments': attachments.map((a) => a.toMap()).toList(),
     'personalized': personalized,
     'ocrText': ocrText,
+    'imagePath': imagePath,
     'timestampMs': (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
   };
 
@@ -141,6 +146,7 @@ class ChatMessage {
           .toList(),
       personalized: map['personalized'] ?? false,
       ocrText: map['ocrText'],
+      imagePath: map['imagePath'],
       timestamp: map['timestampMs'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['timestampMs'])
           : null,
@@ -210,7 +216,8 @@ class Reminder {
     this.snoozeLabel,
     this.streakDays = 0,
     this.enabled = true,
-  });
+    DateTime? lastStatusDate,
+  }) : lastStatusDate = lastStatusDate ?? DateTime.now();
 
   String? id; // Firestore document ID
   final String title;
@@ -224,7 +231,22 @@ class Reminder {
   int streakDays;
   bool enabled; // controls whether alarm is scheduled
 
+  /// The calendar day [status] applies to. A dose marked "taken" only
+  /// stays taken for that one day — this is what lets the app tell the
+  /// difference between "taken today" and "was taken yesterday, should be
+  /// pending (and re-alarmed) again today."
+  DateTime lastStatusDate;
+
   bool get taken => status == DoseStatus.taken;
+
+  /// True when [lastStatusDate] is not today — meaning this reminder's
+  /// status is stale from a previous day and needs resetting.
+  bool get isStatusStale {
+    final now = DateTime.now();
+    return lastStatusDate.year != now.year ||
+        lastStatusDate.month != now.month ||
+        lastStatusDate.day != now.day;
+  }
 
   factory Reminder.fromMap(Map<String, dynamic> map, String id) {
     return Reminder(
@@ -242,6 +264,9 @@ class Reminder {
       snoozeLabel: map['snoozeLabel'],
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
+      lastStatusDate: map['lastStatusDateMs'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['lastStatusDateMs'])
+          : DateTime.now(),
     );
   }
 
@@ -255,6 +280,7 @@ class Reminder {
     'status': status.toString().split('.').last,
     'streakDays': streakDays,
     'enabled': enabled,
+    'lastStatusDateMs': lastStatusDate.millisecondsSinceEpoch,
   };
 }
 

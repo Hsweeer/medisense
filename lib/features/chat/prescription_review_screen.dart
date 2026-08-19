@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -19,10 +21,12 @@ class PrescriptionReviewScreen extends StatefulWidget {
     super.key,
     required this.ocrText,
     required this.initialMeds,
+    this.imagePath,
   });
 
   final String ocrText;
   final List<ParsedMedicine> initialMeds;
+  final String? imagePath;
 
   @override
   State<PrescriptionReviewScreen> createState() =>
@@ -152,6 +156,10 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
             padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 32.h),
             children: [
               _InfoBanner(),
+              if (widget.imagePath != null) ...[
+                SizedBox(height: 14.h),
+                _ImageThumbnail(path: widget.imagePath!),
+              ],
               SizedBox(height: 18.h),
               _SectionLabel(
                   'Medicines · ${_meds.length}'.toUpperCase()),
@@ -164,6 +172,7 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
                     med: _meds[i],
                     allergyFlag:
                         _matchingAllergy(_meds[i].name, allergies),
+                    lowConfidence: _meds[i].confidence == 'low',
                     onChanged: () => setState(() {}),
                     onFrequencyChanged: (n) => _setFrequency(i, n),
                     onPickTime: (t) => _pickTime(i, t),
@@ -289,12 +298,14 @@ class _MedicineEditorCard extends StatelessWidget {
     required this.onFrequencyChanged,
     required this.onPickTime,
     required this.onRemove,
+    required this.lowConfidence,
     this.allergyFlag,
   });
 
   final int index;
   final ParsedMedicine med;
   final String? allergyFlag;
+  final bool lowConfidence;
   final VoidCallback onChanged;
   final ValueChanged<int> onFrequencyChanged;
   final ValueChanged<int> onPickTime;
@@ -306,8 +317,8 @@ class _MedicineEditorCard extends StatelessWidget {
     return MCard(
       padding: EdgeInsets.all(16.r),
       border: Border.all(
-        color: flagged ? AppColors.warning.withValues(alpha: .55) : AppColors.line,
-        width: flagged ? 1.3.w : 1.w,
+        color: (flagged || lowConfidence) ? AppColors.warning.withValues(alpha: .55) : AppColors.line,
+        width: (flagged || lowConfidence) ? 1.3.w : 1.w,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,6 +369,34 @@ class _MedicineEditorCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (lowConfidence) ...[
+            SizedBox(height: 10.h),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: AppColors.warningSoft,
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.help_outline_rounded, size: 15.sp, color: AppColors.warning),
+                  SizedBox(width: 6.w),
+                  Expanded(
+                    child: Text(
+                      "MedAI wasn't fully sure about this reading — please check it carefully against the photo.",
+                      style: TextStyle(
+                          fontSize: 11.5.sp,
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (flagged) ...[
             SizedBox(height: 10.h),
             Container(
@@ -613,6 +652,75 @@ class _RawTextPanel extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ImageThumbnail extends StatelessWidget {
+  const _ImageThumbnail({required this.path});
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _FullScreenViewer(path: path),
+        ),
+      ),
+      child: MCard(
+        padding: EdgeInsets.all(8.r),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8.r),
+              child: Image.file(
+                File(path),
+                width: 60.r,
+                height: 60.r,
+                fit: BoxFit.cover,
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Prescription Photo',
+                      style: TextStyle(
+                          fontSize: 14.sp, fontWeight: FontWeight.w700)),
+                  Text('Tap to view full size',
+                      style: TextStyle(
+                          fontSize: 12.sp, color: AppColors.muted)),
+                ],
+              ),
+            ),
+            Icon(Icons.fullscreen_rounded, color: AppColors.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FullScreenViewer extends StatelessWidget {
+  const _FullScreenViewer({required this.path});
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          child: Image.file(File(path)),
+        ),
       ),
     );
   }

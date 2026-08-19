@@ -54,8 +54,19 @@ class ReminderProvider extends ChangeNotifier {
       debugPrint(
           '[ReminderProvider] initialized with ${reminders.length} reminders from Firestore');
 
-      // Reschedule alarms for all enabled reminders (cold start recovery)
+      // Reschedule alarms for all enabled reminders (cold start recovery),
+      // and reset any status left over from a previous day — otherwise a
+      // dose marked "taken" yesterday would stay marked taken forever, and
+      // its (fully-cancelled) native alarm would never ring again.
       for (final r in reminders) {
+        if (r.status != DoseStatus.pending && r.isStatusStale) {
+          debugPrint(
+              '[ReminderProvider] Resetting stale status for "${r.title}" (was ${r.status})');
+          r.status = DoseStatus.pending;
+          r.snoozeLabel = null;
+          r.lastStatusDate = DateTime.now();
+          _persist(r);
+        }
         if (r.enabled) {
           NotificationService.instance.scheduleReminder(r);
         }
@@ -124,11 +135,12 @@ class ReminderProvider extends ChangeNotifier {
     r.status = DoseStatus.taken;
     r.snoozeLabel = null;
     r.streakDays++;
+    r.lastStatusDate = DateTime.now();
     _persist(r);
-    
+
     // 1. Cancel future notifications for today
     NotificationService.instance.cancelForReminder(r);
-    
+
     // 2. IMMEDIATELY stop the ringing if it's currently going off
     NativeAlarmBridge.instance.stopRinging();
 
@@ -139,14 +151,24 @@ class ReminderProvider extends ChangeNotifier {
   void untake(Reminder r) {
     r.status = DoseStatus.pending;
     r.streakDays = (r.streakDays - 1).clamp(0, 9999);
+    r.lastStatusDate = DateTime.now();
     _persist(r);
+    // Taking it back means today's dose should be able to ring again.
+    if (r.enabled) {
+      NotificationService.instance.scheduleReminder(r);
+    }
     notifyListeners();
   }
 
   void snooze(Reminder r, {int minutes = 10}) {
     r.status = DoseStatus.snoozed;
     r.snoozeLabel = 'rings again in $minutes min';
+    r.lastStatusDate = DateTime.now();
     _persist(r);
+
+    // Schedule a real alarm/notification 10 min from now
+    NotificationService.instance.snoozeReminder(r, minutes: minutes);
+
     notifyListeners();
   }
 
@@ -154,6 +176,7 @@ class ReminderProvider extends ChangeNotifier {
     r.status = DoseStatus.skipped;
     r.snoozeLabel = null;
     r.streakDays = 0;
+    r.lastStatusDate = DateTime.now();
     _persist(r);
     notifyListeners();
   }

@@ -28,6 +28,14 @@ class AlarmActivity : Activity() {
         // Move window flags to the VERY TOP, before super.onCreate
         showOverLockScreen()
         super.onCreate(savedInstanceState)
+        
+        // This is a key fix: ensure the activity is considered "foreground" 
+        // by the system even if it was launched over the lock screen.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            keyguardManager.requestDismissKeyguard(this, null)
+        }
+
         setContentView(R.layout.activity_alarm)
 
         applyIntentExtras(intent)

@@ -7,6 +7,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/reminder_provider.dart';
+import 'add_reminder_category_screen.dart';
+import 'reminder_form_helpers.dart';
 
 /// Full reminder system: take / snooze 10 min / skip per dose, streaks,
 /// adherence, edit & delete, and MedAI-created reminders tagged violet.
@@ -464,93 +466,13 @@ class _MiniAction extends StatelessWidget {
   }
 }
 
-/// Parses the app's display format ("8:00 PM") back into a [TimeOfDay] so
-/// the picker can open already set to the reminder's current time when
-/// editing. Returns null (picker falls back to now) if it doesn't match.
-TimeOfDay? _parseTimeLabel(String label) {
-  final match =
-  RegExp(r'^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$').firstMatch(label.trim());
-  if (match == null) return null;
-  var hour = int.parse(match.group(1)!);
-  final minute = int.parse(match.group(2)!);
-  final period = match.group(3)!.toUpperCase();
-  if (hour < 1 || hour > 12 || minute > 59) return null;
-  if (period == 'PM' && hour != 12) hour += 12;
-  if (period == 'AM' && hour == 12) hour = 0;
-  return TimeOfDay(hour: hour, minute: minute);
-}
-
-/// Formats a [TimeOfDay] as "8:00 PM" — fixed 12-hour format so it always
-/// matches the app's own display style regardless of device locale.
-String _formatTimeOfDay(TimeOfDay t) {
-  final hour12 = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
-  final minute = t.minute.toString().padLeft(2, '0');
-  final period = t.period == DayPeriod.am ? 'AM' : 'PM';
-  return '$hour12:$minute $period';
-}
-
-/// Shared themed time picker — returns the picked [TimeOfDay] directly so
-/// callers that manage a list of times (rather than a single controller)
-/// can use it too.
-Future<TimeOfDay?> _pickTimeValue(BuildContext context,
-    {TimeOfDay? initial}) async {
-  return showTimePicker(
-    context: context,
-    initialTime: initial ?? TimeOfDay.now(),
-    builder: (pickerCtx, child) {
-      final base = Theme.of(pickerCtx);
-      return Theme(
-        data: base.copyWith(
-          colorScheme: base.colorScheme.copyWith(
-            primary: AppColors.primary,
-            onPrimary: Colors.white,
-            surface: AppColors.card,
-            onSurface: AppColors.ink,
-          ),
-          timePickerTheme: TimePickerThemeData(
-            backgroundColor: AppColors.card,
-            hourMinuteColor: WidgetStateColor.resolveWith((states) =>
-            states.contains(WidgetState.selected)
-                ? AppColors.primary.withValues(alpha: .12)
-                : AppColors.paper),
-            hourMinuteTextColor: WidgetStateColor.resolveWith((states) =>
-            states.contains(WidgetState.selected)
-                ? AppColors.primary
-                : AppColors.ink),
-            dayPeriodColor: WidgetStateColor.resolveWith((states) =>
-            states.contains(WidgetState.selected)
-                ? AppColors.primary.withValues(alpha: .12)
-                : AppColors.paper),
-            dayPeriodTextColor: WidgetStateColor.resolveWith((states) =>
-            states.contains(WidgetState.selected)
-                ? AppColors.primary
-                : AppColors.ink),
-            dialBackgroundColor: AppColors.paper,
-            dialHandColor: AppColors.primary,
-            entryModeIconColor: AppColors.primary,
-            hourMinuteShape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-            dayPeriodShape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: AppColors.line)),
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
-          ),
-        ),
-        child: child!,
-      );
-    },
-  );
-}
-
-/// Add (reminder == null) or edit an existing reminder.
-/// Opens the single add/edit bottom sheet — name, dose, time, schedule —
-/// same sheet used for editing, no multi-step onboarding wizard.
+/// Opens the category picker (Medications / Measurements / Activities),
+/// which then opens a full-screen, category-themed add-reminder form.
+/// Editing an existing card still uses the compact [_showEditSheet].
 void _openAddReminderFlow(BuildContext context) {
-  _showEditSheet(context);
+  Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const AddReminderCategoryScreen()),
+  );
 }
 
 void _showEditSheet(BuildContext context, {Reminder? reminder}) {
@@ -705,14 +627,14 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                     ),
                   GestureDetector(
                     onTap: () async {
-                      final picked = await _pickTimeValue(ctx);
+                      final picked = await pickTimeValue(ctx);
                       if (picked == null) return;
-                      final label = _formatTimeOfDay(picked);
+                      final label = formatTimeOfDay(picked);
                       if (!times.contains(label)) {
                         setSheetState(() {
                           times.add(label);
                           int minutesOf(String s) {
-                            final t = _parseTimeLabel(s) ?? TimeOfDay.now();
+                            final t = parseTimeLabel(s) ?? TimeOfDay.now();
                             return t.hour * 60 + t.minute;
                           }
                           times.sort(
@@ -809,7 +731,7 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       for (int i = 1; i <= 7; i++)
-                        _DayButton(
+                        DayButton(
                           day: i,
                           isSelected: selectedDays.contains(i),
                           onTap: () {
@@ -887,51 +809,4 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
       ),
     ),
   );
-}
-
-class _DayButton extends StatelessWidget {
-  final int day;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _DayButton({
-    required this.day,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const dayNames = ['', 'M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 38.r,
-        height: 38.r,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: isSelected
-              ? [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.3),
-              blurRadius: 8.r,
-              offset: Offset(0, 4.h),
-            )
-          ]
-              : null,
-        ),
-        child: Text(
-          dayNames[day],
-          style: TextStyle(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.w800,
-            color: isSelected ? Colors.white : AppColors.muted,
-          ),
-        ),
-      ),
-    );
-  }
 }

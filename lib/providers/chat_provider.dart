@@ -7,65 +7,43 @@ import 'package:flutter/foundation.dart';
 import '../core/services/groq_service.dart';
 import '../core/services/image_cleaner_service.dart';
 import '../core/services/gemini_service.dart';
-import '../core/services/ml_kit_ocr_service.dart';
 import '../core/services/prescription_parser.dart';
 import '../data/models/models.dart';
 import '../services/chat_firestore_service.dart';
 import 'profile_provider.dart';
 import 'reminder_provider.dart';
 import 'dart:convert';
-import 'package:image/image.dart' as img;
 
-/// MedAI — the in-app health assistant.
 class ChatProvider extends ChangeNotifier {
   ChatProvider({this.reminderEngine, this.profileProvider}) {
     _initForCurrentUser();
-
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user?.uid == _initializedForUid) return;
-      debugPrint('[ChatProvider] authStateChanged: ${user?.email}');
       _initForCurrentUser();
     });
   }
 
   String? _initializedForUid;
   bool _initializing = false;
-
   final ReminderProvider? reminderEngine;
   final ProfileProvider? profileProvider;
-
   final messages = <ChatMessage>[];
   bool typing = false;
   bool learnFromData = true;
   final pendingAttachments = <ChatAttachment>[];
-
   bool recording = false;
   bool transcribing = false;
-
-  Timer? _timer;
   String? currentConversationId;
   List<ChatConversationSummary> conversations = [];
   bool loadingConversations = false;
 
-  // ---------------------------------------------------------------------
-  // Startup / user switching
-  // ---------------------------------------------------------------------
-
   Future<void> _initForCurrentUser() async {
     if (_initializing) return;
     _initializing = true;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    _initializedForUid = uid;
-
     messages.clear();
-    conversations = [];
     currentConversationId = null;
     pendingAttachments.clear();
-    typing = false;
-    recording = false;
-    transcribing = false;
     notifyListeners();
-
     try {
       await loadConversations();
       if (conversations.isNotEmpty) {
@@ -79,68 +57,32 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> loadConversations() async {
-    loadingConversations = true;
-    notifyListeners();
     conversations = await ChatFirestoreService.instance.fetchConversations();
-    loadingConversations = false;
     notifyListeners();
   }
 
   Future<void> startNewConversation() async {
     messages.clear();
     pendingAttachments.clear();
-    typing = false;
-    notifyListeners();
-
     final id = await ChatFirestoreService.instance.createConversation();
     currentConversationId = id;
-
-    final user = FirebaseAuth.instance.currentUser;
-    final name = user?.displayName?.split(' ').first ?? 'there';
-
     final greeting = ChatMessage(
       role: ChatRole.ai,
       text: learnFromData
-          ? "Hi $name, I'm MedAI. I can answer health questions, read lab reports, and even scan prescriptions. Personal insights are on.\n\nHow are you feeling today?"
-          : "Hi $name, I'm MedAI. I can answer health questions and read reports. Turn on Personal insights for tailored advice.\n\nHow are you feeling today?",
+          ? "Hi! I'm MedAI. I can scan prescriptions and help you set reminders. How can I help you today?"
+          : "Hi! How can I help you today?",
       personalized: learnFromData,
     );
     messages.add(greeting);
     notifyListeners();
     await _persist(greeting);
-    await loadConversations();
   }
 
-  Future<void> openConversation(String conversationId) async {
-    currentConversationId = conversationId;
+  Future<void> openConversation(String id) async {
+    currentConversationId = id;
     messages.clear();
-    pendingAttachments.clear();
-    typing = false;
-    notifyListeners();
-
-    final history = await ChatFirestoreService.instance.fetchMessages(conversationId);
+    final history = await ChatFirestoreService.instance.fetchMessages(id);
     messages.addAll(history);
-    notifyListeners();
-  }
-
-  Future<void> deleteConversation(String conversationId) async {
-    await ChatFirestoreService.instance.deleteConversation(conversationId);
-    await loadConversations();
-    if (currentConversationId == conversationId) {
-      if (conversations.isNotEmpty) {
-        await openConversation(conversations.first.id);
-      } else {
-        await startNewConversation();
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------
-  // Sending / replying
-  // ---------------------------------------------------------------------
-
-  void toggleLearn() {
-    learnFromData = !learnFromData;
     notifyListeners();
   }
 
@@ -152,46 +94,6 @@ class ChatProvider extends ChangeNotifier {
   void removeStaged(ChatAttachment attachment) {
     pendingAttachments.remove(attachment);
     notifyListeners();
-  }
-
-  void startRecording() {
-    recording = true;
-    notifyListeners();
-  }
-
-  Future<void> stopRecording({required int seconds, bool cancelled = false, String? filePath}) async {
-    recording = false;
-    notifyListeners();
-    if (cancelled || seconds < 1) return;
-
-    final attachment = ChatAttachment(
-      type: AttachmentType.voice,
-      name: 'Voice note',
-      detail: '0:${seconds.toString().padLeft(2, '0')}',
-      durationSeconds: seconds,
-      filePath: filePath,
-    );
-    await _sendUser('', [attachment]);
-
-    if (filePath == null) {
-      await _reply(const ChatMessage(role: ChatRole.ai, text: "Access error."));
-      return;
-    }
-
-    transcribing = true;
-    notifyListeners();
-    try {
-      final transcript = await GroqService.transcribeAudio(filePath);
-      transcribing = false;
-      notifyListeners();
-      if (transcript.trim().isNotEmpty) {
-        await _routeReply(transcript.trim(), const []);
-      }
-    } catch (e) {
-      transcribing = false;
-      notifyListeners();
-      await _reply(const ChatMessage(role: ChatRole.ai, text: "Transcription failed."));
-    }
   }
 
   Future<void> send(String text) async {
@@ -216,68 +118,183 @@ class ChatProvider extends ChangeNotifier {
       await _replyFromPrescriptionScan(rxPhoto);
       return;
     }
-
-    final scripted = _scriptedReply(text, attachments);
-    if (scripted != null) {
-      await _replyDelayed(scripted);
-    } else {
-      await _replyFromGroq();
-    }
+    await _replyFromGroq();
   }
 
   Future<void> _replyFromPrescriptionScan(ChatAttachment photo) async {
     typing = true;
     notifyListeners();
-
-    final path = photo.filePath;
-    if (path == null) {
-      typing = false;
-      await _reply(const ChatMessage(role: ChatRole.ai, text: "Photo missing."));
-      return;
-    }
-
     try {
-      // 1. Pre-process
-      final finalPath = await ImageCleanerService.cleanForVision(path) ?? path;
+      final String inputPath = photo.filePath!;
+      final String? cleanedPath = await ImageCleanerService.cleanForVision(inputPath);
+      final String processPath = cleanedPath ?? inputPath;
 
-      // 2. Primary: Gemini Developer API
-      String cleaned;
-      try {
-        final jsonResponse = await GeminiService.readPrescription(finalPath);
-        final data = jsonDecode(jsonResponse);
-        cleaned = data['transcription'] as String? ?? '';
-        if (cleaned.length < 5) throw Exception('Gemini output too short');
-      } catch (e) {
-        debugPrint('[ChatProvider] Gemini failed, falling back to ML Kit: $e');
-        // 3. Fallback: ML Kit (Offline backup)
-        cleaned = await MLKitOCRService.extractText(finalPath);
-      }
-
+      final jsonOutput = await GeminiService.readPrescription(processPath);
       typing = false;
-      if (cleaned.isEmpty) {
-        await _reply(const ChatMessage(role: ChatRole.ai, text: "Could not read text."));
-        return;
-      }
+      final meds = getMedsFromOcr(jsonOutput);
+
+      final medList = meds.map((m) => "• ${m.name} (${m.dose})").join("\n");
+      final summary = "I identified ${meds.length} medications:\n\n$medList";
 
       await _reply(ChatMessage(
         role: ChatRole.ai,
         card: ChatCardType.prescription,
-        text: "I've analyzed the prescription. Please review the extracted medication details.",
-        ocrText: cleaned,
+        text: summary,
+        ocrText: jsonOutput,
+        imagePath: processPath,
+        personalized: learnFromData,
       ));
     } catch (e) {
       typing = false;
-      await _reply(const ChatMessage(role: ChatRole.ai, text: "OCR Error."));
+      await _reply(const ChatMessage(role: ChatRole.ai, text: "Scanning error. Please ensure the photo is clear."));
     }
   }
 
-  Future<void> noteRemindersAdded(int count) async {
-    if (count <= 0) return;
-    await _reply(ChatMessage(
-      role: ChatRole.ai,
-      text: 'Added $count reminder(s) successfully.',
-    ));
+  Future<void> _replyFromGroq() async {
+    typing = true;
+    notifyListeners();
+    try {
+      final relevantMessages = messages.where((m) => m.text.isNotEmpty).toList();
+      final chatHistory = relevantMessages
+          .skip(relevantMessages.length > 10 ? relevantMessages.length - 10 : 0)
+          .map((m) => {
+        'role': m.role == ChatRole.user ? 'user' : 'assistant',
+        'content': m.text,
+      })
+          .toList();
+
+      String systemPrompt = "You are MedAI, a helpful health assistant.";
+
+      if (learnFromData && profileProvider != null) {
+        final p = profileProvider!.profile;
+        systemPrompt += "\n\nUSER HEALTH PROFILE CONTEXT:"
+            "\n- Name: ${p.name}"
+            "\n- DOB: ${p.dob}";
+        if (p.weightLb > 0) {
+          systemPrompt += "\n- Weight: ${p.weightLb} lb";
+        }
+        if (p.heightIn > 0) {
+          systemPrompt += "\n- Height: ${p.heightLabel}";
+        }
+        systemPrompt += "\n- Conditions: ${p.conditions.join(', ')}"
+            "\n- Allergies: ${p.allergies.join(', ')}"
+            "\n- Medications: ${p.medications.join(', ')}";
+      }
+
+      // TOOLS: Define what AI can do
+      final tools = [
+        {
+          'type': 'function',
+          'function': {
+            'name': 'add_reminder',
+            'description': 'Add a recurring medicine reminder/alarm for the user.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'title': {'type': 'string', 'description': 'The name of the medicine'},
+                'dose': {'type': 'string', 'description': 'The dose amount (e.g. 500mg)'},
+                'time': {'type': 'string', 'description': 'The exact clock time in "H:MM AM/PM" format, e.g. "9:00 AM" or "10:30 PM". Always include minutes, even if :00.'},
+                'schedule': {'type': 'string', 'description': 'Frequency (e.g. Daily, Weekdays)'},
+                'instructions': {'type': 'string', 'description': 'e.g. after food'},
+              },
+              'required': ['title', 'time'],
+            },
+          },
+        }
+      ];
+
+      final result = await GroqService.chatWithTools(
+        systemPrompt: systemPrompt,
+        history: chatHistory,
+        tools: tools,
+      );
+
+      // Handle Automation (Tool Calls)
+      if (result.hasToolCalls && reminderEngine != null) {
+        bool added = false;
+        for (final tc in result.toolCalls!) {
+          if (tc.name == 'add_reminder') {
+            final args = tc.arguments;
+            final r = Reminder(
+              title: args['title'] ?? 'Medicine',
+              dose: args['dose'] ?? '',
+              time: _normalizeTimeString(args['time']?.toString()),
+              schedule: args['schedule'] ?? 'Daily',
+              instructions: args['instructions'] ?? '',
+              addedBy: 'MedAI',
+            );
+            await reminderEngine!.add(r);
+            added = true;
+          }
+        }
+
+        String responseText = result.content ?? '';
+        if (added && responseText.isEmpty) {
+          responseText = 'Reminder set successfully.';
+        }
+        await _reply(ChatMessage(role: ChatRole.ai, text: responseText, personalized: learnFromData));
+      } else {
+        await _reply(ChatMessage(role: ChatRole.ai, text: result.content ?? '', personalized: learnFromData));
+      }
+
+    } catch (e) {
+      typing = false;
+      debugPrint('[ChatProvider] Groq Error: $e');
+      String errorMsg = "I'm having trouble responding. Please check your internet.";
+      if (e.toString().contains('429')) {
+        errorMsg = "Too many messages too fast — please wait a moment.";
+      }
+      await _reply(ChatMessage(role: ChatRole.ai, text: errorMsg));
+    }
   }
+
+  /// Converts whatever time format the AI happens to return — "10 PM",
+  /// "22:00", "10:00pm", "10:00 PM" — into the exact "H:MM AM/PM" shape
+  /// the alarm scheduler (`NotificationService._parseTimeOfDay`) requires.
+  /// Without this, a reminder can be saved and show up on the Reminders
+  /// screen while its alarm silently never gets scheduled, because the
+  /// scheduler's format check is strict and the AI's wording isn't
+  /// guaranteed to match it exactly.
+  String _normalizeTimeString(String? raw) {
+    const fallback = '9:00 AM';
+    if (raw == null || raw.trim().isEmpty) return fallback;
+    final text = raw.trim().toUpperCase();
+
+    // "H:MM AM/PM" or "H:MM" with no space before AM/PM, e.g. "10:00PM".
+    final withMinutes =
+    RegExp(r'^(\d{1,2}):(\d{1,2})\s*(AM|PM)?$').firstMatch(text);
+    if (withMinutes != null) {
+      var hour = int.tryParse(withMinutes.group(1)!) ?? 9;
+      final minute = int.tryParse(withMinutes.group(2)!) ?? 0;
+      final period = withMinutes.group(3);
+      if (period == null) {
+        // No AM/PM given — treat as 24-hour clock, e.g. "22:00".
+        if (hour > 23 || minute > 59) return fallback;
+        final isPm = hour >= 12;
+        final displayHour =
+        hour % 12 == 0 ? 12 : hour % 12; // 0/12 -> 12, 13 -> 1, etc.
+        return '$displayHour:${minute.toString().padLeft(2, '0')} '
+            '${isPm ? 'PM' : 'AM'}';
+      }
+      if (hour > 12 || minute > 59) return fallback;
+      if (hour == 0) hour = 12;
+      return '$hour:${minute.toString().padLeft(2, '0')} $period';
+    }
+
+    // "H AM/PM" — hour only, no minutes, e.g. "10 PM".
+    final hourOnly = RegExp(r'^(\d{1,2})\s*(AM|PM)$').firstMatch(text);
+    if (hourOnly != null) {
+      final hour = int.tryParse(hourOnly.group(1)!) ?? 9;
+      final period = hourOnly.group(2)!;
+      if (hour < 1 || hour > 12) return fallback;
+      return '$hour:00 $period';
+    }
+
+    // Nothing recognized — fall back to a safe default rather than saving
+    // an unparseable time that would silently never ring.
+    return fallback;
+  }
+
 
   Future<void> _sendUser(String text, List<ChatAttachment> attachments) async {
     final message = ChatMessage(role: ChatRole.user, text: text, attachments: attachments);
@@ -294,49 +311,75 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _persist(ChatMessage message) async {
-    final id = currentConversationId;
-    if (id != null) {
-      await ChatFirestoreService.instance.saveMessage(id, message);
+    if (currentConversationId != null) {
+      ChatFirestoreService.instance.saveMessage(currentConversationId!, message).catchError((_) {
+        return ChatMessage(role: ChatRole.ai, text: '');
+      });
     }
   }
 
-  Future<void> _replyDelayed(ChatMessage message) async {
-    typing = true;
+  void toggleLearn() {
+    learnFromData = !learnFromData;
     notifyListeners();
-    await Future.delayed(const Duration(milliseconds: 1000));
-    await _reply(message);
   }
 
-  Future<void> _replyFromGroq() async {
-    typing = true;
+  void startRecording() { recording = true; notifyListeners(); }
+
+  Future<void> stopRecording({required int seconds, bool cancelled = false, String? filePath}) async {
+    recording = false;
     notifyListeners();
+    if (cancelled || seconds < 1 || filePath == null) return;
+
+    transcribing = true;
+    notifyListeners();
+
     try {
-      final result = await GroqService.chatWithTools(
-        systemPrompt: "You are MedAI, a friendly health assistant.",
-        history: messages.where((m) => m.text.isNotEmpty).map((m) => {
-          'role': m.role == ChatRole.user ? 'user' : 'assistant',
-          'content': m.text,
-        }).toList(),
-        tools: [],
-      );
-      final content = result.content?.trim();
-      if (content != null && content.isNotEmpty) {
-        await _reply(ChatMessage(role: ChatRole.ai, text: content, personalized: learnFromData));
+      final transcript = await GroqService.transcribeAudio(filePath);
+      transcribing = false;
+
+      if (transcript.trim().isNotEmpty) {
+        // Only the recognized text goes into the chat — the voice note
+        // itself is not attached or shown.
+        await send(transcript.trim());
+      } else {
+        notifyListeners();
+        // Nothing recognized — silently drop it, nothing to send.
       }
     } catch (e) {
-      typing = false;
-      await _reply(const ChatMessage(role: ChatRole.ai, text: "Server error."));
+      transcribing = false;
+      notifyListeners();
     }
   }
 
-  ChatMessage? _scriptedReply(String text, List<ChatAttachment> attachments) {
-    // Basic red-flag escalation can go here
-    return null;
+  Future<void> deleteConversation(String id) async {
+    try {
+      final history = await ChatFirestoreService.instance.fetchMessages(id);
+      final pathsToDelete = history
+          .map((m) => m.imagePath)
+          .where((p) => p != null)
+          .cast<String>()
+          .toSet();
+
+      for (final path in pathsToDelete) {
+        try {
+          final file = File(path);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (e) {
+          debugPrint('[ChatProvider] Failed to delete photo at $path: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('[ChatProvider] Error during image cleanup for conversation $id: $e');
+    }
+
+    await ChatFirestoreService.instance.deleteConversation(id);
+    await loadConversations();
+    if (currentConversationId == id) await startNewConversation();
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+  Future<void> noteRemindersAdded(int count) async {
+    await _reply(ChatMessage(role: ChatRole.ai, text: 'Added $count reminders.', personalized: learnFromData));
   }
 }

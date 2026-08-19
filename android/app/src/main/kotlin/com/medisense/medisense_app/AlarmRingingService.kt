@@ -12,6 +12,7 @@ import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.VibrationEffect
@@ -71,19 +72,29 @@ class AlarmRingingService : Service(), TextToSpeech.OnInitListener {
                 val result = it.setLanguage(Locale.US)
                 if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
                     ttsInitialized = true
-                    speakMedicineTime()
+                    it.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    )
+                    it.setPitch(1.0f)
+                    it.setSpeechRate(1.0f)
+                    speakHealthCareTime()
                 }
             }
         }
     }
 
-    private fun speakMedicineTime() {
-        if (ttsInitialized) {
-            val text = "It's your medicine time."
-            for (i in 1..3) {
-                tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "medicine_alert_$i")
-                tts?.playSilentUtterance(1500, TextToSpeech.QUEUE_ADD, null)
-            }
+    private fun speakHealthCareTime() {
+        if (!ttsInitialized) return
+        val text = "It's your health care time."
+        val params = Bundle().apply {
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+        }
+        for (i in 1..3) {
+            tts?.speak(text, TextToSpeech.QUEUE_ADD, params, "healthcare_alert_$i")
+            tts?.playSilentUtterance(1200, TextToSpeech.QUEUE_ADD, null)
         }
     }
 
@@ -95,13 +106,13 @@ class AlarmRingingService : Service(), TextToSpeech.OnInitListener {
         currentDisplayTime = intent?.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""
         currentSoundRawResName = intent?.getStringExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME) ?: ""
 
-        // 1. UI FIRST: Launch activity before anything else
+        // 1. UI FIRST: Attempt to launch activity immediately
         launchAlarmActivity()
-        
-        // 2. IMMEDIATE WAKE LOCK
+
+        // 2. IMMEDIATE WAKE LOCK to ensure screen turns on
         acquireWakeLock()
 
-        // 3. START FOREGROUND
+        // 3. START FOREGROUND with Full-Screen Intent as backup
         val notification = buildForegroundNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -130,10 +141,10 @@ class AlarmRingingService : Service(), TextToSpeech.OnInitListener {
     private fun launchAlarmActivity() {
         val activityIntent = Intent(this, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                Intent.FLAG_ACTIVITY_NO_USER_ACTION
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_NO_USER_ACTION
             putExtra(AlarmScheduler.EXTRA_ALARM_ID, currentAlarmId)
             putExtra(AlarmScheduler.EXTRA_REMINDER_ID, currentReminderId)
             putExtra(AlarmScheduler.EXTRA_TITLE, currentTitle)
@@ -161,8 +172,17 @@ class AlarmRingingService : Service(), TextToSpeech.OnInitListener {
         }
 
         val fullScreenIntent = Intent(this, AlarmActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_NO_USER_ACTION
             putExtra(AlarmScheduler.EXTRA_ALARM_ID, currentAlarmId)
+            putExtra(AlarmScheduler.EXTRA_REMINDER_ID, currentReminderId)
+            putExtra(AlarmScheduler.EXTRA_TITLE, currentTitle)
+            putExtra(AlarmScheduler.EXTRA_DOSE, currentDose)
+            putExtra(AlarmScheduler.EXTRA_DISPLAY_TIME, currentDisplayTime)
+            putExtra(AlarmScheduler.EXTRA_SOUND_RAW_RES_NAME, currentSoundRawResName)
         }
         val fullScreenPendingIntent = PendingIntent.getActivity(
             this,
@@ -172,13 +192,16 @@ class AlarmRingingService : Service(), TextToSpeech.OnInitListener {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Medicine Alarm")
-            .setContentText("Time for your medication")
+            .setContentTitle("Medicine Reminder: $currentTitle")
+            .setContentText(if (currentDose.isNotBlank()) "Dose: $currentDose" else "Time for your medication")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setContentIntent(fullScreenPendingIntent) // Ensure tap also opens it
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
+            .setAutoCancel(false)
             .build()
     }
 

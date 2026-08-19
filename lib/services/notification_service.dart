@@ -446,6 +446,52 @@ class NotificationService {
     return scheduled;
   }
 
+  Future<void> snoozeReminder(Reminder reminder, {int minutes = 10}) async {
+    final selectedSound = await AlarmSoundPrefs.instance.getSelected();
+    
+    // 1. Android: schedule a real full-screen alarm 10 min from now
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await NativeAlarmBridge.instance.snoozeAlarm(
+        reminderId: reminder.id ?? reminder.title,
+        title: reminder.title,
+        minutes: minutes,
+        soundRawResName: selectedSound.id,
+      );
+      return;
+    }
+
+    // 2. iOS/Fallback: schedule a local notification
+    final baseId = _baseIdFor(reminder.title, 0) + 8; // Offset for snooze
+    final message = reminder.dose.trim().isEmpty
+        ? 'Snoozed reminder for ${reminder.title}'
+        : 'Snoozed reminder: ${reminder.title} · ${reminder.dose}';
+        
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _androidChannel.id,
+        _androidChannel.name,
+        channelDescription: _androidChannel.description,
+        importance: Importance.max,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+        presentBadge: true,
+        sound: selectedSound.id.isEmpty ? null : selectedSound.iosFilename,
+      ),
+    );
+
+    await _plugin.zonedSchedule(
+      baseId,
+      'Medicine Reminder',
+      message,
+      tz.TZDateTime.now(tz.local).add(Duration(minutes: minutes)),
+      details,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
+  }
+
   // ── Tap handling → local JSON history ───────────────────────────────
 
   static Future<void> _saveFromPayload(String? payload) async {

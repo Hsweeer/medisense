@@ -43,6 +43,27 @@ class NativeAlarmBridge {
     }
   }
 
+  /// Schedules a one-off snooze alarm for [minutes] from now.
+  Future<void> snoozeAlarm({
+    required String reminderId,
+    required String title,
+    int minutes = 10,
+    String? soundRawResName,
+  }) async {
+    if (!_supported) return;
+    try {
+      await _channel.invokeMethod('snoozeAlarm', {
+        'reminderId': reminderId,
+        'title': title,
+        'minutes': minutes,
+        'soundRawResName': soundRawResName?.isEmpty ?? true ? null : soundRawResName,
+      });
+      debugPrint('[NativeAlarmBridge] snoozeAlarm scheduled for $minutes min');
+    } catch (e) {
+      debugPrint('[NativeAlarmBridge] snoozeAlarm error: $e');
+    }
+  }
+
   /// Cancels future alarms for this reminder.
   Future<void> cancelAlarm(String reminderId) async {
     if (!_supported) return;

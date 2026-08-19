@@ -55,6 +55,34 @@ object AlarmScheduler {
 
     fun snoozeIdFor(reminderId: String): Int = baseIdFor(reminderId) * 10 + SNOOZE_SUB_ID
 
+    /** Schedules a one-off alarm for [minutes] from now. */
+    fun snooze(context: Context, entry: AlarmStore.AlarmEntry, minutes: Int) {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val triggerAt = System.currentTimeMillis() + (minutes * 60 * 1000)
+
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            putExtra(EXTRA_ALARM_ID, entry.alarmId)
+            putExtra(EXTRA_REMINDER_ID, entry.reminderId)
+            putExtra(EXTRA_TITLE, entry.title)
+            putExtra(EXTRA_DOSE, entry.dose)
+            putExtra(EXTRA_DISPLAY_TIME, entry.displayTime)
+            putExtra(EXTRA_HOUR, entry.hour)
+            putExtra(EXTRA_MINUTE, entry.minute)
+            putExtra(EXTRA_REPEAT_TYPE, "snooze")
+            putExtra(EXTRA_SOUND_RAW_RES_NAME, entry.soundRawResName)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            entry.alarmId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        armExact(am, triggerAt, pendingIntent)
+        // We don't save snooze entries to AlarmStore — they are one-offs and 
+        // shouldn't be restored by BootReceiver.
+    }
+
     /** Schedules (or replaces) one alarm and records it in [AlarmStore]. */
     fun schedule(context: Context, entry: AlarmStore.AlarmEntry) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager

@@ -50,6 +50,9 @@ class MainActivity : FlutterActivity() {
                     "scheduleAlarm" -> {
                         handleScheduleAlarm(call, result)
                     }
+                    "snoozeAlarm" -> {
+                        handleSnoozeAlarm(call, result)
+                    }
                     "cancelAlarm" -> {
                         handleCancelAlarm(call, result)
                     }
@@ -209,6 +212,38 @@ class MainActivity : FlutterActivity() {
                     intervalDays = intervalDays
                 )
                 AlarmScheduler.schedule(this, entry)
+                result.success(null)
+            } else {
+                result.error("INVALID_ARGUMENTS", "Missing required arguments", null)
+            }
+        } catch (e: Exception) {
+            result.error("EXCEPTION", e.message, null)
+        }
+    }
+
+    private fun handleSnoozeAlarm(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val reminderId = call.argument<String>("reminderId")
+            val title = call.argument<String>("title")
+            val minutes = call.argument<Int>("minutes") ?: 10
+            val soundRawResName = call.argument<String>("soundRawResName") ?: ""
+
+            if (reminderId != null && title != null) {
+                // Construct a minimal entry just to pass the data through.
+                // Snooze alarms use the reserved SNOOZE_SUB_ID.
+                val entry = AlarmStore.AlarmEntry(
+                    alarmId = AlarmScheduler.snoozeIdFor(reminderId),
+                    reminderId = reminderId,
+                    title = title,
+                    dose = "",
+                    displayTime = "",
+                    hour = 0,
+                    minute = 0,
+                    repeatType = "snooze",
+                    weekday = 0,
+                    soundRawResName = soundRawResName
+                )
+                AlarmScheduler.snooze(this, entry, minutes)
                 result.success(null)
             } else {
                 result.error("INVALID_ARGUMENTS", "Missing required arguments", null)

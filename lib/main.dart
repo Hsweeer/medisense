@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
@@ -29,6 +30,7 @@ bool gPendingSosNavigation = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   runApp(const MediSenseApp());
 }
 
@@ -110,7 +112,12 @@ class _MediSenseAppState extends State<MediSenseApp> {
     });
 
     _nativeChannel.setMethodCallHandler((call) async {
-      if (call.method == "openSosScreen") _handleSosNavigation();
+      if (call.method == "openSosScreen") {
+        _handleSosNavigation();
+      } else if (call.method == "stopAlarm") {
+        // If the app is open and the user clicks 'Take' on a notification,
+        // we can handle it here if needed.
+      }
     });
   }
 
