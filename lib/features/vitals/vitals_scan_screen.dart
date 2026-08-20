@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/services/rppg_frame_processor.dart';
@@ -32,6 +33,10 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
   _ScanState _state = _ScanState.idle;
   String? _error;
   double? _resultBpm;
+  double? _resultConfidence;
+  double? _resultAutocorrBpm;
+  double? _resultAutocorrScore;
+  String? _debugLog;
 
   @override
   void dispose() {
@@ -64,8 +69,32 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
       if (!mounted) return;
 
       _controller = controller;
-      _processor = RppgFrameProcessor();
+      // enableDebug true so processor can log ROI/brightness events to console
+      _processor = RppgFrameProcessor(enableDebug: true);
       _startedAt = DateTime.now();
+
+      // Attempt to lock exposure/white-balance/focus for more stable captures.
+      try {
+        final dyn = controller as dynamic;
+        // center the exposure/focus point if supported
+        if (dyn.setExposurePoint != null) {
+          await dyn.setExposurePoint(Offset(controller.value.previewSize!.width / 2,
+              controller.value.previewSize!.height / 2));
+        }
+        if (dyn.setFocusPoint != null) {
+          await dyn.setFocusPoint(Offset(controller.value.previewSize!.width / 2,
+              controller.value.previewSize!.height / 2));
+        }
+        if (dyn.setExposureMode != null) {
+          await dyn.setExposureMode(ExposureMode.locked);
+        }
+        if (dyn.setFocusMode != null) {
+          await dyn.setFocusMode(FocusMode.locked);
+        }
+      } catch (e) {
+        // non-fatal: some camera implementations may not support these calls
+        debugPrint('[Vitals] exposure/awb lock not available: $e');
+      }
 
       await controller.startImageStream((image) async {
         if (_state != _ScanState.scanning) return;
@@ -95,15 +124,37 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
     setState(() => _state = _ScanState.done);
     await _controller?.stopImageStream();
 
-    final bpm = RppgService.estimateBpm(_samples);
+    final res = RppgService.estimateWithDebug(_samples);
+    // Print a short debug summary to console for developers/testers
+    try {
+      print('[RPPG] bpm=${res.bpm} confidence=${res.confidence.toStringAsFixed(2)} samples=${res.resampled.length} fs=${res.fs}');
+      // Print top 5 resampled values and top 5 powers to help tuning
+      print('[RPPG] resampled(sample0..4) = ${res.resampled.take(5).map((v) => v.toStringAsFixed(3)).toList()}');
+      final topPowers = res.powers.asMap().entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      print('[RPPG] top peaks (bpm,power) = ${topPowers.take(3).map((e) => [(42 + e.key*0.5).toStringAsFixed(1), e.value.toStringAsFixed(2)])}');
+    } catch (_) {}
+
+    if (!mounted) return;
+    // Build debug log string for UI copy/view
+    final sb = StringBuffer();
+    sb.writeln('[RPPG] bpm=${res.bpm} confidence=${res.confidence.toStringAsFixed(2)} samples=${res.resampled.length} fs=${res.fs}');
+    sb.writeln('[RPPG] resampled(sample0..4) = ${res.resampled.take(10).map((v) => v.toStringAsFixed(3)).toList()}');
+    sb.writeln('[RPPG] top powers length=${res.powers.length}');
+    if (res.autocorrBpm != null) sb.writeln('[RPPG] autocorr=${res.autocorrBpm!.toStringAsFixed(1)} score=${res.autocorrScore!.toStringAsFixed(2)}');
+
     if (!mounted) return;
     setState(() {
-      if (bpm == null) {
+      if (res.bpm == null) {
         _state = _ScanState.error;
         _error = "Couldn't get a steady enough reading — try again with "
             "better lighting and holding still.";
       } else {
-        _resultBpm = bpm;
+        _resultBpm = res.bpm;
+        _resultConfidence = res.confidence;
+        _resultAutocorrBpm = res.autocorrBpm;
+        _resultAutocorrScore = res.autocorrScore;
+        _debugLog = sb.toString();
       }
     });
 
@@ -132,16 +183,21 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
           ),
         _ScanState.done => _ResultView(
             bpm: _resultBpm,
-            error: null,
-            onRetry: _start,
-            onUseReading: () => Navigator.of(context).pop(_resultBpm),
-          ),
+                    confidence: _resultConfidence,
+                    autocorrBpm: _resultAutocorrBpm,
+                    autocorrScore: _resultAutocorrScore,
+                    debugLog: _debugLog,
+                    error: null,
+                    onRetry: _start,
+                    onUseReading: () => Navigator.of(context).pop(_resultBpm),
+                  ),
         _ScanState.error => _ResultView(
             bpm: null,
-            error: _error,
-            onRetry: _start,
-            onUseReading: null,
-          ),
+                    confidence: _resultConfidence,
+                    error: _error,
+                    onRetry: _start,
+                    onUseReading: null,
+                  ),
       },
     );
   }
@@ -245,11 +301,19 @@ class _ScanningView extends StatelessWidget {
 class _ResultView extends StatelessWidget {
   const _ResultView({
     this.bpm,
+    this.confidence,
+    this.autocorrBpm,
+    this.autocorrScore,
+    this.debugLog,
     this.error,
     required this.onRetry,
     this.onUseReading,
   });
   final double? bpm;
+  final double? confidence;
+  final double? autocorrBpm;
+  final double? autocorrScore;
+  final String? debugLog;
   final String? error;
   final VoidCallback onRetry;
   final VoidCallback? onUseReading;
@@ -277,6 +341,8 @@ class _ResultView extends StatelessWidget {
         ),
       );
     }
+    final bool validated = bpm != null && autocorrBpm != null && (bpm! - autocorrBpm!).abs() <= 3.0;
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -287,14 +353,34 @@ class _ResultView extends StatelessWidget {
                   GoogleFonts.sora(fontSize: 56, fontWeight: FontWeight.w800)),
           const Text('BPM',
               style: TextStyle(color: AppColors.muted, letterSpacing: 2)),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          if (validated) ...[
+            Chip(
+              avatar: const Icon(Icons.check_circle, color: Colors.white, size: 16),
+              label: const Text('Validated by two methods', style: TextStyle(color: Colors.white)),
+              backgroundColor: AppColors.danger,
+            ),
+            const SizedBox(height: 8),
+          ] else if (confidence != null && confidence! >= 6.0) ...[
+            Chip(
+              avatar: const Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
+              label: const Text('High confidence', style: TextStyle(color: Colors.white)),
+              backgroundColor: Colors.green,
+            ),
+            const SizedBox(height: 8),
+          ] else if (confidence != null) ...[
+            Text('Confidence: ${_fmt(confidence!)}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+            const SizedBox(height: 8),
+          ],
+
           const Text(
             'Estimate only — not a medical diagnosis. If this feels off or '
             'you have symptoms, check with a doctor.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+
           if (onUseReading != null) ...[
             PrimaryButton(
                 label: 'Use this reading',
@@ -303,13 +389,47 @@ class _ResultView extends StatelessWidget {
                 onPressed: onUseReading),
             const SizedBox(height: 10),
           ],
-          OutlinedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Scan again'),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Scan again'),
+              ),
+              const SizedBox(width: 8),
+              if (debugLog != null) ...[
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await showDialog<void>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Debug details'),
+                        content: SingleChildScrollView(child: Text(debugLog!)),
+                        actions: [
+                          TextButton(
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: debugLog!));
+                                Navigator.of(ctx).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debug copied')));
+                              },
+                              child: const Text('Copy')),
+                          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+                        ],
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.bug_report, size: 18),
+                  label: const Text('Details'),
+                ),
+              ],
+            ],
           ),
         ],
       ),
     );
   }
+
+  static String _fmt(double v) => v.isFinite ? v.toStringAsFixed(2) : 'N/A';
 }

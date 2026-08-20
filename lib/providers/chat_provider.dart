@@ -8,8 +8,11 @@ import '../core/services/groq_service.dart';
 import '../core/services/image_cleaner_service.dart';
 import '../core/services/gemini_service.dart';
 import '../core/services/prescription_parser.dart';
+import '../core/services/skin_photo_quality_checker.dart';
+import '../core/services/skin_scan_service.dart';
 import '../data/models/models.dart';
 import '../services/chat_firestore_service.dart';
+import '../services/skin_scan_firestore_service.dart';
 import 'profile_provider.dart';
 import 'reminder_provider.dart';
 import 'dart:convert';
@@ -108,17 +111,85 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> _routeReply(String text, List<ChatAttachment> attachments) async {
     ChatAttachment? rxPhoto;
+    ChatAttachment? skinPhoto;
     for (final a in attachments) {
-      if (a.intent == AttachmentIntent.prescription) {
-        rxPhoto = a;
-        break;
-      }
+      if (a.intent == AttachmentIntent.prescription) rxPhoto = a;
+      if (a.intent == AttachmentIntent.skin) skinPhoto = a;
     }
     if (rxPhoto != null) {
       await _replyFromPrescriptionScan(rxPhoto);
       return;
     }
+    if (skinPhoto != null) {
+      await _replyFromSkinCheck(skinPhoto);
+      return;
+    }
     await _replyFromGroq();
+  }
+
+  Future<void> _replyFromSkinCheck(ChatAttachment photo) async {
+    typing = true;
+    notifyListeners();
+    try {
+      final path = photo.filePath!;
+
+      final quality = await SkinPhotoQualityChecker.check(path);
+      if (quality != SkinPhotoQuality.ok) {
+        typing = false;
+        await _reply(ChatMessage(
+          role: ChatRole.ai,
+          text: SkinPhotoQualityChecker.message(quality),
+        ));
+        return;
+      }
+
+      final result = await SkinScanService.analyze(path);
+      typing = false;
+
+      if (result.metrics.isEmpty) {
+        await _reply(const ChatMessage(
+          role: ChatRole.ai,
+          text: "MedAI couldn't get a reading from that photo. Please try again with a clear, well-lit photo of your face.",
+        ));
+        return;
+      }
+
+      final summaryLines = result.metrics
+          .map((m) => "• ${m.label}: ${(m.score * 100).round()}%")
+          .join('\n');
+      final summary = "Here's what MedAI found:\n\n$summaryLines\n\n"
+          "This is a general visual estimate, not a diagnosis.";
+
+      // Save to history so progress can be tracked over time — done in the
+      // background; a save failure shouldn't block showing the result.
+      SkinScanFirestoreService.instance.saveScan(SkinScanRecord(
+        metrics: {for (final m in result.metrics) m.label: m.score},
+        imagePath: path,
+        date: DateTime.now(),
+      ));
+
+      await _reply(ChatMessage(
+        role: ChatRole.ai,
+        card: ChatCardType.skin,
+        text: summary,
+        skinScanJson: jsonEncode({
+          'metrics': result.metrics
+              .map((m) => {'label': m.label, 'score': m.score})
+              .toList(),
+        }),
+        imagePath: path,
+        personalized: learnFromData,
+      ));
+    } catch (e) {
+      typing = false;
+      debugPrint('[ChatProvider] Skin scan FAILED: $e');
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: "Couldn't complete the skin scan — the analysis server "
+            "might be waking up (this can take up to a minute on the "
+            "first try). Please try again in a moment.",
+      ));
+    }
   }
 
   Future<void> _replyFromPrescriptionScan(ChatAttachment photo) async {

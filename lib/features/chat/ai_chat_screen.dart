@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -26,6 +27,7 @@ import '../sos/sos_screen.dart';
 import '../vitals/vitals_scan_screen.dart';
 import 'medai_history_screen.dart';
 import 'prescription_review_screen.dart';
+import '../skin/skin_history_screen.dart';
 
 /// MedAI — multimodal health assistant: text, image, file, and voice input,
 /// with "Personal insights" replies tailored from the user's health profile.
@@ -223,10 +225,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
   /// "Scan prescription"/"Skin check" only ever opened the camera directly
   /// with no gallery option at all.
   Future<void> _chooseAndStageImage(
-    ChatProvider chat, {
-    required AttachmentIntent intent,
-    required String pickerTitle,
-  }) async {
+      ChatProvider chat, {
+        required AttachmentIntent intent,
+        required String pickerTitle,
+      }) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: AppColors.card,
@@ -283,11 +285,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
   /// Opens the real device camera or gallery and stages whatever the user
   /// actually picks.
   Future<void> _pickAndStage(
-    ChatProvider chat, {
-    required ImageSource source,
-    required AttachmentIntent intent,
-    required String detail,
-  }) async {
+      ChatProvider chat, {
+        required ImageSource source,
+        required AttachmentIntent intent,
+        required String detail,
+      }) async {
     try {
       String? pickedPath;
 
@@ -340,8 +342,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
         filePath: pickedPath,
       ));
 
-      // If it's a prescription, send it immediately to start processing
-      if (intent == AttachmentIntent.prescription) {
+      // Prescription and skin photos start processing right away — the
+      // user shouldn't have to also type something and hit send.
+      if (intent == AttachmentIntent.prescription || intent == AttachmentIntent.skin) {
         chat.send('');
       }
     } catch (_) {
@@ -439,19 +442,19 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   ? Icons.auto_awesome_rounded
                   : Icons.auto_awesome_outlined,
               background:
-                  chat.learnFromData ? AppColors.aiSoft : AppColors.paper,
+              chat.learnFromData ? AppColors.aiSoft : AppColors.paper,
               foreground:
-                  chat.learnFromData ? AppColors.ai : AppColors.muted,
+              chat.learnFromData ? AppColors.ai : AppColors.muted,
               onTap: () {
                 chat.toggleLearn();
                 showToast(
                     context,
                     chat.learnFromData
                         ? 'Personal insights are on — MedAI can read your '
-                            'health profile to tailor its answers'
+                        'health profile to tailor its answers'
                         : "Personal insights are off — MedAI can't access "
-                            'your health profile and will give general '
-                            'answers only');
+                        'your health profile and will give general '
+                        'answers only');
               },
             ),
           ),
@@ -465,7 +468,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
             child: Text(
               '⚠ MedAI offers general guidance — not a diagnosis. '
-              'In an emergency call 911.',
+                  'In an emergency call 911.',
               style: TextStyle(
                   fontSize: 12.sp,
                   color: const Color(0xFF8A5B0B),
@@ -618,7 +621,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       height: 46.r,
                       decoration: const BoxDecoration(
                         gradient:
-                            LinearGradient(colors: AppColors.aiGradient),
+                        LinearGradient(colors: AppColors.aiGradient),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.send_rounded,
@@ -774,10 +777,10 @@ class _MessageBubble extends StatelessWidget {
       child: Container(
         margin: EdgeInsets.only(bottom: 10.h),
         constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .8),
+        BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .8),
         child: Column(
           crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             // Attachment previews above the bubble.
             for (final a in media) _AttachmentTile(attachment: a),
@@ -785,7 +788,7 @@ class _MessageBubble extends StatelessWidget {
             if (message.text.isNotEmpty)
               Container(
                 padding:
-                    EdgeInsets.symmetric(horizontal: 15.w, vertical: 11.h),
+                EdgeInsets.symmetric(horizontal: 15.w, vertical: 11.h),
                 decoration: BoxDecoration(
                   color: isUser ? AppColors.primary : Colors.white,
                   borderRadius: BorderRadius.only(
@@ -795,7 +798,7 @@ class _MessageBubble extends StatelessWidget {
                     bottomRight: Radius.circular(isUser ? 6.r : 18.r),
                   ),
                   border:
-                      isUser ? null : Border.all(color: AppColors.line),
+                  isUser ? null : Border.all(color: AppColors.line),
                 ),
                 child: Text(message.text,
                     style: TextStyle(
@@ -849,7 +852,7 @@ class _AttachmentTile extends StatelessWidget {
               bottom: 8.h,
               child: Container(
                 padding:
-                    EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
                 decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: .45),
                     borderRadius: BorderRadius.circular(8.r)),
@@ -918,7 +921,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
   bool _loading = false;
   Duration _position = Duration.zero;
   late Duration _total =
-      Duration(seconds: widget.attachment.durationSeconds);
+  Duration(seconds: widget.attachment.durationSeconds);
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration>? _durSub;
   StreamSubscription<void>? _completeSub;
@@ -1002,17 +1005,17 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
           children: [
             _loading
                 ? SizedBox(
-                    width: 24.sp,
-                    height: 24.sp,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.2, color: Colors.white))
+                width: 24.sp,
+                height: 24.sp,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.2, color: Colors.white))
                 : Icon(
-                    _playing
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 24.sp,
-                  ),
+              _playing
+                  ? Icons.pause_rounded
+                  : Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 24.sp,
+            ),
             SizedBox(width: 6.w),
             Row(
               children: [
@@ -1103,7 +1106,7 @@ class _RecordingOverlayState extends State<_RecordingOverlay>
                           height: (8 +
                               rng.nextDouble() * 26 * (.4 + _wave.value * .6)).h,
                           margin:
-                              EdgeInsets.symmetric(horizontal: 1.6.w),
+                          EdgeInsets.symmetric(horizontal: 1.6.w),
                           decoration: BoxDecoration(
                             color: AppColors.danger,
                             borderRadius: BorderRadius.circular(2.r),
@@ -1121,7 +1124,7 @@ class _RecordingOverlayState extends State<_RecordingOverlay>
               SizedBox(height: 4.h),
               Text('Release to send',
                   style:
-                      TextStyle(fontSize: 12.sp, color: AppColors.muted)),
+                  TextStyle(fontSize: 12.sp, color: AppColors.muted)),
             ],
           ),
         ),
@@ -1259,9 +1262,9 @@ class _PrescriptionCard extends StatelessWidget {
 class _MedRow extends StatelessWidget {
   const _MedRow(
       {required this.name,
-      required this.freq,
-      required this.added,
-      this.flag});
+        required this.freq,
+        required this.added,
+        this.flag});
 
   final String name;
   final String freq;
@@ -1315,14 +1318,31 @@ class _SkinReportCard extends StatelessWidget {
 
   final ChatMessage message;
 
-  static const _conditions = [
-    ('Contact dermatitis', .72),
-    ('Eczema flare', .18),
-    ('Fungal infection', .06),
-  ];
+  /// Parses the real server response stored on the message. Returns an
+  /// empty list if there's nothing to show (shouldn't normally happen,
+  /// since chat_provider only sets this card when metrics exist).
+  List<(String, double)> _parseMetrics() {
+    final raw = message.skinScanJson;
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final list = (data['metrics'] as List?) ?? [];
+      return list
+          .map((m) => (
+      (m['label'] ?? '').toString(),
+      ((m['score'] ?? 0) as num).toDouble(),
+      ))
+          .where((m) => m.$1.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final metrics = _parseMetrics();
+
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: Column(
@@ -1355,46 +1375,76 @@ class _SkinReportCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 12.h),
-                for (final c in _conditions)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 8.h),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(c.$1,
+                if (metrics.isEmpty)
+                  Text('No details available for this scan.',
+                      style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted))
+                else
+                  for (final m in metrics)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 8.h),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(m.$1,
+                                    style: TextStyle(
+                                        fontSize: 12.5.sp,
+                                        fontWeight: FontWeight.w600)),
+                              ),
+                              Text('${(m.$2 * 100).round()}%',
                                   style: TextStyle(
-                                      fontSize: 12.5.sp,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                            Text('${(c.$2 * 100).round()}%',
-                                style: TextStyle(
-                                    fontSize: 12.sp,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ai)),
-                          ],
-                        ),
-                        SizedBox(height: 4.h),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4.r),
-                          child: LinearProgressIndicator(
-                            value: c.$2,
-                            minHeight: 6.h,
-                            backgroundColor: AppColors.paper,
-                            color: AppColors.ai,
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.ai)),
+                            ],
                           ),
-                        ),
-                      ],
+                          SizedBox(height: 4.h),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4.r),
+                            child: LinearProgressIndicator(
+                              value: m.$2,
+                              minHeight: 6.h,
+                              backgroundColor: AppColors.paper,
+                              color: AppColors.ai,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 Divider(height: 18.h),
                 Text(message.text,
                     style: TextStyle(
                         fontSize: 13.sp, height: 1.45, color: AppColors.ink)),
+                SizedBox(height: 12.h),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SkinHistoryScreen()),
+                  ),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(vertical: 11.h),
+                    decoration: BoxDecoration(
+                      color: AppColors.aiSoft,
+                      borderRadius: BorderRadius.circular(11.r),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.timeline_rounded, size: 17.sp, color: AppColors.ai),
+                        SizedBox(width: 7.w),
+                        Text('View scan history',
+                            style: TextStyle(
+                                fontSize: 12.5.sp,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.ai)),
+                      ],
+                    ),
+                  ),
+                ),
                 SizedBox(height: 10.h),
-                Text('Visual estimate — not a diagnosis.',
+                Text('Cosmetic visual estimate — not a medical diagnosis.',
                     style: TextStyle(
                         fontSize: 11.sp,
                         fontStyle: FontStyle.italic,

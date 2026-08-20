@@ -93,6 +93,7 @@ class ChatMessage {
     this.personalized = false,
     this.ocrText,
     this.imagePath,
+    this.skinScanJson,
     this.timestamp,
   });
 
@@ -114,6 +115,11 @@ class ChatMessage {
   /// Path to the local photo used for OCR, passed to review screen.
   final String? imagePath;
 
+  /// Raw JSON (as a string) of the real skin-scan server's response for a
+  /// skin-check photo. Null for every other kind of message. The skin
+  /// report card parses this on demand, same pattern as [ocrText].
+  final String? skinScanJson;
+
   /// When this message was sent. Null for messages not yet round-tripped
   /// through Firestore (e.g. the very first frame before saving completes).
   final DateTime? timestamp;
@@ -126,6 +132,7 @@ class ChatMessage {
     'personalized': personalized,
     'ocrText': ocrText,
     'imagePath': imagePath,
+    'skinScanJson': skinScanJson,
     'timestampMs': (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
   };
 
@@ -147,6 +154,7 @@ class ChatMessage {
       personalized: map['personalized'] ?? false,
       ocrText: map['ocrText'],
       imagePath: map['imagePath'],
+      skinScanJson: map['skinScanJson'],
       timestamp: map['timestampMs'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['timestampMs'])
           : null,

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -15,7 +16,7 @@ import 'rppg_service.dart';
 /// specific device, so treat the rotation/format handling here as a solid
 /// starting point rather than guaranteed-correct for every phone.
 class RppgFrameProcessor {
-  RppgFrameProcessor()
+  RppgFrameProcessor({this.enableDebug = false})
       : _faceDetector = FaceDetector(
           options: FaceDetectorOptions(
             performanceMode: FaceDetectorMode.fast,
@@ -24,7 +25,12 @@ class RppgFrameProcessor {
         );
 
   final FaceDetector _faceDetector;
+  final bool enableDebug;
   bool _busy = false;
+
+  Rect? _smoothedRoi;
+  int _stableFrames = 0; // consecutive stable frames
+  double? _lastBrightness;
 
   /// Call for every frame from `CameraController.startImageStream`.
   /// Returns null while no face is found, a frame is skipped (already busy
@@ -57,7 +63,32 @@ class RppgFrameProcessor {
         box.height * 0.25,
       );
 
-      return _meanRgbInBox(image, roi);
+      // Stabilize ROI: exponential smoothing + movement thresholding. If
+      // the ROI moves quickly, drop frames until stabilised to avoid
+      // motion-contaminated samples.
+      if (_smoothedRoi == null) {
+        _smoothedRoi = roi;
+        _stableFrames = 1;
+      } else {
+        // compute normalized movement (relative to face width)
+        final dx = (roi.center.dx - _smoothedRoi!.center.dx) / (roi.width);
+        final dy = (roi.center.dy - _smoothedRoi!.center.dy) / (roi.width);
+        final move = sqrt(dx * dx + dy * dy);
+        const movementThreshold = 0.12; // 12% of face width
+        if (move > movementThreshold) {
+          _stableFrames = 0;
+          if (enableDebug) print('[RPPG] ROI moved too fast (move=${move.toStringAsFixed(3)}) — dropping frame');
+        } else {
+          _stableFrames = (_stableFrames + 1).clamp(0, 10);
+        }
+        // smooth the ROI
+        _smoothedRoi = Rect.lerp(_smoothedRoi, roi, 0.3) ?? roi;
+      }
+
+      // require a few consecutive stable frames before returning samples
+      if (_stableFrames < 3) return null;
+
+      return _meanRgbInBox(image, _smoothedRoi!);
     } catch (_) {
       return null; // a single bad frame shouldn't crash the scan
     } finally {
@@ -215,11 +246,24 @@ class RppgFrameProcessor {
     }
 
     if (count == 0) return null;
-    return RppgSample(
+    final sample = RppgSample(
       timestampMs: DateTime.now().millisecondsSinceEpoch,
       r: sumR / count,
       g: sumG / count,
       b: sumB / count,
     );
+
+    // Brightness stability check: drop frames where exposure changed
+    final brightness = (sample.r + sample.g + sample.b) / 3.0;
+    if (_lastBrightness != null) {
+      final rel = (brightness - _lastBrightness!).abs() / (_lastBrightness! + 1e-6);
+      if (rel > 0.28) {
+        if (enableDebug) print('[RPPG] brightness jump (rel=${rel.toStringAsFixed(2)}) — dropping frame');
+        _lastBrightness = brightness;
+        return null;
+      }
+    }
+    _lastBrightness = brightness;
+    return sample;
   }
 }
