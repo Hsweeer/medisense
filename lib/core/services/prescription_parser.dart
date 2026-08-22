@@ -34,13 +34,18 @@ List<ParsedMedicine> getMedsFromOcr(String ocrText) {
     final String cleanJson = ocrText.replaceAll('```json', '').replaceAll('```', '').trim();
     final data = jsonDecode(cleanJson);
     final medsList = data['medications'] as List? ?? [];
-    
+
     return medsList.map((m) {
       final int tpd = int.tryParse(m['timesPerDay']?.toString() ?? '1') ?? 1;
+      final durationRaw = m['durationDays'];
+      final int? duration = durationRaw == null
+          ? null
+          : int.tryParse(durationRaw.toString());
       return ParsedMedicine(
         name: m['name']?.toString() ?? 'Unknown',
         dose: m['dose']?.toString() ?? '',
         timesPerDay: tpd,
+        durationDays: duration,
         instructions: m['instructions']?.toString() ?? '',
         confidence: m['confidence']?.toString() ?? 'high',
         times: defaultTimesFor(tpd),
@@ -95,7 +100,7 @@ String formatTimeOfDay(TimeOfDay t) {
 }
 
 final RegExp _doseUnit =
-    RegExp(r'(\d+(?:\.\d+)?)\s?(mg|mcg|ml|g|iu|gm|tab)\b', caseSensitive: false);
+RegExp(r'(\d+(?:\.\d+)?)\s?(mg|mcg|ml|g|iu|gm|tab)\b', caseSensitive: false);
 
 final Map<RegExp, int> _freqPatterns = {
   RegExp(r'\bonce\s+(a\s+)?day\b|\bonce\s+daily\b|\bOD\b|\bQD\b|\b1\s*x\s*(a\s+)?day\b',
@@ -123,7 +128,7 @@ List<ParsedMedicine> parsePrescriptionText(String raw) {
     String name = line.substring(0, doseMatch.start).trim();
     // Clean up name (remove bullet points, numbers, etc.)
     name = name.replaceFirst(RegExp(r'^[\d.\)\-•\s]+'), '').trim();
-    
+
     if (name.isEmpty || name.length < 2) continue;
 
     final String dose = doseMatch.group(0)!.replaceAll(RegExp(r'\s+'), ' ');
@@ -144,6 +149,6 @@ List<ParsedMedicine> parsePrescriptionText(String raw) {
       confidence: 'high', // Legacy always high
     ));
   }
-  
+
   return meds;
 }

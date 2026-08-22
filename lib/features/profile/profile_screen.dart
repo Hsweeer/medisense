@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
+import '../../data/models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
@@ -165,28 +166,9 @@ class ProfileScreen extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(height: 10.h),
-          MCard(
-            color: AppColors.aiSoft,
-            border: Border.all(color: AppColors.ai.withValues(alpha: .3)),
-            child: Row(
-              children: [
-                Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 22.sp),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Text(
-                    'MedAI personalizes every answer using this profile — '
-                    'keep it current for sharper guidance.',
-                    style: TextStyle(
-                      fontSize: 12.5.sp,
-                      height: 1.4,
-                      color: AppColors.inkSoft,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          SizedBox(height: 20.h),
+          const SectionHeader('AI Insights'),
+          _AiInsightsCard(insights: prov.aiInsights, onDismiss: prov.removeInsight),
           SizedBox(height: 20.h),
           const SectionHeader('Emergency'),
           MCard(
@@ -350,6 +332,136 @@ String firebaseAuthEmail(BuildContext context) {
   return context.read<AuthProvider>().currentEmail;
 }
 
+/// Shows the short personalized facts MedAI has picked up while chatting
+/// (symptoms, ongoing concerns, preferences) — a live view into what's
+/// making the AI's answers personalized, instead of that context living
+/// invisibly inside old chat threads.
+class _AiInsightsCard extends StatelessWidget {
+  const _AiInsightsCard({required this.insights, required this.onDismiss});
+
+  final List<AiInsight> insights;
+  final void Function(AiInsight) onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    if (insights.isEmpty) {
+      return MCard(
+        color: AppColors.aiSoft,
+        border: Border.all(color: AppColors.ai.withValues(alpha: .3)),
+        child: Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 22.sp),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                'Nothing learned yet — as you chat with MedAI, useful '
+                    'context like symptoms or ongoing concerns will show up '
+                    'here and quietly sharpen its answers.',
+                style: TextStyle(
+                  fontSize: 12.5.sp,
+                  height: 1.4,
+                  color: AppColors.inkSoft,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return MCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 4.h),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 18.sp),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    'What MedAI has learned from your chats',
+                    style: TextStyle(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ai,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (int i = 0; i < insights.length; i++) ...[
+            if (i > 0) Divider(height: 1.h, indent: 16.w, endIndent: 16.w),
+            _AiInsightTile(insight: insights[i], onDismiss: () => onDismiss(insights[i])),
+          ],
+          SizedBox(height: 4.h),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiInsightTile extends StatelessWidget {
+  const _AiInsightTile({required this.insight, required this.onDismiss});
+
+  final AiInsight insight;
+  final VoidCallback onDismiss;
+
+  ({IconData icon, Color color, String label}) get _style {
+    switch (insight.type) {
+      case AiInsightType.symptom:
+        return (icon: Icons.sick_outlined, color: AppColors.warning, label: 'Symptom');
+      case AiInsightType.concern:
+        return (icon: Icons.priority_high_rounded, color: AppColors.danger, label: 'Concern');
+      case AiInsightType.preference:
+        return (icon: Icons.tune_rounded, color: AppColors.primary, label: 'Preference');
+      case AiInsightType.note:
+        return (icon: Icons.notes_rounded, color: AppColors.muted, label: 'Note');
+    }
+  }
+
+  String get _relativeTime {
+    final diff = DateTime.now().difference(insight.createdAt);
+    if (diff.inDays > 0) return '${diff.inDays}d ago';
+    if (diff.inHours > 0) return '${diff.inHours}h ago';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+    return 'Just now';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _style;
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.symmetric(horizontal: 16.w),
+      leading: Container(
+        width: 34.r,
+        height: 34.r,
+        decoration: BoxDecoration(
+          color: s.color.withValues(alpha: .1),
+          borderRadius: BorderRadius.circular(10.r),
+        ),
+        child: Icon(s.icon, color: s.color, size: 17.sp),
+      ),
+      title: Text(
+        insight.text,
+        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        '${s.label} · $_relativeTime',
+        style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
+      ),
+      trailing: IconButton(
+        icon: Icon(Icons.close_rounded, size: 18.sp, color: AppColors.muted),
+        tooltip: 'Not relevant',
+        onPressed: onDismiss,
+      ),
+    );
+  }
+}
+
 class _Vital extends StatelessWidget {
   const _Vital({required this.label, required this.value});
 
@@ -409,17 +521,17 @@ class _ChipRow extends StatelessWidget {
         Expanded(
           child: values.isEmpty
               ? Text(
-                  'Not set yet',
-                  style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
-                )
+            'Not set yet',
+            style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
+          )
               : Wrap(
-                  spacing: 6.w,
-                  runSpacing: 6.h,
-                  children: [
-                    for (final v in values)
-                      MChip(v, background: background, foreground: foreground),
-                  ],
-                ),
+            spacing: 6.w,
+            runSpacing: 6.h,
+            children: [
+              for (final v in values)
+                MChip(v, background: background, foreground: foreground),
+            ],
+          ),
         ),
       ],
     );

@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/models/models.dart';
+import '../services/ai_insights_firestore_service.dart';
 
 /// Health profile + the user's emergency contacts, backed by Firestore.
 ///
@@ -23,9 +24,11 @@ class ProfileProvider extends ChangeNotifier {
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _profileSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _contactsSub;
+  StreamSubscription<List<AiInsight>>? _insightsSub;
 
   HealthProfile profile = HealthProfile.empty();
   List<EmergencyContact> contacts = [];
+  List<AiInsight> aiInsights = [];
 
   bool isLoading = true;
   String? error;
@@ -40,8 +43,10 @@ class ProfileProvider extends ChangeNotifier {
         debugPrint('[ProfileProvider] No user, clearing profile...');
         _profileSub?.cancel();
         _contactsSub?.cancel();
+        _insightsSub?.cancel();
         profile = HealthProfile.empty();
         contacts = [];
+        aiInsights = [];
         isLoading = false;
         notifyListeners();
       }
@@ -91,6 +96,18 @@ class ProfileProvider extends ChangeNotifier {
       error = 'Could not load emergency contacts: $e';
       notifyListeners();
     });
+
+    // AI-learned insights (symptoms/concerns/preferences MedAI picked up
+    // in chat) — shown as their own "AI Insights" section on the profile
+    // screen, kept live the same way contacts/profile are.
+    _insightsSub = AiInsightsFirestoreService.instance
+        .watchInsights()
+        .listen((list) {
+      aiInsights = list;
+      notifyListeners();
+    }, onError: (e) {
+      debugPrint('[ProfileProvider] Could not load AI insights: $e');
+    });
   }
 
   /// Call this right after sign-in and right after sign-out so the
@@ -98,8 +115,10 @@ class ProfileProvider extends ChangeNotifier {
   void refreshForCurrentUser() {
     _profileSub?.cancel();
     _contactsSub?.cancel();
+    _insightsSub?.cancel();
     profile = HealthProfile.empty();
     contacts = [];
+    aiInsights = [];
     isLoading = true;
     notifyListeners();
     _listen();
@@ -165,10 +184,18 @@ class ProfileProvider extends ChangeNotifier {
         .delete();
   }
 
+  /// Lets the user dismiss an AI-learned insight from the profile screen
+  /// if it's wrong or no longer relevant.
+  Future<void> removeInsight(AiInsight insight) async {
+    if (insight.id == null) return;
+    await AiInsightsFirestoreService.instance.deleteInsight(insight.id!);
+  }
+
   @override
   void dispose() {
     _profileSub?.cancel();
     _contactsSub?.cancel();
+    _insightsSub?.cancel();
     super.dispose();
   }
 }

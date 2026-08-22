@@ -60,6 +60,73 @@ class GeminiService {
     }
   }
 
+  /// General-purpose image analysis for arbitrary photos and screenshots.
+  /// Great for user-sent images that are not a prescription or skin-scan.
+  static Future<String> describeImage(String imagePath, {String prompt = 'Describe what you see in this image.'}) async {
+    try {
+      final File imageFile = File(imagePath);
+      final List<int> imageBytes = await imageFile.readAsBytes();
+      final String base64Image = base64Encode(imageBytes);
+
+      final Map<String, dynamic> requestBody = {
+        'contents': [
+          {
+            'parts': [
+              {
+                'text': 'SYSTEM: You are a professional visual assistant. Analyze the image with careful observation, not guessing. Your job is to be useful, grounded, and honest.\n\n'
+                    'RULES:\n'
+                    '1. First describe what is clearly visible.\n'
+                    '2. Then explain the likely purpose, object, or meaning.\n'
+                    '3. State uncertainty honestly if the image is blurry, cropped, low-light, or ambiguous.\n'
+                    '4. Do not invent details or claim diagnosis without evidence.\n'
+                    '5. If relevant, ask 1 short follow-up question to improve accuracy.\n\n'
+                    'FORMAT:\n'
+                    'What I can see:\n- ...\n\n'
+                    'Likely meaning / likely object:\n- ...\n\n'
+                    'Confidence:\n- High / Medium / Low\n\n'
+                    'Follow-up:\n- ...\n\n'
+                    'USER REQUEST: $prompt'
+              },
+              {
+                'inlineData': {
+                  'mimeType': 'image/jpeg',
+                  'data': base64Image,
+                }
+              }
+            ]
+          }
+        ],
+        'generationConfig': {
+          'temperature': 0.2,
+          'topP': 0.9,
+          'topK': 32,
+        }
+      };
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl?key=${ApiKeys.geminiApiKey}'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        throw Exception('Image Analysis Error ${response.statusCode}');
+      }
+
+      final Map<String, dynamic> data = jsonDecode(response.body);
+      final String? text = data['candidates']?[0]['content']?['parts']?[0]['text'];
+
+      if (text == null || text.trim().isEmpty) {
+        throw Exception('AI returned an empty image analysis response.');
+      }
+
+      return text.trim();
+    } catch (e) {
+      debugPrint('[GeminiService] DescribeImage Error: $e');
+      rethrow;
+    }
+  }
+
   /// Pass 2: Structure into Data
   /// Uses both the original image and the raw transcription to produce structured JSON.
   static Future<String> readPrescription(String imagePath) async {
@@ -86,9 +153,11 @@ class GeminiService {
                     "2. Leave dose, frequency, or instructions blank rather than guessing. "
                     "3. For every item, set \"confidence\" to \"low\" if the handwriting is ambiguous or the name is a best guess. "
                     "4. Common shorthand: 1+0+1, OD, BD, TDS, QID. "
+                    "5. Also extract the course duration in days if written (e.g. \"5 days\", \"x 7/7\", \"1 week\" = 7). "
+                    "Set \"durationDays\" to that number, or null if no duration is written — never guess a duration that isn't stated. "
                     "OUTPUT: Return ONLY a valid JSON object: "
                     "{\"transcription\": \"$rawTranscription\", \"medications\": "
-                    "[{\"name\": \"...\", \"dose\": \"...\", \"timesPerDay\": 2, \"instructions\": \"...\", \"confidence\": \"high|low\"}]}"
+                    "[{\"name\": \"...\", \"dose\": \"...\", \"timesPerDay\": 2, \"durationDays\": 5, \"instructions\": \"...\", \"confidence\": \"high|low\"}]}"
               },
               {
                 "inlineData": {
@@ -100,7 +169,10 @@ class GeminiService {
           }
         ],
         "generationConfig": {
-          "responseMimeType": "application/json"
+          "responseMimeType": "application/json",
+          "temperature": 0.2,
+          "topP": 0.9,
+          "topK": 32,
         }
       };
 

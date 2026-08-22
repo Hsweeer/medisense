@@ -23,7 +23,12 @@ class VitalsScanScreen extends StatefulWidget {
 enum _ScanState { idle, initializing, scanning, done, error }
 
 class _VitalsScanScreenState extends State<VitalsScanScreen> {
-  static const _targetDuration = Duration(seconds: 20);
+  // 18s — short enough that the scan doesn't feel like a long wait, while
+  // still giving the estimator (see rppg_service.dart) enough samples and
+  // a couple of independent windows to work with. Paired with the
+  // low-confidence fallback in RppgService, the scan now always ends with
+  // a BPM result instead of a hard "try again" failure.
+  static const _targetDuration = Duration(seconds: 18);
 
   CameraController? _controller;
   RppgFrameProcessor? _processor;
@@ -37,6 +42,18 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
   double? _resultAutocorrBpm;
   double? _resultAutocorrScore;
   String? _debugLog;
+
+  // Debug overlay values
+  int _acceptedFrames = 0;
+  int _rejectedFrames = 0;
+  String _lastRejection = '';
+  String _lastFrameDebug = '';
+  Rect? _lastFaceBox;
+  Rect? _lastTransformedFace;
+  Rect? _lastRoi;
+  double? _lastBrightness;
+  double? _lastDarkPct;
+  double? _lastSatPct;
 
   @override
   void dispose() {
@@ -56,7 +73,7 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
     try {
       final cameras = await availableCameras();
       final front = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
+            (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
@@ -69,21 +86,23 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
       if (!mounted) return;
 
       _controller = controller;
-      // enableDebug true so processor can log ROI/brightness events to console
-      _processor = RppgFrameProcessor(enableDebug: true);
+      // Debug disabled in production path
+      _processor = RppgFrameProcessor();
       _startedAt = DateTime.now();
 
       // Attempt to lock exposure/white-balance/focus for more stable captures.
       try {
         final dyn = controller as dynamic;
-        // center the exposure/focus point if supported
+        // center the exposure/focus point if supported — use normalized
+        // coordinates (0..1) instead of raw pixel values. Some camera
+        // implementations expect normalized coordinates; passing pixel
+        // coordinates caused incorrect focus/exposure placement.
+        final centerPoint = const Offset(0.5, 0.5);
         if (dyn.setExposurePoint != null) {
-          await dyn.setExposurePoint(Offset(controller.value.previewSize!.width / 2,
-              controller.value.previewSize!.height / 2));
+          await dyn.setExposurePoint(centerPoint);
         }
         if (dyn.setFocusPoint != null) {
-          await dyn.setFocusPoint(Offset(controller.value.previewSize!.width / 2,
-              controller.value.previewSize!.height / 2));
+          await dyn.setFocusPoint(centerPoint);
         }
         if (dyn.setExposureMode != null) {
           await dyn.setExposureMode(ExposureMode.locked);
@@ -96,16 +115,28 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
         debugPrint('[Vitals] exposure/awb lock not available: $e');
       }
 
+      DateTime lastUiUpdate = DateTime.now();
       await controller.startImageStream((image) async {
         if (_state != _ScanState.scanning) return;
         final sample = await _processor!.process(image, front);
         if (sample != null && mounted) {
           _samples.add(sample);
-          if (DateTime.now().difference(_startedAt!) >= _targetDuration) {
-            _finish();
-          } else {
-            setState(() {}); // repaint progress ring
-          }
+        }
+        // Check elapsed time regardless of whether this particular frame
+        // was accepted — otherwise a run of rejected frames (bad lighting,
+        // too much motion, face detector still warming up) could leave the
+        // scan hanging past its target duration with no feedback at all,
+        // rather than ending on time and showing a clear result or error.
+        if (!mounted || _state != _ScanState.scanning) return;
+        if (DateTime.now().difference(_startedAt!) >= _targetDuration) {
+          _finish();
+          return;
+        }
+        // Throttle rebuilds to a few times a second — calling setState on
+        // every single camera frame (15-30/sec) is unnecessary UI churn.
+        if (DateTime.now().difference(lastUiUpdate).inMilliseconds >= 250) {
+          lastUiUpdate = DateTime.now();
+          setState(() {});
         }
       });
 
@@ -132,7 +163,14 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
       print('[RPPG] resampled(sample0..4) = ${res.resampled.take(5).map((v) => v.toStringAsFixed(3)).toList()}');
       final topPowers = res.powers.asMap().entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
-      print('[RPPG] top peaks (bpm,power) = ${topPowers.take(3).map((e) => [(42 + e.key*0.5).toStringAsFixed(1), e.value.toStringAsFixed(2)])}');
+      print('[RPPG] top peaks (bpm,power) = ${topPowers.take(3).map((e) => [(42 + e.key*0.5).toStringAsFixed(1), e.value.toStringAsFixed(4)])}');
+
+      // Additional diagnostics
+      print('[RPPG] diagnosticReason=${res.diagnosticReason} fullPeak=${res.fullWindowPeak} fullMedian=${res.fullWindowMedian} windowsStdDev=${res.windowsStdDev} acceptedWindows=${res.acceptedWindowCount}');
+      print('[RPPG] windowCandidates=${res.windowCandidates} windowRatios=${res.windowRatios} windowAutocorrs=${res.windowAutocorrs}');
+      if (_processor != null) {
+        print('[RPPG] processor accepted=${_processor!.acceptedFrames} rejected=${_processor!.rejectedFrames} rejectionCounts=${_processor!.rejectionCounts} lastFrame=${_processor!.lastFrameDebug} lastReject=${_processor!.lastRejectionReason}');
+      }
     } catch (_) {}
 
     if (!mounted) return;
@@ -175,29 +213,30 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
       body: switch (_state) {
         _ScanState.idle => _IntroView(onStart: _start),
         _ScanState.initializing =>
-          const Center(child: CircularProgressIndicator()),
+        const Center(child: CircularProgressIndicator()),
         _ScanState.scanning => _ScanningView(
-            controller: _controller!,
-            progress: _progress,
-            sampleCount: _samples.length,
-          ),
+          controller: _controller!,
+          progress: _progress,
+          sampleCount: _samples.length,
+          processor: _processor,
+        ),
         _ScanState.done => _ResultView(
-            bpm: _resultBpm,
-                    confidence: _resultConfidence,
-                    autocorrBpm: _resultAutocorrBpm,
-                    autocorrScore: _resultAutocorrScore,
-                    debugLog: _debugLog,
-                    error: null,
-                    onRetry: _start,
-                    onUseReading: () => Navigator.of(context).pop(_resultBpm),
-                  ),
+          bpm: _resultBpm,
+          confidence: _resultConfidence,
+          autocorrBpm: _resultAutocorrBpm,
+          autocorrScore: _resultAutocorrScore,
+          debugLog: _debugLog,
+          error: null,
+          onRetry: _start,
+          onUseReading: () => Navigator.of(context).pop(_resultBpm),
+        ),
         _ScanState.error => _ResultView(
-            bpm: null,
-                    confidence: _resultConfidence,
-                    error: _error,
-                    onRetry: _start,
-                    onUseReading: null,
-                  ),
+          bpm: null,
+          confidence: _resultConfidence,
+          error: _error,
+          onRetry: _start,
+          onUseReading: null,
+        ),
       },
     );
   }
@@ -218,19 +257,19 @@ class _IntroView extends StatelessWidget {
           const SizedBox(height: 20),
           Text('Heart rate scan',
               style:
-                  GoogleFonts.sora(fontSize: 20, fontWeight: FontWeight.w700)),
+              GoogleFonts.sora(fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           const Text(
-            'Hold your face steady in frame in good lighting for about 20 '
-            'seconds. This estimates your pulse from subtle color changes '
-            'in your skin — nothing is recorded or uploaded.',
+            'Hold your face steady in frame in good lighting for about 18 '
+                'seconds. This estimates your pulse from subtle color changes '
+                'in your skin — nothing is recorded or uploaded.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, height: 1.5),
           ),
           const SizedBox(height: 8),
           const Text(
             'This is an estimate, not a medical device — for irregular or '
-            'concerning readings, check with a doctor.',
+                'concerning readings, check with a doctor.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
@@ -250,12 +289,14 @@ class _IntroView extends StatelessWidget {
 class _ScanningView extends StatelessWidget {
   const _ScanningView(
       {required this.controller,
-      required this.progress,
-      required this.sampleCount});
+        required this.progress,
+        required this.sampleCount,
+        this.processor});
 
   final CameraController controller;
   final double progress;
   final int sampleCount;
+  final RppgFrameProcessor? processor;
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +328,8 @@ class _ScanningView extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                sampleCount < 30 ? 'Finding your face…' : 'Hold still…',
+                _liveStatusText(),
+                textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
             ],
@@ -295,6 +337,29 @@ class _ScanningView extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Translates the frame processor's last rejection reason into a short,
+  /// actionable message — so the person finds out *during* the scan that
+  /// they should hold steadier or find better light, instead of only
+  /// learning the scan failed after waiting the full duration.
+  String _liveStatusText() {
+    if (sampleCount < 15) {
+      final reason = processor?.lastRejectionReason ?? '';
+      switch (reason) {
+        case 'FACE_TOO_SMALL':
+          return 'Move a little closer';
+        case 'EXCESSIVE_MOTION':
+        case 'ROI_NOT_STABLE':
+          return 'Hold your phone a bit steadier';
+        case 'BRIGHTNESS_JUMP':
+          return 'Try to keep the lighting steady';
+        case 'FACE_NOT_DETECTED':
+        default:
+          return 'Finding your face…';
+      }
+    }
+    return 'Hold still — reading your pulse…';
   }
 }
 
@@ -350,14 +415,14 @@ class _ResultView extends StatelessWidget {
         children: [
           Text('${bpm?.round() ?? '--'}',
               style:
-                  GoogleFonts.sora(fontSize: 56, fontWeight: FontWeight.w800)),
+              GoogleFonts.sora(fontSize: 56, fontWeight: FontWeight.w800)),
           const Text('BPM',
               style: TextStyle(color: AppColors.muted, letterSpacing: 2)),
           const SizedBox(height: 8),
           if (validated) ...[
             Chip(
               avatar: const Icon(Icons.check_circle, color: Colors.white, size: 16),
-              label: const Text('Validated by two methods', style: TextStyle(color: Colors.white)),
+              label: const Text('Signal checks agree', style: TextStyle(color: Colors.white)),
               backgroundColor: AppColors.danger,
             ),
             const SizedBox(height: 8),
@@ -369,13 +434,18 @@ class _ResultView extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ] else if (confidence != null) ...[
-            Text('Confidence: ${_fmt(confidence!)}', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+            const Chip(
+              avatar: Icon(Icons.info_outline, color: Colors.white, size: 16),
+              label: Text('Low confidence — hold still & try again for accuracy',
+                  style: TextStyle(color: Colors.white, fontSize: 12)),
+              backgroundColor: Colors.orange,
+            ),
             const SizedBox(height: 8),
           ],
 
           const Text(
             'Estimate only — not a medical diagnosis. If this feels off or '
-            'you have symptoms, check with a doctor.',
+                'you have symptoms, check with a doctor.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),

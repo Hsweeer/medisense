@@ -103,6 +103,12 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
       final scheduleLabel = med.durationDays != null
           ? 'Daily · ${med.durationDays} days'
           : 'Daily';
+      // Multiple dose-times for the same medicine share a groupId, so the
+      // Reminders screen renders one grouped card ("3x daily") instead of
+      // three separate cards for what is really one prescription entry.
+      final groupId = med.times.length > 1
+          ? '${DateTime.now().microsecondsSinceEpoch}_${med.name.hashCode}'
+          : null;
       for (final t in med.times) {
         reminders.add(Reminder(
           title: med.name.trim(),
@@ -114,6 +120,7 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
           schedule: scheduleLabel,
           instructions: med.instructions,
           addedBy: 'MedAI',
+          groupId: groupId,
         ));
       }
     }
@@ -171,7 +178,7 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
                     index: i,
                     med: _meds[i],
                     allergyFlag:
-                        _matchingAllergy(_meds[i].name, allergies),
+                    _matchingAllergy(_meds[i].name, allergies),
                     lowConfidence: _meds[i].confidence == 'low',
                     onChanged: () => setState(() {}),
                     onFrequencyChanged: (n) => _setFrequency(i, n),
@@ -189,18 +196,18 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
                 label: _saving
                     ? 'Adding…'
                     : _totalReminderCount == 0
-                        ? 'Add reminders'
-                        : 'Add $_totalReminderCount reminder'
-                            '${_totalReminderCount == 1 ? '' : 's'}',
+                    ? 'Add reminders'
+                    : 'Add $_totalReminderCount reminder'
+                    '${_totalReminderCount == 1 ? '' : 's'}',
                 icon: Icons.alarm_add_rounded,
                 onPressed:
-                    (_hasValidMeds && !_saving) ? _saveReminders : null,
+                (_hasValidMeds && !_saving) ? _saveReminders : null,
               ),
               SizedBox(height: 10.h),
               Center(
                 child: Text(
                   'You choose the exact time for every dose — nothing is '
-                  'scheduled automatically.',
+                      'scheduled automatically.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
                 ),
@@ -254,8 +261,8 @@ class _InfoBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'MedAI read these from your photo. OCR can misread '
-              'handwriting — check every name, dose, and time, then set '
-              'exact times before adding reminders.',
+                  'handwriting — check every name, dose, and time, then set '
+                  'exact times before adding reminders.',
               style: TextStyle(
                   fontSize: 12.5.sp,
                   color: AppColors.ai,
@@ -414,7 +421,7 @@ class _MedicineEditorCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Possible match with your listed allergy "$allergyFlag" — '
-                      'confirm with your doctor before adding this.',
+                          'confirm with your doctor before adding this.',
                       style: TextStyle(
                           fontSize: 11.5.sp,
                           color: AppColors.warning,

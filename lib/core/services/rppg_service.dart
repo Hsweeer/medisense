@@ -35,7 +35,7 @@ class AutocorrResult {
 }
 
 class RppgResult {
-  RppgResult({required this.bpm, required this.confidence, required this.resampled, required this.powers, required this.fs, this.autocorrBpm, this.autocorrScore});
+  RppgResult({required this.bpm, required this.confidence, required this.resampled, required this.powers, required this.fs, this.autocorrBpm, this.autocorrScore, this.windowCandidates, this.windowRatios, this.windowAutocorrs, this.diagnosticReason, this.fullWindowPeak, this.fullWindowMedian, this.windowsStdDev, this.acceptedWindowCount});
   final double? bpm;
   final double confidence;
   final List<double> resampled;
@@ -43,6 +43,16 @@ class RppgResult {
   final double fs;
   final double? autocorrBpm;
   final double? autocorrScore;
+
+  // Debug / diagnostics
+  final List<double>? windowCandidates; // per-window BPM candidates
+  final List<double>? windowRatios; // per-window spectral ratio
+  final List<double>? windowAutocorrs; // per-window autocorr scores
+  final String? diagnosticReason; // human-readable final rejection reason if any
+  final double? fullWindowPeak;
+  final double? fullWindowMedian;
+  final double? windowsStdDev;
+  final int? acceptedWindowCount;
 }
 
 class RppgService {
@@ -136,57 +146,170 @@ class RppgService {
     // Bandpass filter (2nd-order biquad) centered on band (0.75 - 3.0 Hz)
     final filtered = _bandpassBiquad(windowed, targetFs, 0.75, 3.0);
 
-    // Compute Goertzel powers across candidate BPMs using uniform fs
-    double bestBpm = 0;
-    double bestPower = -1;
-    final List<double> powers = [];
+    // Compute Goertzel powers across candidate BPMs using uniform fs (full window)
+    double bestBpmFull = 0;
+    double bestPowerFull = -1;
+    final List<double> powersFull = [];
     for (double bpm = _minBpm; bpm <= _maxBpm; bpm += _bpmStep) {
       final freqHz = bpm / 60.0;
       final power = _goertzelPower(filtered, targetFs, freqHz);
-      powers.add(power);
-      if (power > bestPower) {
-        bestPower = power;
-        bestBpm = bpm;
+      powersFull.add(power);
+      if (power > bestPowerFull) {
+        bestPowerFull = power;
+        bestBpmFull = bpm;
       }
     }
 
-    if (bestBpm == 0) return RppgResult(bpm: null, confidence: 0.0, resampled: resampled, powers: powers, fs: targetFs);
+    if (bestBpmFull == 0) return RppgResult(bpm: null, confidence: 0.0, resampled: resampled, powers: powersFull, fs: targetFs);
 
-    // Confidence metric: ratio of best peak to median power
-    final sorted = List<double>.from(powers)..sort();
-    final median = sorted[sorted.length ~/ 2];
-    final confidence = median <= 0 ? double.infinity : bestPower / (median + 1e-12);
+    // Confidence metric on full window: ratio of best peak to median power
+    final sortedFull = List<double>.from(powersFull)..sort();
+    final medianFull = sortedFull[sortedFull.length ~/ 2];
+    final confidenceFull = medianFull <= 0 ? double.infinity : bestPowerFull / (medianFull + 1e-12);
 
-    // --- Autocorrelation-based check (time-domain) ---
-    final autocorr = _autocorrEstimate(filtered, targetFs);
+    // --- Per-window analysis to assess temporal consistency ---
+    final windowSec = 8.0;
+    final stepSec = 4.0;
+    final windowSamples = max(4, (windowSec * targetFs).round());
+    final stepSamples = max(1, (stepSec * targetFs).round());
 
-    // Decision logic combining both methods
+    final candidates = <double>[]; // bpm candidates per window
+    final candidateRatios = <double>[];
+    final candidateAutocorrs = <double>[];
+
+    for (int start = 0; start + windowSamples <= m; start += stepSamples) {
+      final slice = filtered.sublist(start, start + windowSamples);
+      // quick power scan for this slice
+      double bestBpmW = 0;
+      double bestPowerW = -1;
+      final List<double> powersW = [];
+      for (double bpm = _minBpm; bpm <= _maxBpm; bpm += _bpmStep) {
+        final pw = _goertzelPower(slice, targetFs, bpm / 60.0);
+        powersW.add(pw);
+        if (pw > bestPowerW) {
+          bestPowerW = pw;
+          bestBpmW = bpm;
+        }
+      }
+      if (bestBpmW == 0) continue;
+      final sortedW = List<double>.from(powersW)..sort();
+      final medianW = sortedW[sortedW.length ~/ 2];
+      final ratioW = medianW <= 0 ? double.infinity : bestPowerW / (medianW + 1e-12);
+
+      // autocorr for this window
+      final ac = _autocorrEstimate(slice, targetFs);
+
+      // Only accept window candidate if it has reasonable power and/or autocorr
+      if ((ratioW.isFinite && ratioW >= 2.0) || (ac.bpm != null && ac.score >= 1.3)) {
+        // was ratioW >= 2.5 / ac.score >= 1.5 — slightly loosened; these
+        // are still meaningful spectral/autocorrelation signal-quality
+        // bars, just not so strict that a normal, slightly-noisy phone
+        // scan rejects almost every window.
+        // Prefer autocorr if available and close to spectral peak
+        if (ac.bpm != null && (ac.bpm! - bestBpmW).abs() <= 4.0) {
+          candidates.add(ac.bpm!);
+        } else {
+          candidates.add(bestBpmW);
+        }
+        candidateRatios.add(ratioW.isFinite ? ratioW : 0.0);
+        candidateAutocorrs.add(ac.score);
+      }
+    }
+
+    // Aggregate candidates
     double? finalBpm;
-    double finalConfidence = confidence;
+    double finalConfidence = confidenceFull;
+    String diagnosticReason = 'NONE';
+    double windowsStdDev = 0.0;
 
-    // Accept if Goertzel is very confident
-    if (confidence >= 6.0) {
-      finalBpm = bestBpm;
-    } else if (autocorr.bpm != null) {
-      // If autocorr agrees within +/- 3 BPM, accept average
-      if ((autocorr.bpm! - bestBpm).abs() <= 3.0) {
-        finalBpm = (autocorr.bpm! + bestBpm) / 2.0;
-        finalConfidence = (confidence + autocorr.score) / 2.0;
-      } else if (confidence >= 4.0 && autocorr.score >= 4.0) {
-        // fallback: both somewhat confident but different — prefer Goertzel
-        finalBpm = bestBpm;
-        finalConfidence = (confidence + autocorr.score) / 2.0;
+    if (candidates.isNotEmpty) {
+      // median as robust central estimator
+      final sorted = List<double>.from(candidates)..sort();
+      final medianBpm = sorted[sorted.length ~/ 2];
+      // measure spread
+      final mean = _mean(candidates);
+      double variance = 0.0;
+      for (final v in candidates) variance += (v - mean) * (v - mean);
+      variance /= candidates.length;
+      final stddev = sqrt(variance);
+      windowsStdDev = stddev;
+
+      // Accept if relatively consistent across windows. 4.5 BPM spread
+      // (was 3.0) still reflects a genuinely steady pulse over the scan —
+      // a real heart rate doesn't wander much in 20-25s at rest — but
+      // isn't thrown off by one slightly-noisy window.
+      if (stddev <= 4.5 && candidates.length >= 2) {
+        finalBpm = medianBpm;
+        diagnosticReason = 'WINDOWS_CONSISTENT';
+        // confidence: blend full-window peak ratio with per-window ratios and autocorr
+        finalConfidence = (confidenceFull + _mean(candidateRatios) + _mean(candidateAutocorrs)) / 3.0;
       } else {
-        finalBpm = null;
+        // inconsistent — only accept if full-window is very confident AND
+        // autocorrelation supports a similar value
+        final acFull = _autocorrEstimate(filtered, targetFs);
+        if (confidenceFull >= 6.0 && acFull.bpm != null && (acFull.bpm! - bestBpmFull).abs() <= 4.0) {
+          // was 8.0 — still a clear spectral peak, just not requiring the
+          // absolute strongest possible signal to accept a fallback reading.
+          finalBpm = bestBpmFull;
+          finalConfidence = (confidenceFull + acFull.score) / 2.0;
+          diagnosticReason = 'FULLWINDOW_STRONG_WITH_AUTOCORR';
+        } else {
+          // Previously this discarded the whole scan (bpm: null), which is
+          // what caused the "try again" screen to show up so often. We now
+          // always surface a best-effort reading instead — the strongest
+          // spectral peak found across the whole window — just flagged as
+          // low confidence so the UI can be honest about certainty without
+          // forcing the user to redo the scan.
+          finalBpm = bestBpmFull;
+          finalConfidence = confidenceFull;
+          diagnosticReason = 'LOW_CONFIDENCE_WINDOWS_INCONSISTENT';
+        }
       }
     } else {
-      // no autocorr result and confidence low
-      finalBpm = null;
+      // No valid window candidates — rely on full-window + autocorr fallback
+      final acFull = _autocorrEstimate(filtered, targetFs);
+      if (confidenceFull >= 4.5) {
+        // was 6.0
+        finalBpm = bestBpmFull;
+        finalConfidence = confidenceFull;
+        diagnosticReason = 'FULLWINDOW_CONFIDENT';
+      } else if (acFull.bpm != null && (acFull.bpm! - bestBpmFull).abs() <= 3.0) {
+        finalBpm = (acFull.bpm! + bestBpmFull) / 2.0;
+        finalConfidence = (confidenceFull + acFull.score) / 2.0;
+        diagnosticReason = 'AUTOCORR_FALLBACK';
+      } else {
+        // Same idea as above: don't throw the scan away just because it
+        // didn't clear the higher-confidence bars. Give the best-effort
+        // reading (autocorrelation if it found one, else the spectral
+        // peak) and mark it low confidence.
+        finalBpm = acFull.bpm ?? bestBpmFull;
+        finalConfidence = confidenceFull;
+        diagnosticReason = 'LOW_CONFIDENCE_INSUFFICIENT_WINDOWS';
+      }
     }
 
-    return RppgResult(bpm: finalBpm, confidence: finalConfidence, resampled: resampled, powers: powers, fs: targetFs, autocorrBpm: autocorr.bpm, autocorrScore: autocorr.score);
+    // For backwards compatibility the returned `powers` and `fs` are the
+    // full-window values (useful for debug display). `confidence` is the
+    // spectral peak ratio-like measure (higher means clearer spectral peak).
+    final autocorr = _autocorrEstimate(filtered, targetFs);
+    return RppgResult(
+      bpm: finalBpm,
+      confidence: finalConfidence,
+      resampled: resampled,
+      powers: powersFull,
+      fs: targetFs,
+      autocorrBpm: autocorr.bpm,
+      autocorrScore: autocorr.score,
+      windowCandidates: candidates,
+      windowRatios: candidateRatios,
+      windowAutocorrs: candidateAutocorrs,
+      diagnosticReason: diagnosticReason,
+      fullWindowPeak: bestPowerFull,
+      fullWindowMedian: medianFull,
+      windowsStdDev: windowsStdDev,
+      acceptedWindowCount: candidates.length,
+    );
   }
-
   static double? estimateBpm(List<RppgSample> samples) {
     return estimateWithDebug(samples).bpm;
   }

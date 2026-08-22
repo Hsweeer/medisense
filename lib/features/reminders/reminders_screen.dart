@@ -79,14 +79,39 @@ class RemindersScreen extends StatelessWidget {
             ),
           ),
           SizedBox(height: 16.h),
-          for (final r in prov.reminders)
-            Padding(
-              padding: EdgeInsets.only(bottom: 10.h),
-              child: _ReminderCard(reminder: r),
-            ),
+          ..._buildGroupedCards(prov),
         ],
       ),
     );
+  }
+
+  /// Same-medicine multi-dose reminders (sharing a groupId, e.g. from a
+  /// "3x daily" prescription) render as one combined card. Everything else
+  /// renders as before, one card each.
+  List<Widget> _buildGroupedCards(ReminderProvider prov) {
+    final cards = <Widget>[];
+    final renderedGroups = <String>{};
+
+    for (final r in prov.reminders) {
+      if (r.groupId != null) {
+        if (renderedGroups.contains(r.groupId)) continue;
+        renderedGroups.add(r.groupId!);
+        final groupReminders =
+        prov.reminders.where((x) => x.groupId == r.groupId).toList();
+        cards.add(Padding(
+          padding: EdgeInsets.only(bottom: 10.h),
+          child: groupReminders.length > 1
+              ? _GroupedReminderCard(reminders: groupReminders)
+              : _ReminderCard(reminder: groupReminders.first),
+        ));
+      } else {
+        cards.add(Padding(
+          padding: EdgeInsets.only(bottom: 10.h),
+          child: _ReminderCard(reminder: r),
+        ));
+      }
+    }
+    return cards;
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -414,6 +439,141 @@ class _ReminderCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One card for a medicine taken multiple times a day (e.g. "3x daily"
+/// from a prescription) — shows the medicine once, with each dose-time as
+/// its own compact row so every dose is still tracked individually.
+class _GroupedReminderCard extends StatelessWidget {
+  const _GroupedReminderCard({required this.reminders});
+
+  /// All reminders sharing one groupId — same medicine, different times.
+  final List<Reminder> reminders;
+
+  @override
+  Widget build(BuildContext context) {
+    final prov = context.read<ReminderProvider>();
+    final first = reminders.first;
+    final takenCount = reminders.where((r) => r.taken).length;
+    final sorted = [...reminders]
+      ..sort((a, b) => a.time.compareTo(b.time)); // rough time-of-day sort
+
+    return MCard(
+      padding: EdgeInsets.all(14.r),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(first.title,
+                          style: TextStyle(
+                              fontSize: 14.5.sp, fontWeight: FontWeight.w700)),
+                    ),
+                    if (first.addedBy == 'MedAI') ...[
+                      SizedBox(width: 6.w),
+                      const MChip('MedAI',
+                          icon: Icons.auto_awesome_rounded,
+                          background: AppColors.aiSoft,
+                          foreground: AppColors.ai),
+                    ],
+                  ],
+                ),
+              ),
+              Text('$takenCount/${sorted.length} today',
+                  style: TextStyle(
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.muted)),
+              SizedBox(width: 6.w),
+              _QuickAction(
+                icon: Icons.delete_outline_rounded,
+                color: AppColors.danger,
+                onTap: () => _confirmDeleteGroupDialog(context, prov, sorted),
+              ),
+            ],
+          ),
+          SizedBox(height: 2.h),
+          Text(
+              '${first.dose} · ${sorted.length}× daily · ${first.schedule}'
+                  '${first.instructions.isEmpty ? '' : ' · ${first.instructions}'}',
+              style: TextStyle(fontSize: 12.sp, color: AppColors.muted)),
+          SizedBox(height: 10.h),
+          for (final r in sorted)
+            Padding(
+              padding: EdgeInsets.only(bottom: 8.h),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => r.taken ? prov.untake(r) : prov.take(r),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 22.r,
+                      height: 22.r,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: r.taken ? AppColors.success : Colors.white,
+                        border: Border.all(
+                            color: r.taken ? AppColors.success : AppColors.line,
+                            width: 2.w),
+                      ),
+                      child: r.taken
+                          ? Icon(Icons.check_rounded,
+                          size: 13.sp, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Text(r.time,
+                      style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          decoration: r.taken ? TextDecoration.lineThrough : null,
+                          color: r.taken ? AppColors.muted : AppColors.ink)),
+                  const Spacer(),
+                  if (r.status == DoseStatus.snoozed)
+                    Text('Snoozed',
+                        style: TextStyle(fontSize: 11.sp, color: AppColors.warning)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+void _confirmDeleteGroupDialog(
+    BuildContext context, ReminderProvider prov, List<Reminder> group) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+      title: Text('Delete reminder?',
+          style: GoogleFonts.sora(fontWeight: FontWeight.w800, fontSize: 18.sp)),
+      content: Text(
+          'Are you sure you want to delete all ${group.length} doses of '
+              '"${group.first.title}"? This cannot be undone.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(ctx);
+            for (final r in group) {
+              prov.remove(r);
+            }
+          },
+          child: Text('Delete', style: TextStyle(color: AppColors.danger)),
+        ),
+      ],
+    ),
+  );
 }
 
 class _QuickAction extends StatelessWidget {

@@ -54,6 +54,8 @@ class MediSenseApp extends StatefulWidget {
 class _MediSenseAppState extends State<MediSenseApp> {
   static const _nativeChannel = MethodChannel('medisense_native_channel');
   StreamSubscription? _overlaySub;
+  Timer? _bootstrapRetryTimer;
+  Timer? _nativeReadyRetryTimer;
   bool _initialized = false;
 
   @override
@@ -75,7 +77,10 @@ class _MediSenseAppState extends State<MediSenseApp> {
     } catch (e) {
       debugPrint('[Bootstrap] Critical init error: $e');
       // Retry ONLY the critical path, not the whole app.
-      Future.delayed(const Duration(seconds: 1), _bootstrap);
+      _bootstrapRetryTimer?.cancel();
+      _bootstrapRetryTimer = Timer(const Duration(seconds: 1), () {
+        if (mounted) _bootstrap();
+      });
       return;
     }
 
@@ -94,8 +99,10 @@ class _MediSenseAppState extends State<MediSenseApp> {
     } catch (e) {
       debugPrint('[Bootstrap] flutterReady handshake error (attempt $attempt): $e');
       if (attempt < 5) {
-        Future.delayed(const Duration(seconds: 1),
-                () => _notifyNativeReady(attempt: attempt + 1));
+        _nativeReadyRetryTimer?.cancel();
+        _nativeReadyRetryTimer = Timer(const Duration(seconds: 1), () {
+          if (mounted) _notifyNativeReady(attempt: attempt + 1);
+        });
       }
     }
   }
@@ -103,6 +110,8 @@ class _MediSenseAppState extends State<MediSenseApp> {
   @override
   void dispose() {
     _overlaySub?.cancel();
+    _bootstrapRetryTimer?.cancel();
+    _nativeReadyRetryTimer?.cancel();
     super.dispose();
   }
 
@@ -181,18 +190,26 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _splashVisible = true;
+  Timer? _splashTimer;
 
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(milliseconds: 2000), () {
-      if (mounted) setState(() => _splashVisible = false);
+    _splashTimer = Timer(const Duration(milliseconds: 2000), () {
+      if (!mounted) return;
+      setState(() => _splashVisible = false);
       if (gPendingSosNavigation) {
         gPendingSosNavigation = false;
         context.read<SosProvider>().triggerImmediate();
         navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (route) => false);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _splashTimer?.cancel();
+    super.dispose();
   }
 
   @override

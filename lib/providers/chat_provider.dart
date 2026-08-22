@@ -11,8 +11,10 @@ import '../core/services/prescription_parser.dart';
 import '../core/services/skin_photo_quality_checker.dart';
 import '../core/services/skin_scan_service.dart';
 import '../data/models/models.dart';
+import '../services/ai_insights_firestore_service.dart';
 import '../services/chat_firestore_service.dart';
 import '../services/skin_scan_firestore_service.dart';
+import '../services/vitals_firestore_service.dart';
 import 'profile_provider.dart';
 import 'reminder_provider.dart';
 import 'dart:convert';
@@ -112,6 +114,9 @@ class ChatProvider extends ChangeNotifier {
   Future<void> _routeReply(String text, List<ChatAttachment> attachments) async {
     ChatAttachment? rxPhoto;
     ChatAttachment? skinPhoto;
+    final generalImage = attachments.where((a) => a.type == AttachmentType.image).toList();
+    final generalFiles = attachments.where((a) => a.type == AttachmentType.file).toList();
+
     for (final a in attachments) {
       if (a.intent == AttachmentIntent.prescription) rxPhoto = a;
       if (a.intent == AttachmentIntent.skin) skinPhoto = a;
@@ -122,6 +127,14 @@ class ChatProvider extends ChangeNotifier {
     }
     if (skinPhoto != null) {
       await _replyFromSkinCheck(skinPhoto);
+      return;
+    }
+    if (generalImage.isNotEmpty) {
+      await _replyFromGeneralImage(generalImage.first, text);
+      return;
+    }
+    if (generalFiles.isNotEmpty) {
+      await _replyFromGeneralFile(generalFiles.first, text);
       return;
     }
     await _replyFromGroq();
@@ -192,6 +205,41 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> sendHeartRateResult(double bpm) async {
+    await _replyFromHeartRateResult(bpm);
+  }
+
+  Future<void> _replyFromHeartRateResult(double bpm) async {
+    typing = true;
+    notifyListeners();
+    try {
+      final reading = HeartRateReading(bpm: bpm);
+      final profile = profileProvider?.profile;
+      final contextLine = profile != null ? reading.personalizedContext(profile) : 'Estimated from camera — not a medical device';
+      final summary = 'Heart rate: ${reading.bpm.round()} BPM\n'
+          '${reading.zoneLabel}\n'
+          '$contextLine\n'
+          'Estimated from camera — not a medical device';
+
+      await VitalsFirestoreService.instance.saveScan(bpm);
+
+      typing = false;
+      await _reply(ChatMessage(
+        role: ChatRole.ai,
+        card: ChatCardType.heartRate,
+        text: summary,
+        personalized: learnFromData,
+      ));
+    } catch (e) {
+      typing = false;
+      debugPrint('[ChatProvider] Heart rate result FAILED: $e');
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: 'Could not save this heart-rate reading. Please try again.',
+      ));
+    }
+  }
+
   Future<void> _replyFromPrescriptionScan(ChatAttachment photo) async {
     typing = true;
     notifyListeners();
@@ -221,6 +269,66 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _replyFromGeneralImage(ChatAttachment photo, String userText) async {
+    typing = true;
+    notifyListeners();
+    try {
+      final imagePath = photo.filePath;
+      if (imagePath == null || imagePath.isEmpty) {
+        typing = false;
+        await _reply(const ChatMessage(
+          role: ChatRole.ai,
+          text: 'I can look at the image once it is available. Please try again or ask a question about the photo.',
+        ));
+        return;
+      }
+
+      final prompt = (userText.trim().isNotEmpty)
+          ? userText.trim()
+          : 'Describe what is in this image and tell me what it likely is, including any important details.';
+      final answer = await GeminiService.describeImage(imagePath, prompt: prompt);
+      typing = false;
+      await _reply(ChatMessage(
+        role: ChatRole.ai,
+        text: answer,
+        personalized: learnFromData,
+      ));
+    } catch (e) {
+      typing = false;
+      debugPrint('[ChatProvider] General image analysis failed: $e');
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: 'I couldn’t reliably read that image. Please upload a clearer photo or ask a specific question about what you want checked.',
+      ));
+    }
+  }
+
+  Future<void> _replyFromGeneralFile(ChatAttachment file, String userText) async {
+    typing = true;
+    notifyListeners();
+    try {
+      final fileName = file.name;
+      final prompt = userText.trim().isNotEmpty
+          ? userText.trim()
+          : 'Summarize what this document appears to contain and answer any likely questions about it.';
+      final normalized = prompt.trim();
+      typing = false;
+      await _reply(ChatMessage(
+        role: ChatRole.ai,
+        text: normalized.isEmpty
+            ? 'I can help with this document. Please ask a question about the page or upload a clearer photo/PDF scan.'
+            : 'I can help with “$fileName” once it is readable. Please ask a specific question about the document, or upload a clearer photo/PDF if the page is too blurry or small.',
+        personalized: learnFromData,
+      ));
+    } catch (e) {
+      typing = false;
+      await _reply(const ChatMessage(
+        role: ChatRole.ai,
+        text: 'I can help with this document once it is clearer or more readable. Please upload a sharper photo or ask a specific question.',
+      ));
+    }
+  }
+
   Future<void> _replyFromGroq() async {
     typing = true;
     notifyListeners();
@@ -234,7 +342,14 @@ class ChatProvider extends ChangeNotifier {
       })
           .toList();
 
-      String systemPrompt = "You are MedAI, a helpful health assistant.";
+      String systemPrompt = "You are MedAI, a calm, professional health assistant. "
+          "Answer like a thoughtful medical AI: clear, grounded, careful, and honest. "
+          "Never invent facts, never guess a diagnosis, and never present a hunch as certainty. "
+          "If the user sends a random photo, object, document, or anything not clearly medical, respond as a helpful general assistant: describe what you can observe, explain the likely purpose or meaning, ask clarifying questions if needed, and avoid overclaiming. "
+          "For medical questions, separate facts from uncertainty and encourage professional care when appropriate. "
+          "For all questions, give concise but useful answers, prioritize what is safe and realistic, and say what is uncertain instead of pretending certainty. "
+          "Be practical, confident only when evidence supports it, and never be overly verbose. "
+          "Use a natural, professional tone like a premium health companion app, not a robotic script.";
 
       if (learnFromData && profileProvider != null) {
         final p = profileProvider!.profile;
@@ -252,13 +367,63 @@ class ChatProvider extends ChangeNotifier {
             "\n- Medications: ${p.medications.join(', ')}";
       }
 
+      systemPrompt += "\n\nBEHAVIOR RULES:"
+          "\n- Be professional and conversational, not robotic."
+          "\n- When the user shares a non-medical image or general item, respond like a capable assistant: summarize the visible content, explain what it likely is, and ask a focused follow-up if necessary."
+          "\n- Do not guess diagnoses from random photos or vague descriptions."
+          "\n- If the evidence is limited, say exactly what is uncertain and what additional context would help."
+          "\n- Use plain language and avoid definitive claims without enough evidence."
+          "\n- If a symptom, photo, or document suggests a possible medical issue, give general educational guidance and suggest a clinician or urgent care when appropriate."
+          "\nREMINDER RULES: When the user asks to set a medicine reminder, "
+          "you need a real TIME (and ideally how many times a day) before calling add_reminder. "
+          "If the user's message already states a clear time (e.g. 'at 9 PM', 'after breakfast and dinner'), "
+          "go ahead and call add_reminder directly — don't ask needless questions for something already answered. "
+          "But if the time or frequency is missing or ambiguous, do NOT guess a time and do NOT call add_reminder. "
+          "Instead call ask_reminder_details with a short, friendly question and 2-4 short suggested "
+          "replies as options (e.g. specific times, or frequencies like 'Once daily', 'Twice daily'), "
+          "so the user can just tap one instead of typing.";
+
+      if (learnFromData) {
+        systemPrompt += "\n\nINSIGHT RULES: When the user mentions something worth remembering for "
+            "future context — a recurring or new symptom, an ongoing health concern, or a clear "
+            "preference about their care — call note_health_insight with a short (under 12 words), "
+            "neutral, factual summary of it. Only call it for something genuinely new or notable in "
+            "THIS message, never for small talk, never guessing, and never more than once per message. "
+            "Do not mention that you saved anything — this happens silently in the background.";
+      }
+
       // TOOLS: Define what AI can do
       final tools = [
+        if (learnFromData)
+          {
+            'type': 'function',
+            'function': {
+              'name': 'note_health_insight',
+              'description': 'Silently save a short, factual personalized insight (a symptom, health '
+                  'concern, or preference the user mentioned) so it can be shown in their profile '
+                  'later. Do not tell the user you called this.',
+              'parameters': {
+                'type': 'object',
+                'properties': {
+                  'category': {
+                    'type': 'string',
+                    'enum': ['symptom', 'concern', 'preference', 'note'],
+                    'description': 'What kind of insight this is.',
+                  },
+                  'text': {
+                    'type': 'string',
+                    'description': 'Short (under 12 words), neutral, factual summary, e.g. "Reports mild headaches most mornings".',
+                  },
+                },
+                'required': ['category', 'text'],
+              },
+            },
+          },
         {
           'type': 'function',
           'function': {
             'name': 'add_reminder',
-            'description': 'Add a recurring medicine reminder/alarm for the user.',
+            'description': 'Add a recurring medicine reminder/alarm for the user. Only call this once you have a real, specific time — never a guessed one.',
             'parameters': {
               'type': 'object',
               'properties': {
@@ -271,7 +436,26 @@ class ChatProvider extends ChangeNotifier {
               'required': ['title', 'time'],
             },
           },
-        }
+        },
+        {
+          'type': 'function',
+          'function': {
+            'name': 'ask_reminder_details',
+            'description': 'Ask the user for a missing detail (usually time or frequency) needed to set a reminder, giving them short tappable suggestions instead of guessing.',
+            'parameters': {
+              'type': 'object',
+              'properties': {
+                'question': {'type': 'string', 'description': 'A short, natural question, e.g. "What time should I remind you?"'},
+                'options': {
+                  'type': 'array',
+                  'items': {'type': 'string'},
+                  'description': '2-4 short tappable suggestions, e.g. ["8:00 AM", "9:00 PM"] or ["Once daily", "Twice daily", "3 times daily"].',
+                },
+              },
+              'required': ['question', 'options'],
+            },
+          },
+        },
       ];
 
       final result = await GroqService.chatWithTools(
@@ -282,9 +466,27 @@ class ChatProvider extends ChangeNotifier {
 
       // Handle Automation (Tool Calls)
       if (result.hasToolCalls && reminderEngine != null) {
-        bool added = false;
+        final addedReminders = <Reminder>[];
+        String? clarifyQuestion;
+        List<String>? clarifyOptions;
+
         for (final tc in result.toolCalls!) {
-          if (tc.name == 'add_reminder') {
+          if (tc.name == 'note_health_insight') {
+            final args = tc.arguments;
+            final text = args['text']?.toString().trim() ?? '';
+            if (text.isNotEmpty) {
+              final category = AiInsightType.values.firstWhere(
+                    (e) => e.name == args['category']?.toString(),
+                orElse: () => AiInsightType.note,
+              );
+              await AiInsightsFirestoreService.instance.addInsight(AiInsight(
+                type: category,
+                text: text,
+                createdAt: DateTime.now(),
+                conversationId: currentConversationId,
+              ));
+            }
+          } else if (tc.name == 'add_reminder') {
             final args = tc.arguments;
             final r = Reminder(
               title: args['title'] ?? 'Medicine',
@@ -295,15 +497,52 @@ class ChatProvider extends ChangeNotifier {
               addedBy: 'MedAI',
             );
             await reminderEngine!.add(r);
-            added = true;
+            addedReminders.add(r);
+          } else if (tc.name == 'ask_reminder_details') {
+            final args = tc.arguments;
+            clarifyQuestion = args['question']?.toString();
+            final rawOptions = args['options'];
+            if (rawOptions is List) {
+              clarifyOptions = rawOptions.map((o) => o.toString()).toList();
+            }
           }
         }
 
-        String responseText = result.content ?? '';
-        if (added && responseText.isEmpty) {
-          responseText = 'Reminder set successfully.';
+        if (clarifyQuestion != null && (clarifyOptions?.isNotEmpty ?? false)) {
+          // Ask via tappable suggestions instead of guessing a time/frequency.
+          await _reply(ChatMessage(
+            role: ChatRole.ai,
+            card: ChatCardType.quickReplies,
+            text: clarifyQuestion,
+            quickReplies: clarifyOptions,
+            personalized: learnFromData,
+          ));
+          return;
         }
-        await _reply(ChatMessage(role: ChatRole.ai, text: responseText, personalized: learnFromData));
+
+        String responseText = result.content ?? '';
+        if (addedReminders.isNotEmpty && responseText.isEmpty) {
+          responseText = addedReminders.length == 1
+              ? '${addedReminders.first.title} reminder set for ${addedReminders.first.time}.'
+              : 'Set ${addedReminders.length} reminders.';
+        }
+        // If the ONLY thing the model did was the silent note_health_insight
+        // call, it may not have also produced normal text in the same turn
+        // — don't leave the user staring at a blank bubble.
+        if (responseText.isEmpty && addedReminders.isEmpty && clarifyQuestion == null) {
+          responseText = "Got it, thanks for sharing that.";
+        }
+
+        if (addedReminders.isNotEmpty) {
+          await _reply(ChatMessage(
+            role: ChatRole.ai,
+            card: ChatCardType.reminderAdded,
+            text: responseText,
+            personalized: learnFromData,
+          ));
+        } else {
+          await _reply(ChatMessage(role: ChatRole.ai, text: responseText, personalized: learnFromData));
+        }
       } else {
         await _reply(ChatMessage(role: ChatRole.ai, text: result.content ?? '', personalized: learnFromData));
       }

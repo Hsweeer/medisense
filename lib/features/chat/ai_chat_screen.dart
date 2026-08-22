@@ -24,10 +24,13 @@ import '../../providers/chat_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../sos/sos_screen.dart';
+import '../vitals/vitals_history_screen.dart';
 import '../vitals/vitals_scan_screen.dart';
 import 'medai_history_screen.dart';
 import 'prescription_review_screen.dart';
 import '../skin/skin_history_screen.dart';
+import '../skin/skin_scan_camera_screen.dart';
+import '../reminders/reminders_screen.dart';
 
 /// MedAI — multimodal health assistant: text, image, file, and voice input,
 /// with "Personal insights" replies tailored from the user's health profile.
@@ -44,9 +47,25 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _recorder = AudioRecorder();
   DateTime? _recordStart;
   String? _recordingPath;
+  bool _initialScrollDone = false;
+  bool _userIsNearBottom = true;
+  int _lastMessageCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_updateScrollState);
+  }
+
+  void _updateScrollState() {
+    if (!_scroll.hasClients) return;
+    final maxScroll = _scroll.position.maxScrollExtent;
+    _userIsNearBottom = maxScroll <= 0 || _scroll.offset >= maxScroll - 120;
+  }
 
   @override
   void dispose() {
+    _scroll.removeListener(_updateScrollState);
     _ctrl.dispose();
     _scroll.dispose();
     _recorder.dispose();
@@ -299,6 +318,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
         if (pictures != null && pictures.isNotEmpty) {
           pickedPath = pictures.first;
         }
+      } else if (intent == AttachmentIntent.skin && source == ImageSource.camera) {
+        // Live face-guide camera — gives the same "actively scanning" feel
+        // as the prescription document scanner, instead of a plain shutter.
+        if (!mounted) return;
+        pickedPath = await Navigator.of(context).push<String>(
+          MaterialPageRoute(builder: (_) => const SkinScanCameraScreen()),
+        );
       } else {
         // Normal ImagePicker for gallery or non-prescription intents
         final picked = await ImagePicker().pickImage(
@@ -386,7 +412,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
       MaterialPageRoute(builder: (_) => const VitalsScanScreen()),
     );
     if (bpm != null) {
-      chat.send('My heart rate scan result: ${bpm.round()} BPM');
+      await chat.sendHeartRateResult(bpm);
     }
   }
 
@@ -394,14 +420,32 @@ class _AiChatScreenState extends State<AiChatScreen> {
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
 
-    // Scroll to bottom whenever messages list changes or app opens the chat
+    // Professional chat UX: open on the latest message, but never yank the
+    // user away from older messages they are actively reading. We auto-scroll
+    // only when a new message arrives and the user is already near the bottom.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+      if (!_scroll.hasClients || chat.messages.isEmpty) return;
+
+      final currentCount = chat.messages.length;
+      final maxScroll = _scroll.position.maxScrollExtent;
+
+      if (!_initialScrollDone) {
+        _scroll.jumpTo(maxScroll);
+        _initialScrollDone = true;
+        _userIsNearBottom = true;
+        _lastMessageCount = currentCount;
+        return;
+      }
+
+      if (currentCount != _lastMessageCount) {
+        _lastMessageCount = currentCount;
+        if (_userIsNearBottom) {
+          _scroll.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOut,
+          );
+        }
       }
     });
 
@@ -460,179 +504,183 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            color: const Color(0xFFFDF3E3),
-            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
-            child: Text(
-              '⚠ MedAI offers general guidance — not a diagnosis. '
-                  'In an emergency call 911.',
-              style: TextStyle(
-                  fontSize: 12.sp,
-                  color: const Color(0xFF8A5B0B),
-                  fontWeight: FontWeight.w600),
-            ),
-          ),
-          Expanded(
-            child: Stack(
-              children: [
-                ListView.builder(
-                  controller: _scroll,
-                  padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 8.h),
-                  itemCount: chat.messages.length +
-                      (chat.typing || chat.transcribing ? 1 : 0),
-                  itemBuilder: (_, i) {
-                    if (i == chat.messages.length) {
-                      return chat.transcribing
-                          ? const _TypingBubble(label: 'Transcribing voice note…')
-                          : const _TypingBubble();
-                    }
-                    return _MessageBubble(message: chat.messages[i]);
-                  },
-                ),
-                if (chat.recording) const _RecordingOverlay(),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 40.h,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 20.w),
-              children: [
-                for (final s in MockData.aiSuggestions)
-                  Padding(
-                    padding: EdgeInsets.only(right: 8.w),
-                    child: MChip(s,
-                        background: AppColors.aiSoft,
-                        foreground: AppColors.ai,
-                        onTap: () => context.read<ChatProvider>().send(s)),
-                  ),
-              ],
-            ),
-          ),
-          // Staged attachments preview strip.
-          if (chat.pendingAttachments.isNotEmpty)
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Column(
+          children: [
             Container(
-              height: 54.h,
-              padding: EdgeInsets.symmetric(horizontal: 20.w),
-              alignment: Alignment.centerLeft,
+              width: double.infinity,
+              color: const Color(0xFFFDF3E3),
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+              child: Text(
+                '⚠ MedAI offers general guidance — not a diagnosis. '
+                    'In an emergency call 911.',
+                style: TextStyle(
+                    fontSize: 12.sp,
+                    color: const Color(0xFF8A5B0B),
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+            Expanded(
+              child: Stack(
+                children: [
+                  ListView.builder(
+                    controller: _scroll,
+                    padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 8.h),
+                    itemCount: chat.messages.length +
+                        (chat.typing || chat.transcribing ? 1 : 0),
+                    itemBuilder: (_, i) {
+                      if (i == chat.messages.length) {
+                        return chat.transcribing
+                            ? const _TypingBubble(label: 'Transcribing voice note…')
+                            : const _TypingBubble();
+                      }
+                      return _MessageBubble(message: chat.messages[i]);
+                    },
+                  ),
+                  if (chat.recording) const _RecordingOverlay(),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 40.h,
               child: ListView(
                 scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.symmetric(horizontal: 20.w),
                 children: [
-                  for (final a in chat.pendingAttachments)
-                    Container(
-                      margin: EdgeInsets.only(right: 8.w, top: 8.h),
-                      padding: EdgeInsets.symmetric(horizontal: 10.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.soft,
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                              a.type == AttachmentType.image
-                                  ? Icons.image_rounded
-                                  : Icons.description_rounded,
-                              size: 16.sp,
-                              color: AppColors.onSoft),
-                          SizedBox(width: 6.w),
-                          Text(a.name,
-                              style: TextStyle(
-                                  fontSize: 12.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.onSoft)),
-                          SizedBox(width: 6.w),
-                          GestureDetector(
-                            onTap: () => chat.removeStaged(a),
-                            child: Icon(Icons.close_rounded,
-                                size: 15.sp, color: AppColors.onSoft),
-                          ),
-                        ],
-                      ),
+                  for (final s in MockData.aiSuggestions)
+                    Padding(
+                      padding: EdgeInsets.only(right: 8.w),
+                      child: MChip(s,
+                          background: AppColors.aiSoft,
+                          foreground: AppColors.ai,
+                          onTap: () => context.read<ChatProvider>().send(s)),
                     ),
                 ],
               ),
             ),
-          SafeArea(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 12.h),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: _openAttachmentSheet,
-                    child: Container(
-                      width: 46.r,
-                      height: 46.r,
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.line),
+            // Staged attachments preview strip.
+            if (chat.pendingAttachments.isNotEmpty)
+              Container(
+                height: 54.h,
+                padding: EdgeInsets.symmetric(horizontal: 20.w),
+                alignment: Alignment.centerLeft,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final a in chat.pendingAttachments)
+                      Container(
+                        margin: EdgeInsets.only(right: 8.w, top: 8.h),
+                        padding: EdgeInsets.symmetric(horizontal: 10.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.soft,
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                                a.type == AttachmentType.image
+                                    ? Icons.image_rounded
+                                    : Icons.description_rounded,
+                                size: 16.sp,
+                                color: AppColors.onSoft),
+                            SizedBox(width: 6.w),
+                            Text(a.name,
+                                style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.onSoft)),
+                            SizedBox(width: 6.w),
+                            GestureDetector(
+                              onTap: () => chat.removeStaged(a),
+                              child: Icon(Icons.close_rounded,
+                                  size: 15.sp, color: AppColors.onSoft),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Icon(Icons.add_rounded,
-                          color: AppColors.inkSoft, size: 24.sp),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      style: TextStyle(fontSize: 15.sp),
-                      decoration: InputDecoration(
-                          hintText: 'Ask MedAI anything…',
-                          hintStyle: TextStyle(fontSize: 14.sp)),
-                      onSubmitted: (_) => _send(),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  // Hold to record a voice note.
-                  GestureDetector(
-                    onLongPressStart: (_) => _startVoiceRecording(chat),
-                    onLongPressEnd: (_) => _stopVoiceRecording(chat),
-                    onTap: () => showToast(
-                        context, 'Hold the mic to record a voice note'),
-                    child: Container(
-                      width: 46.r,
-                      height: 46.r,
-                      decoration: BoxDecoration(
-                        color: chat.recording
-                            ? AppColors.danger
-                            : AppColors.card,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: chat.recording
-                                ? AppColors.danger
-                                : AppColors.line),
+                  ],
+                ),
+              ),
+            SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 12.h),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: _openAttachmentSheet,
+                      child: Container(
+                        width: 46.r,
+                        height: 46.r,
+                        decoration: BoxDecoration(
+                          color: AppColors.card,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.line),
+                        ),
+                        child: Icon(Icons.add_rounded,
+                            color: AppColors.inkSoft, size: 24.sp),
                       ),
-                      child: Icon(Icons.mic_rounded,
-                          size: 24.sp,
+                    ),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: TextField(
+                        controller: _ctrl,
+                        style: TextStyle(fontSize: 15.sp),
+                        decoration: InputDecoration(
+                            hintText: 'Ask MedAI anything…',
+                            hintStyle: TextStyle(fontSize: 14.sp)),
+                        onSubmitted: (_) => _send(),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    // Hold to record a voice note.
+                    GestureDetector(
+                      onLongPressStart: (_) => _startVoiceRecording(chat),
+                      onLongPressEnd: (_) => _stopVoiceRecording(chat),
+                      onTap: () => showToast(
+                          context, 'Hold the mic to record a voice note'),
+                      child: Container(
+                        width: 46.r,
+                        height: 46.r,
+                        decoration: BoxDecoration(
                           color: chat.recording
-                              ? Colors.white
-                              : AppColors.inkSoft),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  GestureDetector(
-                    onTap: _send,
-                    child: Container(
-                      width: 46.r,
-                      height: 46.r,
-                      decoration: const BoxDecoration(
-                        gradient:
-                        LinearGradient(colors: AppColors.aiGradient),
-                        shape: BoxShape.circle,
+                              ? AppColors.danger
+                              : AppColors.card,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: chat.recording
+                                  ? AppColors.danger
+                                  : AppColors.line),
+                        ),
+                        child: Icon(Icons.mic_rounded,
+                            size: 24.sp,
+                            color: chat.recording
+                                ? Colors.white
+                                : AppColors.inkSoft),
                       ),
-                      child: Icon(Icons.send_rounded,
-                          color: Colors.white, size: 21.sp),
                     ),
-                  ),
-                ],
+                    SizedBox(width: 8.w),
+                    GestureDetector(
+                      onTap: _send,
+                      child: Container(
+                        width: 46.r,
+                        height: 46.r,
+                        decoration: const BoxDecoration(
+                          gradient:
+                          LinearGradient(colors: AppColors.aiGradient),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.send_rounded,
+                            color: Colors.white, size: 21.sp),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -760,9 +808,24 @@ class _MessageBubble extends StatelessWidget {
       return _PrescriptionCard(message: message);
     }
 
+    // Heart-rate scan → structured result card with zone classification.
+    if (message.card == ChatCardType.heartRate) {
+      return _HeartRateCard(message: message);
+    }
+
     // Skin check → condition-probability analysis card.
     if (message.card == ChatCardType.skin) {
       return _SkinReportCard(message: message);
+    }
+
+    // AI directly set a reminder (via chat/voice) → tap-through card.
+    if (message.card == ChatCardType.reminderAdded) {
+      return _ReminderAddedCard(message: message);
+    }
+
+    // AI needs more info (usually reminder time/frequency) → tappable options.
+    if (message.card == ChatCardType.quickReplies) {
+      return _QuickReplyCard(message: message);
     }
 
     final voice = message.attachments
@@ -829,45 +892,40 @@ class _AttachmentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (attachment.type == AttachmentType.image) {
-      // Mock photo preview.
-      return Container(
-        width: 190.w,
-        height: 120.h,
-        margin: EdgeInsets.only(bottom: 6.h),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16.r),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFD8E8E4), Color(0xFFBFD9D2)],
+      final file = attachment.filePath != null ? File(attachment.filePath!) : null;
+      final hasRealImage = file != null && file.existsSync();
+
+      return GestureDetector(
+        onTap: hasRealImage
+            ? () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => _ImagePreviewScreen(path: file.path),
+                ),
+              )
+            : null,
+        child: Container(
+          width: 190.w,
+          height: 120.h,
+          margin: EdgeInsets.only(bottom: 6.h),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.r),
+            color: AppColors.paper,
+            border: Border.all(color: AppColors.line),
           ),
-        ),
-        child: Stack(
-          children: [
-            Center(
-                child: Icon(Icons.image_rounded,
-                    size: 38.sp, color: Colors.white)),
-            Positioned(
-              left: 8.w,
-              bottom: 8.h,
-              child: Container(
-                padding:
-                EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: .45),
-                    borderRadius: BorderRadius.circular(8.r)),
-                child: Text(attachment.name,
-                    style: TextStyle(
-                        fontSize: 10.5.sp,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600)),
-              ),
-            ),
-          ],
+          clipBehavior: Clip.antiAlias,
+          child: hasRealImage
+              ? Image.file(
+                  file,
+                  fit: BoxFit.cover,
+                  width: 190.w,
+                  height: 120.h,
+                  errorBuilder: (_, _, _) => const _AttachmentPlaceholder(),
+                )
+              : const _AttachmentPlaceholder(),
         ),
       );
     }
-    // Document chip.
+
     return Container(
       margin: EdgeInsets.only(bottom: 6.h),
       padding: EdgeInsets.all(12.r),
@@ -901,6 +959,59 @@ class _AttachmentTile extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AttachmentPlaceholder extends StatelessWidget {
+  const _AttachmentPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFD8E8E4), Color(0xFFBFD9D2)],
+              ),
+            ),
+          ),
+        ),
+        Center(
+          child: Icon(Icons.image_rounded, size: 38.sp, color: Colors.white),
+        ),
+      ],
+    );
+  }
+}
+
+class _ImagePreviewScreen extends StatelessWidget {
+  const _ImagePreviewScreen({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 1,
+          maxScale: 4,
+          child: Image.file(
+            File(path),
+            fit: BoxFit.contain,
+          ),
+        ),
       ),
     );
   }
@@ -1313,6 +1424,177 @@ class _MedRow extends StatelessWidget {
 }
 
 /// Skin analysis — condition likelihood bars + care guidance.
+class _HeartRateCard extends StatelessWidget {
+  const _HeartRateCard({required this.message});
+
+  final ChatMessage message;
+
+  _HeartRateSummary _parseSummary() {
+    final text = message.text;
+    final bpmMatch = RegExp(r'(\d{2,3})\s*BPM').firstMatch(text);
+    final bpm = bpmMatch != null
+        ? (double.tryParse(bpmMatch.group(1)!) ?? 0.0)
+        : 0.0;
+    final zoneMatch = RegExp(
+      r'(Below typical resting range|Normal resting range|Above typical resting range)',
+    ).firstMatch(text);
+    final zoneLabel = zoneMatch?.group(1) ?? HeartRateReading.zoneLabelForBpm(bpm);
+    final contextLine = text
+        .split('\n')
+        .firstWhere(
+          (line) => line.contains('Aapki age') || line.contains('lower than typical') || line.contains('higher than typical') || line.contains('This estimate'),
+          orElse: () => 'Estimated from camera — not a medical device',
+        );
+    final disclaimer = text.contains('Estimated from camera')
+        ? 'Estimated from camera — not a medical device'
+        : 'Estimated from camera — not a medical device';
+    return _HeartRateSummary(
+      bpm: bpm,
+      zoneLabel: zoneLabel,
+      contextLine: contextLine,
+      disclaimer: disclaimer,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = _parseSummary();
+    final zone = HeartRateReading.classify(summary.bpm);
+    final accent = switch (zone) {
+      HeartRateZone.belowTypical => AppColors.warning,
+      HeartRateZone.normal => AppColors.success,
+      HeartRateZone.aboveTypical => AppColors.danger,
+    };
+    final soft = switch (zone) {
+      HeartRateZone.belowTypical => AppColors.warningSoft,
+      HeartRateZone.normal => AppColors.successSoft,
+      HeartRateZone.aboveTypical => AppColors.dangerSoft,
+    };
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MCard(
+            border: Border.all(color: accent.withValues(alpha: .38), width: 1.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 34.r,
+                      height: 34.r,
+                      decoration: BoxDecoration(
+                        color: soft,
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                      child: Icon(Icons.favorite_rounded, color: accent, size: 18.sp),
+                    ),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Text('Heart rate', style: TextStyle(fontSize: 14.5.sp, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 14.h),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(summary.bpm.toStringAsFixed(0), style: TextStyle(fontSize: 34.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                    SizedBox(width: 8.w),
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 8.h),
+                      child: Text('BPM', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w700, color: AppColors.muted)),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 10.h),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color: soft,
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.brightness_1_rounded, color: accent, size: 12.sp),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: Text(
+                          summary.zoneLabel,
+                          style: TextStyle(
+                            fontSize: 12.5.sp,
+                            fontWeight: FontWeight.w700,
+                            color: accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                Text(
+                  summary.contextLine,
+                  style: TextStyle(fontSize: 12.5.sp, height: 1.45, color: AppColors.inkSoft),
+                ),
+                SizedBox(height: 10.h),
+                Text(
+                  summary.disclaimer,
+                  style: TextStyle(fontSize: 11.sp, fontStyle: FontStyle.italic, color: AppColors.muted),
+                ),
+                SizedBox(height: 12.h),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VitalsHistoryScreen())),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(vertical: 11.h),
+                    decoration: BoxDecoration(
+                      color: soft,
+                      borderRadius: BorderRadius.circular(11.r),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.timeline_rounded, size: 17.sp, color: accent),
+                        SizedBox(width: 7.w),
+                        Text('View trend', style: TextStyle(fontSize: 12.5.sp, fontWeight: FontWeight.w700, color: accent)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (message.personalized)
+            Padding(
+              padding: EdgeInsets.only(top: 4.h),
+              child: const MChip('Tailored to your health profile',
+                  icon: Icons.auto_awesome_rounded,
+                  background: AppColors.aiSoft,
+                  foreground: AppColors.ai),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeartRateSummary {
+  const _HeartRateSummary({
+    required this.bpm,
+    required this.zoneLabel,
+    required this.contextLine,
+    required this.disclaimer,
+  });
+
+  final double bpm;
+  final String zoneLabel;
+  final String contextLine;
+  final String disclaimer;
+}
+
 class _SkinReportCard extends StatelessWidget {
   const _SkinReportCard({required this.message});
 
@@ -1461,6 +1743,129 @@ class _SkinReportCard extends StatelessWidget {
                   foreground: AppColors.ai),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown right in the chat when MedAI directly sets a reminder from a
+/// conversation (text or voice) — confirms what was set and lets the user
+/// tap through to see/edit it on the real Reminders screen.
+class _ReminderAddedCard extends StatelessWidget {
+  const _ReminderAddedCard({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const RemindersScreen()),
+        ),
+        child: MCard(
+          border: Border.all(color: AppColors.ai.withValues(alpha: .45), width: 1.w),
+          child: Row(
+            children: [
+              Container(
+                width: 34.r,
+                height: 34.r,
+                decoration: BoxDecoration(
+                    color: AppColors.aiSoft,
+                    borderRadius: BorderRadius.circular(10.r)),
+                child: Icon(Icons.alarm_add_rounded, color: AppColors.ai, size: 19.sp),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(message.text,
+                        style: TextStyle(fontSize: 13.sp, height: 1.4, color: AppColors.ink)),
+                    SizedBox(height: 2.h),
+                    Text('Tap to view in Reminders',
+                        style: TextStyle(
+                            fontSize: 11.5.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.ai)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: AppColors.ai),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// When MedAI needs a missing reminder detail (usually time or frequency),
+/// it asks a short question and offers a few tappable suggestions instead
+/// of guessing — tapping one sends it as a normal message, same as if the
+/// user had typed it.
+class _QuickReplyCard extends StatelessWidget {
+  const _QuickReplyCard({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = message.quickReplies ?? const [];
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .85),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 15.w, vertical: 11.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(18.r),
+                    topRight: Radius.circular(18.r),
+                    bottomRight: Radius.circular(18.r),
+                    bottomLeft: Radius.circular(6.r),
+                  ),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: Text(message.text,
+                    style: TextStyle(fontSize: 14.sp, height: 1.45, color: AppColors.ink)),
+              ),
+              if (options.isNotEmpty) ...[
+                SizedBox(height: 8.h),
+                Wrap(
+                  spacing: 8.w,
+                  runSpacing: 8.h,
+                  children: [
+                    for (final option in options)
+                      GestureDetector(
+                        onTap: () => context.read<ChatProvider>().send(option),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 9.h),
+                          decoration: BoxDecoration(
+                            color: AppColors.aiSoft,
+                            borderRadius: BorderRadius.circular(20.r),
+                            border: Border.all(color: AppColors.ai.withValues(alpha: .35)),
+                          ),
+                          child: Text(option,
+                              style: TextStyle(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.ai)),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
