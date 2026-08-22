@@ -387,6 +387,38 @@ class EmergencyContact {
   };
 }
 
+// ── "For you" personalized AI advice (home screen) ───────────────────────
+
+/// One personalized piece of health advice generated from the user's
+/// health profile + what MedAI has learned from chat — shown on the home
+/// screen the way a professional health app's "For you" card works,
+/// instead of a static generic tip.
+class ForYouTip {
+  const ForYouTip({
+    required this.title,
+    required this.body,
+    required this.generatedAt,
+  });
+
+  final String title;
+  final String body;
+  final DateTime generatedAt;
+
+  factory ForYouTip.fromMap(Map<String, dynamic> map) => ForYouTip(
+    title: map['title'] ?? '',
+    body: map['body'] ?? '',
+    generatedAt: map['generatedAtMs'] != null
+        ? DateTime.fromMillisecondsSinceEpoch(map['generatedAtMs'])
+        : DateTime.now(),
+  );
+
+  Map<String, dynamic> toMap() => {
+    'title': title,
+    'body': body,
+    'generatedAtMs': generatedAt.millisecondsSinceEpoch,
+  };
+}
+
 class HealthProfile {
   const HealthProfile({
     required this.name,

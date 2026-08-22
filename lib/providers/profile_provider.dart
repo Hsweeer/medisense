@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/models/models.dart';
+import '../core/services/for_you_service.dart';
 import '../services/ai_insights_firestore_service.dart';
 
 /// Health profile + the user's emergency contacts, backed by Firestore.
@@ -30,6 +31,12 @@ class ProfileProvider extends ChangeNotifier {
   List<EmergencyContact> contacts = [];
   List<AiInsight> aiInsights = [];
 
+  /// Home screen's personalized "For you" card — cached on the user doc
+  /// so it doesn't regenerate every app open, only every [ForYouService.refreshInterval].
+  ForYouTip? forYouTip;
+  bool forYouLoading = false;
+  bool _generatingForYou = false;
+
   bool isLoading = true;
   String? error;
 
@@ -47,6 +54,7 @@ class ProfileProvider extends ChangeNotifier {
         profile = HealthProfile.empty();
         contacts = [];
         aiInsights = [];
+        forYouTip = null;
         isLoading = false;
         notifyListeners();
       }
@@ -75,8 +83,15 @@ class ProfileProvider extends ChangeNotifier {
         return; // this same listener fires again once the write lands.
       }
       profile = HealthProfile.fromMap(snap.data()!);
+      final tipMap = snap.data()!['forYouTip'];
+      forYouTip = tipMap is Map<String, dynamic>
+          ? ForYouTip.fromMap(tipMap)
+          : (tipMap is Map ? ForYouTip.fromMap(Map<String, dynamic>.from(tipMap)) : null);
       isLoading = false;
       notifyListeners();
+      // Fire-and-forget: keep the "For you" card fresh without blocking
+      // the profile screen on it.
+      _maybeRefreshForYouTip();
     }, onError: (e) {
       error = 'Could not load profile: $e';
       isLoading = false;
@@ -105,6 +120,11 @@ class ProfileProvider extends ChangeNotifier {
         .listen((list) {
       aiInsights = list;
       notifyListeners();
+      // Insights can arrive after the profile snapshot already tried (and
+      // found nothing to personalize on yet) — retry once now that we
+      // actually have something. Only when there's no tip at all yet, so
+      // this doesn't regenerate on every single new insight.
+      if (forYouTip == null) _maybeRefreshForYouTip();
     }, onError: (e) {
       debugPrint('[ProfileProvider] Could not load AI insights: $e');
     });
@@ -119,6 +139,7 @@ class ProfileProvider extends ChangeNotifier {
     profile = HealthProfile.empty();
     contacts = [];
     aiInsights = [];
+    forYouTip = null;
     isLoading = true;
     notifyListeners();
     _listen();
@@ -189,6 +210,38 @@ class ProfileProvider extends ChangeNotifier {
   Future<void> removeInsight(AiInsight insight) async {
     if (insight.id == null) return;
     await AiInsightsFirestoreService.instance.deleteInsight(insight.id!);
+  }
+
+  /// Regenerates the "For you" card only if it's missing or stale — safe
+  /// to call often (e.g. every time the profile snapshot updates).
+  Future<void> _maybeRefreshForYouTip() async {
+    if (_generatingForYou) return;
+    if (!ForYouService.isStale(forYouTip)) return;
+    await refreshForYouTip();
+  }
+
+  /// Forces a regeneration right now — used by the home screen's manual
+  /// refresh action so the user isn't stuck waiting up to 12 hours for
+  /// new advice after updating their profile or talking to MedAI.
+  Future<void> refreshForYouTip() async {
+    final uid = _uid;
+    if (uid == null || _generatingForYou) return;
+    _generatingForYou = true;
+    forYouLoading = true;
+    notifyListeners();
+    try {
+      final tip = await ForYouService.generate(profile: profile, insights: aiInsights);
+      if (tip != null) {
+        forYouTip = tip;
+        await _db.collection('users').doc(uid).update({'forYouTip': tip.toMap()});
+      }
+    } catch (e) {
+      debugPrint('[ProfileProvider] refreshForYouTip: error — $e');
+    } finally {
+      _generatingForYou = false;
+      forYouLoading = false;
+      notifyListeners();
+    }
   }
 
   @override

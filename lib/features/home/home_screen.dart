@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
-import '../../data/mock/mock_data.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/profile_provider.dart';
@@ -22,7 +21,8 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reminders = context.watch<ReminderProvider>();
-    final profile = context.watch<ProfileProvider>().profile;
+    final profileProvider = context.watch<ProfileProvider>();
+    final profile = profileProvider.profile;
     final next = reminders.nextDose;
     final displayName = profile.name.trim();
     final firstName = displayName.isEmpty ? 'there' : displayName.split(' ').first;
@@ -198,43 +198,104 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           SizedBox(height: 20.h),
-          // One AI insight — kept light.
-          const SectionHeader('For you'),
-          MCard(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 38.r,
-                  height: 38.r,
-                  decoration: BoxDecoration(
-                      color: AppColors.aiSoft,
-                      borderRadius: BorderRadius.circular(12.r)),
-                  child: Icon(Icons.auto_awesome_rounded,
-                      color: AppColors.ai, size: 20.sp),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(MockData.healthTips[1].$1,
-                          style: TextStyle(
-                              fontSize: 14.sp, fontWeight: FontWeight.w700)),
-                      SizedBox(height: 3.h),
-                      Text(MockData.healthTips[1].$2,
-                          style: TextStyle(
-                              fontSize: 12.5.sp,
-                              height: 1.4,
-                              color: AppColors.muted)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Real AI-personalized advice — generated from the user's
+          // health profile + what MedAI has learned from chat, cached
+          // and periodically refreshed (see ProfileProvider.forYouTip).
+          _ForYouSection(profile: profileProvider),
         ],
       ),
+    );
+  }
+}
+
+/// Shows on the home screen. Uses the profile provider's cached, real
+/// AI-generated tip (see `ForYouService` + `ProfileProvider.forYouTip`).
+/// Falls back to a friendly "add info to unlock this" state until there's
+/// enough profile/chat context to personalize on — never shows a fake or
+/// generic tip pretending to be personalized.
+class _ForYouSection extends StatelessWidget {
+  const _ForYouSection({required this.profile});
+
+  final ProfileProvider profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final tip = profile.forYouTip;
+    final loading = profile.forYouLoading;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('For you', style: Theme.of(context).textTheme.titleMedium),
+            ),
+            GestureDetector(
+              onTap: loading ? null : () => profile.refreshForYouTip(),
+              child: Padding(
+                padding: EdgeInsets.all(4.r),
+                child: loading
+                    ? SizedBox(
+                  width: 15.sp,
+                  height: 15.sp,
+                  child: const CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : Icon(Icons.refresh_rounded, size: 18.sp, color: AppColors.muted),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 6.h),
+        MCard(
+          color: AppColors.aiSoft,
+          border: Border.all(color: AppColors.ai.withValues(alpha: .3)),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38.r,
+                height: 38.r,
+                decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .6),
+                    borderRadius: BorderRadius.circular(12.r)),
+                child: Icon(Icons.auto_awesome_rounded,
+                    color: AppColors.ai, size: 20.sp),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: tip == null
+                    ? Text(
+                  loading
+                      ? 'Personalizing advice for you…'
+                      : 'Fill in your health profile or chat with '
+                      'MedAI, and personalized advice for your '
+                      'situation will show up here.',
+                  style: TextStyle(
+                    fontSize: 12.5.sp,
+                    height: 1.4,
+                    color: AppColors.inkSoft,
+                  ),
+                )
+                    : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tip.title,
+                        style: TextStyle(
+                            fontSize: 14.sp, fontWeight: FontWeight.w700)),
+                    SizedBox(height: 3.h),
+                    Text(tip.body,
+                        style: TextStyle(
+                            fontSize: 12.5.sp,
+                            height: 1.4,
+                            color: AppColors.muted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -253,14 +314,14 @@ class _LocationLabel extends StatelessWidget {
       onTap: loc.isLoading
           ? null
           : () {
-              if (loc.access == LocationAccess.granted) return;
-              if (loc.access == LocationAccess.deniedForever ||
-                  loc.access == LocationAccess.serviceDisabled) {
-                loc.openSettings();
-              } else {
-                loc.requestAccess();
-              }
-            },
+        if (loc.access == LocationAccess.granted) return;
+        if (loc.access == LocationAccess.deniedForever ||
+            loc.access == LocationAccess.serviceDisabled) {
+          loc.openSettings();
+        } else {
+          loc.requestAccess();
+        }
+      },
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
