@@ -16,6 +16,7 @@ import 'package:record/record.dart';
 
 import '../../core/services/photo_quality_checker.dart';
 import '../../core/services/prescription_parser.dart';
+import '../../core/services/tts_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/mock/mock_data.dart';
@@ -477,6 +478,30 @@ class _AiChatScreenState extends State<AiChatScreen> {
               MaterialPageRoute(builder: (_) => const MedAiHistoryScreen()),
             ),
           ),
+          // Voice replies — MedAI speaks its answers aloud (on-device TTS,
+          // free, works offline) so "hold mic to talk" becomes a real
+          // two-way voice conversation instead of talk-in / read-out only.
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: MChip(
+              chat.voiceReplyEnabled ? 'Voice replies ON' : 'Voice replies OFF',
+              icon: chat.voiceReplyEnabled
+                  ? Icons.volume_up_rounded
+                  : Icons.volume_off_rounded,
+              background:
+              chat.voiceReplyEnabled ? AppColors.aiSoft : AppColors.paper,
+              foreground:
+              chat.voiceReplyEnabled ? AppColors.ai : AppColors.muted,
+              onTap: () {
+                chat.toggleVoiceReply();
+                showToast(
+                    context,
+                    chat.voiceReplyEnabled
+                        ? "MedAI will read its replies aloud"
+                        : "Voice replies off");
+              },
+            ),
+          ),
           // "Personal insights" — the learn-from-your-data switch.
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -863,11 +888,22 @@ class _MessageBubble extends StatelessWidget {
                   border:
                   isUser ? null : Border.all(color: AppColors.line),
                 ),
-                child: Text(message.text,
-                    style: TextStyle(
-                        fontSize: 14.sp,
-                        height: 1.45,
-                        color: isUser ? Colors.white : AppColors.ink)),
+                child: Text.rich(
+                  TextSpan(
+                    text: message.text,
+                    children: [
+                      // Live streaming cursor — small "▍" that blinks the
+                      // reply into existence token-by-token instead of
+                      // popping in all at once after a long wait.
+                      if (!isUser && message.streaming)
+                        const TextSpan(text: ' ▍', style: TextStyle(color: AppColors.ai)),
+                    ],
+                  ),
+                  style: TextStyle(
+                      fontSize: 14.sp,
+                      height: 1.45,
+                      color: isUser ? Colors.white : AppColors.ink),
+                ),
               ),
             if (!isUser && message.personalized)
               Padding(
@@ -876,6 +912,23 @@ class _MessageBubble extends StatelessWidget {
                     icon: Icons.auto_awesome_rounded,
                     background: AppColors.aiSoft,
                     foreground: AppColors.ai),
+              ),
+            // Tap to hear any reply read aloud — independent of the
+            // "Voice replies" auto-speak toggle, so older messages in the
+            // conversation stay listenable even if auto-speak is off.
+            if (!isUser && message.text.isNotEmpty && !message.streaming)
+              Padding(
+                padding: EdgeInsets.only(top: 2.h),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20.r),
+                  onTap: () => TtsService.instance.speak(message.text),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: 6.w, vertical: 4.h),
+                    child: Icon(Icons.volume_up_rounded,
+                        size: 16.sp, color: AppColors.muted),
+                  ),
+                ),
               ),
           ],
         ),
@@ -898,10 +951,10 @@ class _AttachmentTile extends StatelessWidget {
       return GestureDetector(
         onTap: hasRealImage
             ? () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => _ImagePreviewScreen(path: file.path),
-                ),
-              )
+          MaterialPageRoute(
+            builder: (_) => _ImagePreviewScreen(path: file.path),
+          ),
+        )
             : null,
         child: Container(
           width: 190.w,
@@ -915,12 +968,12 @@ class _AttachmentTile extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: hasRealImage
               ? Image.file(
-                  file,
-                  fit: BoxFit.cover,
-                  width: 190.w,
-                  height: 120.h,
-                  errorBuilder: (_, _, _) => const _AttachmentPlaceholder(),
-                )
+            file,
+            fit: BoxFit.cover,
+            width: 190.w,
+            height: 120.h,
+            errorBuilder: (_, _, _) => const _AttachmentPlaceholder(),
+          )
               : const _AttachmentPlaceholder(),
         ),
       );
@@ -1443,8 +1496,8 @@ class _HeartRateCard extends StatelessWidget {
         .split('\n')
         .firstWhere(
           (line) => line.contains('Aapki age') || line.contains('lower than typical') || line.contains('higher than typical') || line.contains('This estimate'),
-          orElse: () => 'Estimated from camera — not a medical device',
-        );
+      orElse: () => 'Estimated from camera — not a medical device',
+    );
     final disclaimer = text.contains('Estimated from camera')
         ? 'Estimated from camera — not a medical device'
         : 'Estimated from camera — not a medical device';

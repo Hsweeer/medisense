@@ -21,10 +21,21 @@ class SosTriggerReceiver : BroadcastReceiver() {
 
     private fun launchSosNotification(context: Context) {
         Log.d("SOS_DEBUG", "SosTriggerReceiver: Preparing full-screen notification")
-        
+
         // 1. Create Deep Link intent for MainActivity
+        // NOTE: FLAG_ACTIVITY_SINGLE_TOP is required here. MainActivity is
+        // singleTask, and this same deepLinkIntent is delivered through TWO
+        // separate paths that can race each other: the full-screen
+        // notification's PendingIntent, and the direct startActivity()
+        // fallback below. Without SINGLE_TOP, that race can cause Android to
+        // tear down and recreate MainActivity (Flutter engine detaches —
+        // visible in logcat as "Detaching Geolocator from activity" /
+        // "Flutter engine disconnected") instead of just delivering
+        // onNewIntent to the existing instance. That recreation is what
+        // wipes out the in-progress SOS navigation and sends the user back
+        // to a fresh app boot (splash → home) instead of the SOS screen.
         val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse("medisense://sos")).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             setPackage(context.packageName)
         }
 
@@ -61,7 +72,7 @@ class SosTriggerReceiver : BroadcastReceiver() {
 
         nm.notify(911, notification)
         Log.d("SOS_DEBUG", "SosTriggerReceiver: Full-screen notification posted")
-        
+
         // 4. Fallback: Try waking the app directly if unlocked
         try {
             context.startActivity(deepLinkIntent)

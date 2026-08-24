@@ -96,6 +96,7 @@ class ChatMessage {
     this.skinScanJson,
     this.quickReplies,
     this.timestamp,
+    this.streaming = false,
   });
 
   final String? id;
@@ -129,6 +130,26 @@ class ChatMessage {
   /// When this message was sent. Null for messages not yet round-tripped
   /// through Firestore (e.g. the very first frame before saving completes).
   final DateTime? timestamp;
+
+  /// True while a streamed AI reply is still receiving tokens — lets the
+  /// UI show a live "typing" caret on the bubble itself instead of a
+  /// separate spinner, the way ChatGPT-style streaming looks.
+  final bool streaming;
+
+  ChatMessage copyWith({String? text, bool? streaming}) => ChatMessage(
+    id: id,
+    role: role,
+    text: text ?? this.text,
+    card: card,
+    attachments: attachments,
+    personalized: personalized,
+    ocrText: ocrText,
+    imagePath: imagePath,
+    skinScanJson: skinScanJson,
+    quickReplies: quickReplies,
+    timestamp: timestamp,
+    streaming: streaming ?? this.streaming,
+  );
 
   Map<String, dynamic> toMap() => {
     'role': role.name,

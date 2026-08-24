@@ -131,12 +131,24 @@ class _MediSenseAppState extends State<MediSenseApp> {
   }
 
   void _handleSosNavigation() {
+    debugPrint('SOS_DEBUG: _handleSosNavigation called');
     gPendingSosNavigation = true;
     final state = navigatorKey.currentState;
+    debugPrint('SOS_DEBUG: navigatorKey.currentState is ${state == null ? "NULL" : "available"}');
     if (state != null) {
-      state.context.read<SosProvider>().triggerImmediate();
-      state.pushNamedAndRemoveUntil('/sos', (route) => false);
+      try {
+        state.context.read<SosProvider>().triggerImmediate();
+        debugPrint('SOS_DEBUG: SosProvider.triggerImmediate() done, phase set to active');
+        state.pushNamedAndRemoveUntil('/sos', (route) => false).then((_) {
+          debugPrint('SOS_DEBUG: pushNamedAndRemoveUntil(/sos) future completed');
+        });
+        debugPrint('SOS_DEBUG: pushNamedAndRemoveUntil(/sos) called (route push issued)');
+      } catch (e, st) {
+        debugPrint('SOS_DEBUG: EXCEPTION during SOS navigation: $e\n$st');
+      }
       gPendingSosNavigation = false;
+    } else {
+      debugPrint('SOS_DEBUG: navigatorKey.currentState was null — cannot navigate, SOS will rely on gPendingSosNavigation flag in AuthWrapper splash timer instead');
     }
   }
 

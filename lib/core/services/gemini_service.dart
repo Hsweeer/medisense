@@ -199,4 +199,93 @@ class GeminiService {
       rethrow;
     }
   }
+
+  /// Reads an actual document (PDF or plain text) and answers a question
+  /// about it — sent to Gemini as inline base64 data, the same way
+  /// [describeImage] sends photos. Gemini's multimodal API reads PDFs
+  /// (text + layout) natively, so no separate PDF-parsing package is
+  /// needed. Throws [UnsupportedDocumentException] for formats this can't
+  /// read yet (e.g. .docx) so the caller can give an honest message
+  /// instead of pretending it looked at the file.
+  static Future<String> describeDocument(String filePath, {String prompt = 'Summarize this document.'}) async {
+    final lower = filePath.toLowerCase();
+    late final String mimeType;
+    if (lower.endsWith('.pdf')) {
+      mimeType = 'application/pdf';
+    } else if (lower.endsWith('.txt') || lower.endsWith('.md') || lower.endsWith('.csv')) {
+      mimeType = 'text/plain';
+    } else {
+      throw UnsupportedDocumentException(
+          "I can currently read PDF or plain-text files. This one looks "
+              "like a different format — try exporting/saving it as a PDF, or "
+              "send a clear photo of the page instead.");
+    }
+
+    try {
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+      // Gemini's inline (non-File-API) payload has a practical size
+      // ceiling — fail with an honest message rather than a cryptic 400.
+      if (bytes.length > 15 * 1024 * 1024) {
+        throw UnsupportedDocumentException(
+            "That file is too large for me to read directly (over 15MB). "
+                "Try a smaller export, or send a photo of the specific page "
+                "you need help with.");
+      }
+      final base64Doc = base64Encode(bytes);
+
+      final requestBody = {
+        'contents': [
+          {
+            'parts': [
+              {
+                'text': 'SYSTEM: You are a careful document assistant. Read the attached '
+                    'document and answer the request grounded only in what it actually '
+                    'contains — never invent figures, names, or clauses that aren\'t there. '
+                    'If the document is a scanned image with no readable text, or the '
+                    'requested information genuinely isn\'t in it, say so plainly instead '
+                    'of guessing.\n\nUSER REQUEST: $prompt'
+              },
+              {
+                'inlineData': {'mimeType': mimeType, 'data': base64Doc}
+              }
+            ]
+          }
+        ],
+        'generationConfig': {'temperature': 0.2, 'topP': 0.9, 'topK': 32},
+      };
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl?key=${ApiKeys.geminiApiKey}'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 45));
+
+      if (response.statusCode != 200) {
+        throw Exception('Document Analysis Error ${response.statusCode}');
+      }
+
+      final data = jsonDecode(response.body);
+      final text = data['candidates']?[0]['content']?['parts']?[0]['text'];
+      if (text == null || (text as String).trim().isEmpty) {
+        throw Exception('AI returned an empty document analysis response.');
+      }
+      return text.trim();
+    } on UnsupportedDocumentException {
+      rethrow;
+    } catch (e) {
+      debugPrint('[GeminiService] DescribeDocument Error: $e');
+      rethrow;
+    }
+  }
+}
+
+/// Thrown when a file's format genuinely can't be read yet (as opposed to
+/// a transient network/API failure) — lets the caller show an honest,
+/// specific message instead of a generic "something went wrong".
+class UnsupportedDocumentException implements Exception {
+  UnsupportedDocumentException(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }

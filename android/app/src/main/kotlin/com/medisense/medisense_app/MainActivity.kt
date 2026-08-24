@@ -25,7 +25,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         Log.d("SOS_DEBUG", "MainActivity: configureFlutterEngine entry")
-        
+
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         methodChannel?.setMethodCallHandler { call, result ->
             Log.d("SOS_DEBUG", "MainActivity: Native method call received: ${call.method}")
@@ -71,7 +71,7 @@ class MainActivity : FlutterActivity() {
                         handleRequestIgnoreBatteryOptimizations(result)
                     }
                     "ensureFullScreenIntentPermission" -> {
-                        result.success(null) 
+                        result.success(null)
                     }
                     else -> {
                         result.notImplemented()
@@ -82,14 +82,14 @@ class MainActivity : FlutterActivity() {
                 result.error("NATIVE_ERROR", e.message, null)
             }
         }
-        
+
         checkIntentForSos(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d("SOS_DEBUG", "MainActivity: onCreate entry")
-        
+
         createNotificationChannel()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -129,7 +129,7 @@ class MainActivity : FlutterActivity() {
         val action = intent?.action
         val data = intent?.data
         Log.d("SOS_DEBUG", "MainActivity: checkIntentForSos. action: $action, data: $data")
-        
+
         if (data?.scheme == "medisense" && data?.host == "sos") {
             Log.d("SOS_DEBUG", "MainActivity: SOS deep link detected")
             pendingSos = true
@@ -142,10 +142,33 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun triggerSosInFlutter() {
-        if (methodChannel != null) {
+        val channel = methodChannel
+        if (channel != null) {
             Log.d("SOS_DEBUG", "MainActivity: Notifying Flutter engine to open SOS screen")
-            methodChannel?.invokeMethod("openSosScreen", null)
-            pendingSos = false
+            // IMPORTANT: do NOT clear pendingSos here unconditionally. On a cold
+            // start, this invoke fires from configureFlutterEngine() long before
+            // Dart's main.dart has finished its async bootstrap (Firebase +
+            // NotificationService init) and registered its "openSosScreen"
+            // handler in _setupListeners(). If we clear pendingSos immediately,
+            // that early message is silently lost AND the later retry triggered
+            // by Dart's "flutterReady" call (see below) never fires, because
+            // pendingSos already reads false by then — so the SOS screen never
+            // opens and the app just boots normally. Only clear pendingSos once
+            // Dart actually acknowledges the call.
+            channel.invokeMethod("openSosScreen", null, object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    Log.d("SOS_DEBUG", "MainActivity: openSosScreen acknowledged by Flutter")
+                    pendingSos = false
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                    Log.d("SOS_DEBUG", "MainActivity: openSosScreen call errored ($errorMessage), keeping pendingSos=true for retry on flutterReady")
+                }
+
+                override fun notImplemented() {
+                    Log.d("SOS_DEBUG", "MainActivity: openSosScreen had no Dart handler yet, keeping pendingSos=true for retry on flutterReady")
+                }
+            })
         } else {
             Log.d("SOS_DEBUG", "MainActivity: Engine not ready yet, SOS remains pending")
         }
@@ -161,7 +184,7 @@ class MainActivity : FlutterActivity() {
     private fun triggerNativeSosWithDeepLink() {
         Log.d("SOS_DEBUG", "MainActivity: triggerNativeSosWithDeepLink starting")
         val deepLinkIntent = Intent(Intent.ACTION_VIEW, Uri.parse("medisense://sos")).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             setPackage(packageName)
         }
 

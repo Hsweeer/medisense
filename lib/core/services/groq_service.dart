@@ -21,6 +21,32 @@ class GroqChatResult {
   bool get hasToolCalls => toolCalls != null && toolCalls!.isNotEmpty;
 }
 
+/// One event from [GroqService.chatWithToolsStream]: either a growing text
+/// delta (call this repeatedly to update the UI live) or the final,
+/// fully-assembled result once the stream ends.
+class GroqStreamEvent {
+  GroqStreamEvent._({this.textSoFar, this.result});
+
+  factory GroqStreamEvent.delta(String textSoFar) => GroqStreamEvent._(textSoFar: textSoFar);
+  factory GroqStreamEvent.done(GroqChatResult result) => GroqStreamEvent._(result: result);
+
+  /// Non-null on every delta event — the full text accumulated so far.
+  final String? textSoFar;
+
+  /// Non-null only on the final event.
+  final GroqChatResult? result;
+
+  bool get isDone => result != null;
+}
+
+/// Accumulates one tool call's streamed fragments (name + arguments arrive
+/// in pieces across multiple SSE chunks) until the stream ends.
+class _ToolCallBuilder {
+  String? id;
+  String? name;
+  final argsBuffer = StringBuffer();
+}
+
 class GroqService {
   GroqService._();
 
@@ -95,6 +121,111 @@ class GroqService {
   }) async {
     final res = await chatWithTools(systemPrompt: systemPrompt, history: history, tools: null);
     return res.content ?? '';
+  }
+
+  /// Same as [chatWithTools] but streams the reply token-by-token (SSE),
+  /// yielding a growing chunk of text as it arrives so the UI can show a
+  /// live typing effect instead of one long wait. The final event carries
+  /// the fully-assembled [GroqChatResult] (including any tool calls, which
+  /// stream in as fragmented deltas and are reassembled here) exactly like
+  /// [chatWithTools] would have returned.
+  static Stream<GroqStreamEvent> chatWithToolsStream({
+    required String systemPrompt,
+    required List<Map<String, String>> history,
+    required List<Map<String, dynamic>>? tools,
+  }) async* {
+    _requireApiKey();
+
+    final body = {
+      'model': _model,
+      'messages': [
+        {'role': 'system', 'content': systemPrompt},
+        ...history,
+      ],
+      'temperature': 0.3,
+      'stream': true,
+      if (tools != null && tools.isNotEmpty) ...{
+        'tools': tools,
+        'tool_choice': 'auto',
+      },
+    };
+
+    final request = http.Request('POST', Uri.parse(_chatEndpoint))
+      ..headers.addAll({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${ApiKeys.groqApiKey}',
+      })
+      ..body = jsonEncode(body);
+
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
+
+    if (streamed.statusCode != 200) {
+      final errBody = await streamed.stream.bytesToString();
+      debugPrint('[GroqService] Stream API Error: ${streamed.statusCode} - $errBody');
+      throw Exception('Groq Error ${streamed.statusCode}');
+    }
+
+    final contentBuffer = StringBuffer();
+    final toolBuilders = <int, _ToolCallBuilder>{};
+
+    final lines = streamed.stream.transform(utf8.decoder).transform(const LineSplitter());
+    await for (final line in lines) {
+      if (!line.startsWith('data:')) continue;
+      final payload = line.substring(5).trim();
+      if (payload.isEmpty) continue;
+      if (payload == '[DONE]') break;
+
+      Map<String, dynamic> json;
+      try {
+        json = jsonDecode(payload);
+      } catch (_) {
+        continue; // partial/malformed chunk — skip rather than crash the stream
+      }
+
+      final choices = json['choices'] as List?;
+      if (choices == null || choices.isEmpty) continue;
+      final delta = choices[0]['delta'] as Map<String, dynamic>?;
+      if (delta == null) continue;
+
+      final contentDelta = delta['content'] as String?;
+      if (contentDelta != null && contentDelta.isNotEmpty) {
+        contentBuffer.write(contentDelta);
+        yield GroqStreamEvent.delta(contentBuffer.toString());
+      }
+
+      final toolCallDeltas = delta['tool_calls'] as List?;
+      if (toolCallDeltas != null) {
+        for (final tcd in toolCallDeltas) {
+          final idx = tcd['index'] as int? ?? 0;
+          final builder = toolBuilders.putIfAbsent(idx, () => _ToolCallBuilder());
+          if (tcd['id'] != null) builder.id = tcd['id'];
+          final fn = tcd['function'] as Map<String, dynamic>?;
+          if (fn != null) {
+            if (fn['name'] != null) builder.name = '${builder.name ?? ''}${fn['name']}';
+            if (fn['arguments'] != null) builder.argsBuffer.write(fn['arguments']);
+          }
+        }
+      }
+    }
+
+    List<GroqToolCall>? finalToolCalls;
+    if (toolBuilders.isNotEmpty) {
+      finalToolCalls = toolBuilders.values.map((b) {
+        Map<String, dynamic> args = {};
+        try {
+          args = jsonDecode(b.argsBuffer.toString());
+        } catch (_) {
+          // Truncated/invalid arguments JSON — treat as no arguments rather
+          // than throwing away the whole streamed response.
+        }
+        return GroqToolCall(id: b.id ?? '', name: b.name ?? '', arguments: args);
+      }).toList();
+    }
+
+    yield GroqStreamEvent.done(GroqChatResult(
+      content: contentBuffer.isEmpty ? null : contentBuffer.toString(),
+      toolCalls: finalToolCalls,
+    ));
   }
 
   static Future<String> transcribeAudio(String path) async {
