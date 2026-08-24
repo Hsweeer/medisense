@@ -1,4 +1,4 @@
-import 'package:contacts_service/contacts_service.dart' as cs;
+import 'package:contacts_service_plus/contacts_service_plus.dart' as cs;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 

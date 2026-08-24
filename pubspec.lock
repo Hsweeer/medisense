@@ -201,14 +201,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
-  contacts_service:
+  contacts_service_plus:
     dependency: "direct main"
     description:
-      name: contacts_service
-      sha256: f6d5ea33b31dfcdcd2e65d8abdc836502e04ddb0f66a96aa726fa9891ea9671e
+      name: contacts_service_plus
+      sha256: "971e5677a3f0009a1bf2b60e112960f8569850de67478c059387f29536642d55"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.3"
+    version: "0.0.3"
   cross_file:
     dependency: transitive
     description:
