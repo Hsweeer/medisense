@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
@@ -19,7 +19,7 @@ class FoodInsightService {
   }) async {
     final apiKey = dotenv.env['GROQ_API_KEY'] ?? '';
     if (apiKey.isEmpty) {
-      return 'Insight unavailable — missing API configuration.';
+      return 'Insight unavailable â€” missing API configuration.';
     }
 
     final prompt =
@@ -36,7 +36,7 @@ User medications: ${profile.medications.join(', ')}
 
 Write a short (1-2 sentence), friendly, advisory note about this food for
 this specific user based on their health profile. This is guidance, not a
-medical order — do not tell them they cannot eat it, just advise caution
+medical order â€” do not tell them they cannot eat it, just advise caution
 where relevant.
 ''';
 
@@ -63,3 +63,4 @@ where relevant.
     return (decoded['choices'][0]['message']['content'] as String).trim();
   }
 }
+

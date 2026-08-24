@@ -17,8 +17,8 @@ class FacilityCacheService {
   static const _keyPrefix = 'facility_cache_';
 
   String _keyFor(double latitude, double longitude) {
-    final roundedLat = latitude.toStringAsFixed(2);
-    final roundedLon = longitude.toStringAsFixed(2);
+    final roundedLat = latitude.toStringAsFixed(3);
+    final roundedLon = longitude.toStringAsFixed(3);
     return '$_keyPrefix${roundedLat}_$roundedLon';
   }
 

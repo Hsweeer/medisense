@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../core/services/location_service.dart';
 import '../data/mock/mock_data.dart';
@@ -27,6 +28,7 @@ class LocationProvider extends ChangeNotifier {
   LatLng? _position;
   String? _label;
   bool _requestInFlight = false;
+  StreamSubscription<Position>? _posSub;
 
   LocationAccess get access => _access;
   LocationLoadState get state => _state;
@@ -101,6 +103,22 @@ class LocationProvider extends ChangeNotifier {
       final pos = await LocationService.instance.currentPosition();
       _position = LatLng(pos.latitude, pos.longitude);
       _state = LocationLoadState.ready;
+
+      // Start a position stream so nearby searches update as the user moves.
+      _posSub?.cancel();
+      _posSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        ),
+      ).listen((p) {
+        _position = LatLng(p.latitude, p.longitude);
+        _state = LocationLoadState.ready;
+        notifyListeners();
+      }, onError: (_) {
+        // Ignore stream errors — keep last known position.
+      });
+
       // Reverse geocoding is best-effort — never block the position update on it.
       unawaited(_loadLabel());
     } catch (_) {
@@ -122,5 +140,11 @@ class LocationProvider extends ChangeNotifier {
     return _access == LocationAccess.serviceDisabled
         ? LocationService.instance.openLocationSettings()
         : LocationService.instance.openAppSettings();
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    super.dispose();
   }
 }

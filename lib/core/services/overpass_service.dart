@@ -38,7 +38,7 @@ class OverpassService {
     ];
   }
 
-  static const _requestTimeout = Duration(seconds: 15);
+  static const _requestTimeout = Duration(seconds: 30);
 
   Future<List<Facility>> fetchNearby({
     required double latitude,
