@@ -18,8 +18,9 @@ class FoodInsightService {
     required HealthProfile profile,
   }) async {
     final apiKey = dotenv.env['GROQ_API_KEY'] ?? '';
-    if (apiKey.isEmpty)
+    if (apiKey.isEmpty) {
       return 'Insight unavailable — missing API configuration.';
+    }
 
     final prompt =
         '''
