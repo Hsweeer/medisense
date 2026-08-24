@@ -50,7 +50,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
                         child: CircularProgressIndicator(
                           value: _progress,
                           strokeWidth: 4.0,
-                          backgroundColor: AppColors.danger.withOpacity(0.15),
+                          backgroundColor: AppColors.danger.withValues(alpha: 0.15),
                           valueColor: const AlwaysStoppedAnimation(AppColors.danger),
                         ),
                       ),
@@ -63,7 +63,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.danger.withOpacity(0.4),
+                              color: AppColors.danger.withValues(alpha: 0.4),
                               blurRadius: 10,
                               offset: const Offset(0, 3),
                             ),

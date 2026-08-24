@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:medisense_app/features/splash/splash_screen.dart';
-import 'package:medisense_app/providers/auth_provider.dart';
-import 'package:medisense_app/main.dart';
-import 'package:provider/provider.dart';
 
 void main() {
   testWidgets('MediSense boots and shows splash', (tester) async {
@@ -18,9 +15,7 @@ void main() {
       ScreenUtilInit(
         designSize: const Size(390, 844),
         useInheritedMediaQuery: true,
-        builder: (_, child) => const MaterialApp(
-          home: SplashScreen(),
-        ),
+        builder: (_, child) => const MaterialApp(home: SplashScreen()),
       ),
     );
 

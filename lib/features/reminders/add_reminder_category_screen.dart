@@ -48,7 +48,7 @@ class AddReminderCategoryScreen extends StatelessWidget {
                 child: ListView.separated(
                   physics: const BouncingScrollPhysics(),
                   itemCount: ReminderCategory.values.length,
-                  separatorBuilder: (_, __) => SizedBox(height: 14.h),
+                  separatorBuilder: (_, _) => SizedBox(height: 14.h),
                   itemBuilder: (ctx, i) {
                     final cat = ReminderCategory.values[i];
                     return _CategoryCard(
