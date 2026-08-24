@@ -1,4 +1,7 @@
+// lib/core/services/overpass_service.dart
+
 import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
@@ -14,11 +17,26 @@ class OverpassService {
   OverpassService._();
   static final instance = OverpassService._();
 
-  static const _endpoints = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.private.coffee/api/interpreter',
-  ];
+  /// Reads the endpoint list from .env, falling back to the known-good
+  /// public defaults if a key is missing or the .env value is empty —
+  /// so a misconfigured .env never leaves this list empty.
+  List<String> get _endpoints {
+    final fromEnv = [
+      dotenv.env['OVERPASS_ENDPOINT_PRIMARY'],
+      dotenv.env['OVERPASS_ENDPOINT_FALLBACK_1'],
+      dotenv.env['OVERPASS_ENDPOINT_FALLBACK_2'],
+    ].whereType<String>().where((e) => e.trim().isNotEmpty).toList();
+
+    if (fromEnv.isNotEmpty) return fromEnv;
+
+    // Safety net — same defaults as before, used only if .env is missing
+    // or these specific keys weren't set.
+    return const [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.private.coffee/api/interpreter',
+    ];
+  }
 
   static const _requestTimeout = Duration(seconds: 15);
 
