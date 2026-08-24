@@ -1,3 +1,5 @@
+// lib/features/home/home_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +10,8 @@ import '../../providers/location_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/reminder_provider.dart';
+import '../caregiver/screens/caregiver_requests_screen.dart';
+import '../food_scanner/screens/food_scanner_screen.dart';
 import '../nearby/nearby_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../profile/emergency_contacts_screen.dart';
@@ -25,7 +29,9 @@ class HomeScreen extends StatelessWidget {
     final profile = profileProvider.profile;
     final next = reminders.nextDose;
     final displayName = profile.name.trim();
-    final firstName = displayName.isEmpty ? 'there' : displayName.split(' ').first;
+    final firstName = displayName.isEmpty
+        ? 'there'
+        : displayName.split(' ').first;
 
     return SafeArea(
       child: ListView(
@@ -38,8 +44,12 @@ class HomeScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Good morning, $firstName 👋',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 22.sp)),
+                    Text(
+                      'Good morning, $firstName 👋',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.headlineSmall?.copyWith(fontSize: 22.sp),
+                    ),
                     const _LocationLabel(),
                   ],
                 ),
@@ -53,33 +63,43 @@ class HomeScreen extends StatelessWidget {
           // Universal search → nearby care
           TextField(
             readOnly: true,
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const NearbyScreen(showBack: true))),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const NearbyScreen(showBack: true),
+              ),
+            ),
             decoration: InputDecoration(
               hintText: 'Search hospitals, pharmacies…',
               hintStyle: TextStyle(fontSize: 14.sp),
-              prefixIcon: Icon(Icons.search_rounded, color: AppColors.muted, size: 22.sp),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: AppColors.muted,
+                size: 22.sp,
+              ),
               contentPadding: EdgeInsets.symmetric(vertical: 12.h),
             ),
           ),
           SizedBox(height: 16.h),
           // HERO — next dose card
           GestureDetector(
-            onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RemindersScreen())),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const RemindersScreen())),
             child: Container(
               padding: EdgeInsets.all(18.r),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                    colors: AppColors.gradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight),
+                  colors: AppColors.gradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(20.r),
                 boxShadow: [
                   BoxShadow(
-                      color: AppColors.primary.withValues(alpha: .35),
-                      blurRadius: 18.r,
-                      offset: Offset(0, 8.h)),
+                    color: AppColors.primary.withValues(alpha: .35),
+                    blurRadius: 18.r,
+                    offset: Offset(0, 8.h),
+                  ),
                 ],
               ),
               child: Row(
@@ -91,8 +111,11 @@ class HomeScreen extends StatelessWidget {
                       color: Colors.white.withValues(alpha: .2),
                       borderRadius: BorderRadius.circular(14.r),
                     ),
-                    child: Icon(Icons.medication_rounded,
-                        color: Colors.white, size: 26.sp),
+                    child: Icon(
+                      Icons.medication_rounded,
+                      color: Colors.white,
+                      size: 26.sp,
+                    ),
                   ),
                   SizedBox(width: 14.w),
                   Expanded(
@@ -102,10 +125,11 @@ class HomeScreen extends StatelessWidget {
                         Text(
                           next == null ? 'ALL DONE TODAY' : 'NEXT DOSE',
                           style: TextStyle(
-                              color: Colors.white.withValues(alpha: .8),
-                              fontSize: 11.sp,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.2),
+                            color: Colors.white.withValues(alpha: .8),
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                          ),
                         ),
                         SizedBox(height: 3.h),
                         Text(
@@ -113,28 +137,33 @@ class HomeScreen extends StatelessWidget {
                               ? 'Great job — streak safe 🔥'
                               : '${next.title} · ${next.time}',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.w700),
+                            color: Colors.white,
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         if (next != null)
                           Text(
                             next.dose,
                             style: TextStyle(
-                                color: Colors.white.withValues(alpha: .85),
-                                fontSize: 12.5.sp),
+                              color: Colors.white.withValues(alpha: .85),
+                              fontSize: 12.5.sp,
+                            ),
                           ),
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded,
-                      color: Colors.white, size: 24.sp),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white,
+                    size: 24.sp,
+                  ),
                 ],
               ),
             ),
           ),
           SizedBox(height: 16.h),
-          // Quick actions 2×2 — IntrinsicHeight + stretch makes both cards
+          // Quick actions — IntrinsicHeight + stretch makes both cards
           // in each row match the height of whichever one has more content
           // (e.g. a longer subtitle), instead of each card hugging its own
           // text and ending up a different size than its neighbor.
@@ -143,28 +172,36 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                    child: _QuickTile(
-                      icon: Icons.local_hospital_rounded,
-                      label: 'Hospitals near me',
-                      sub: 'ER open · directions',
-                      color: AppColors.primary,
-                      soft: AppColors.soft,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) =>
-                          const NearbyScreen(initialType: 1, showBack: true))),
-                    )),
+                  child: _QuickTile(
+                    icon: Icons.local_hospital_rounded,
+                    label: 'Hospitals near me',
+                    sub: 'ER open · directions',
+                    color: AppColors.primary,
+                    soft: AppColors.soft,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const NearbyScreen(initialType: 1, showBack: true),
+                      ),
+                    ),
+                  ),
+                ),
                 SizedBox(width: 12.w),
                 Expanded(
-                    child: _QuickTile(
-                      icon: Icons.local_pharmacy_rounded,
-                      label: 'Pharmacies near me',
-                      sub: '2 open 24 hrs',
-                      color: AppColors.warning,
-                      soft: AppColors.warningSoft,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) =>
-                          const NearbyScreen(initialType: 2, showBack: true))),
-                    )),
+                  child: _QuickTile(
+                    icon: Icons.local_pharmacy_rounded,
+                    label: 'Pharmacies near me',
+                    sub: '2 open 24 hrs',
+                    color: AppColors.warning,
+                    soft: AppColors.warningSoft,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const NearbyScreen(initialType: 2, showBack: true),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -174,26 +211,72 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                    child: _QuickTile(
-                      icon: Icons.alarm_rounded,
-                      label: 'My reminders',
-                      sub: '${reminders.reminders.length} active',
-                      color: AppColors.primary,
-                      soft: AppColors.soft,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const RemindersScreen())),
-                    )),
+                  child: _QuickTile(
+                    icon: Icons.alarm_rounded,
+                    label: 'My reminders',
+                    sub: '${reminders.reminders.length} active',
+                    color: AppColors.primary,
+                    soft: AppColors.soft,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const RemindersScreen(),
+                      ),
+                    ),
+                  ),
+                ),
                 SizedBox(width: 12.w),
                 Expanded(
-                    child: _QuickTile(
-                      icon: Icons.contact_emergency_rounded,
-                      label: 'Emergency contacts',
-                      sub: 'Alerted during SOS',
-                      color: AppColors.danger,
-                      soft: AppColors.dangerSoft,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const EmergencyContactsScreen())),
-                    )),
+                  child: _QuickTile(
+                    icon: Icons.contact_emergency_rounded,
+                    label: 'Emergency contacts',
+                    sub: 'Alerted during SOS',
+                    color: AppColors.danger,
+                    soft: AppColors.dangerSoft,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const EmergencyContactsScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 12.h),
+          // NEW ROW — Scan food + Caregivers
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _QuickTile(
+                    icon: Icons.camera_alt_rounded,
+                    label: 'Scan food',
+                    sub: 'Check nutrition',
+                    color: AppColors.warning,
+                    soft: AppColors.warningSoft,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const FoodScannerScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: _QuickTile(
+                    icon: Icons.people_alt_rounded,
+                    label: 'Caregivers',
+                    sub: 'Manage access',
+                    color: AppColors.primary,
+                    soft: AppColors.soft,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CaregiverRequestsScreen(),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -229,7 +312,10 @@ class _ForYouSection extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text('For you', style: Theme.of(context).textTheme.titleMedium),
+              child: Text(
+                'For you',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
             GestureDetector(
               onTap: loading ? null : () => profile.refreshForYouTip(),
@@ -237,11 +323,15 @@ class _ForYouSection extends StatelessWidget {
                 padding: EdgeInsets.all(4.r),
                 child: loading
                     ? SizedBox(
-                  width: 15.sp,
-                  height: 15.sp,
-                  child: const CircularProgressIndicator(strokeWidth: 2),
-                )
-                    : Icon(Icons.refresh_rounded, size: 18.sp, color: AppColors.muted),
+                        width: 15.sp,
+                        height: 15.sp,
+                        child: const CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        Icons.refresh_rounded,
+                        size: 18.sp,
+                        color: AppColors.muted,
+                      ),
               ),
             ),
           ],
@@ -257,40 +347,51 @@ class _ForYouSection extends StatelessWidget {
                 width: 38.r,
                 height: 38.r,
                 decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .6),
-                    borderRadius: BorderRadius.circular(12.r)),
-                child: Icon(Icons.auto_awesome_rounded,
-                    color: AppColors.ai, size: 20.sp),
+                  color: Colors.white.withValues(alpha: .6),
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Icon(
+                  Icons.auto_awesome_rounded,
+                  color: AppColors.ai,
+                  size: 20.sp,
+                ),
               ),
               SizedBox(width: 12.w),
               Expanded(
                 child: tip == null
                     ? Text(
-                  loading
-                      ? 'Personalizing advice for you…'
-                      : 'Fill in your health profile or chat with '
-                      'MedAI, and personalized advice for your '
-                      'situation will show up here.',
-                  style: TextStyle(
-                    fontSize: 12.5.sp,
-                    height: 1.4,
-                    color: AppColors.inkSoft,
-                  ),
-                )
+                        loading
+                            ? 'Personalizing advice for you…'
+                            : 'Fill in your health profile or chat with '
+                                  'MedAI, and personalized advice for your '
+                                  'situation will show up here.',
+                        style: TextStyle(
+                          fontSize: 12.5.sp,
+                          height: 1.4,
+                          color: AppColors.inkSoft,
+                        ),
+                      )
                     : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(tip.title,
-                        style: TextStyle(
-                            fontSize: 14.sp, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 3.h),
-                    Text(tip.body,
-                        style: TextStyle(
-                            fontSize: 12.5.sp,
-                            height: 1.4,
-                            color: AppColors.muted)),
-                  ],
-                ),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tip.title,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 3.h),
+                          Text(
+                            tip.body,
+                            style: TextStyle(
+                              fontSize: 12.5.sp,
+                              height: 1.4,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ],
           ),
@@ -314,14 +415,14 @@ class _LocationLabel extends StatelessWidget {
       onTap: loc.isLoading
           ? null
           : () {
-        if (loc.access == LocationAccess.granted) return;
-        if (loc.access == LocationAccess.deniedForever ||
-            loc.access == LocationAccess.serviceDisabled) {
-          loc.openSettings();
-        } else {
-          loc.requestAccess();
-        }
-      },
+              if (loc.access == LocationAccess.granted) return;
+              if (loc.access == LocationAccess.deniedForever ||
+                  loc.access == LocationAccess.serviceDisabled) {
+                loc.openSettings();
+              } else {
+                loc.requestAccess();
+              }
+            },
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -331,8 +432,10 @@ class _LocationLabel extends StatelessWidget {
             color: AppColors.muted,
           ),
           SizedBox(width: 3.w),
-          Text(loc.displayLabel,
-              style: TextStyle(color: AppColors.muted, fontSize: 13.sp)),
+          Text(
+            loc.displayLabel,
+            style: TextStyle(color: AppColors.muted, fontSize: 13.sp),
+          ),
         ],
       ),
     );
@@ -349,8 +452,9 @@ class _NotificationBell extends StatelessWidget {
     final unread = context.watch<NotificationProvider>().unreadCount;
 
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen())),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -361,8 +465,11 @@ class _NotificationBell extends StatelessWidget {
               color: AppColors.soft,
               borderRadius: BorderRadius.circular(14.r),
             ),
-            child: Icon(Icons.notifications_none_rounded,
-                color: AppColors.primary, size: 22.sp),
+            child: Icon(
+              Icons.notifications_none_rounded,
+              color: AppColors.primary,
+              size: 22.sp,
+            ),
           ),
           if (unread > 0)
             Positioned(
@@ -380,9 +487,10 @@ class _NotificationBell extends StatelessWidget {
                   unread > 9 ? '9+' : '$unread',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.w700),
+                    color: Colors.white,
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
@@ -427,12 +535,15 @@ class _QuickTile extends StatelessWidget {
             child: Icon(icon, color: color, size: 22.sp),
           ),
           SizedBox(height: 10.h),
-          Text(label,
-              style:
-              TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+          ),
           SizedBox(height: 2.h),
-          Text(sub,
-              style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
+          Text(
+            sub,
+            style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+          ),
         ],
       ),
     );
