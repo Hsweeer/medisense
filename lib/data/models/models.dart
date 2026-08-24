@@ -5,15 +5,20 @@ import 'package:latlong2/latlong.dart';
 
 enum ChatRole { user, ai }
 
-/// Special renderings for an AI reply.
-enum ChatCardType { none, sos, prescription, skin, heartRate, reminderAdded, quickReplies }
+enum ChatCardType {
+  none,
+  sos,
+  prescription,
+  skin,
+  heartRate,
+  reminderAdded,
+  quickReplies,
+}
 
 enum AttachmentType { image, file, voice }
 
-/// What the user intends an attachment to be analyzed as.
 enum AttachmentIntent { general, prescription, skin }
 
-/// One entry in the MedAI chat-history list (like a ChatGPT/Claude thread).
 class ChatConversationSummary {
   const ChatConversationSummary({
     required this.id,
@@ -53,10 +58,10 @@ class ChatAttachment {
 
   final AttachmentType type;
   final String name;
-  final String detail; // e.g. "2.4 MB · PDF" or "Photo"
-  final int durationSeconds; // voice notes only
+  final String detail;
+  final int durationSeconds;
   final AttachmentIntent intent;
-  final String? filePath; // real on-device file path, when actually captured/picked
+  final String? filePath;
 
   Map<String, dynamic> toMap() => {
     'type': type.name,
@@ -69,14 +74,14 @@ class ChatAttachment {
 
   factory ChatAttachment.fromMap(Map<String, dynamic> map) => ChatAttachment(
     type: AttachmentType.values.firstWhere(
-          (e) => e.name == map['type'],
+      (e) => e.name == map['type'],
       orElse: () => AttachmentType.image,
     ),
     name: map['name'] ?? '',
     detail: map['detail'] ?? '',
     durationSeconds: map['durationSeconds'] ?? 0,
     intent: AttachmentIntent.values.firstWhere(
-          (e) => e.name == map['intent'],
+      (e) => e.name == map['intent'],
       orElse: () => AttachmentIntent.general,
     ),
     filePath: map['filePath'],
@@ -85,7 +90,7 @@ class ChatAttachment {
 
 class ChatMessage {
   const ChatMessage({
-    this.id, // Firestore document ID, null until saved
+    this.id,
     required this.role,
     required this.text,
     this.card = ChatCardType.none,
@@ -103,31 +108,11 @@ class ChatMessage {
   final String text;
   final ChatCardType card;
   final List<ChatAttachment> attachments;
-
-  /// True when the reply was tailored using the user's health profile.
   final bool personalized;
-
-  /// Raw text actually read off a scanned prescription photo (real Tesseract
-  /// OCR output — not scripted). Null for every other kind of message. The
-  /// prescription card re-parses this on demand so the review screen always
-  /// works from the real source text, not a cached guess.
   final String? ocrText;
-
-  /// Path to the local photo used for OCR, passed to review screen.
   final String? imagePath;
-
-  /// Raw JSON (as a string) of the real skin-scan server's response for a
-  /// skin-check photo. Null for every other kind of message. The skin
-  /// report card parses this on demand, same pattern as [ocrText].
   final String? skinScanJson;
-
-  /// Short tappable suggested replies shown under an AI question (e.g.
-  /// when MedAI needs a reminder time/frequency and would rather offer
-  /// options than guess). Null for every other kind of message.
   final List<String>? quickReplies;
-
-  /// When this message was sent. Null for messages not yet round-tripped
-  /// through Firestore (e.g. the very first frame before saving completes).
   final DateTime? timestamp;
 
   Map<String, dynamic> toMap() => {
@@ -147,22 +132,26 @@ class ChatMessage {
     return ChatMessage(
       id: id,
       role: ChatRole.values.firstWhere(
-            (e) => e.name == map['role'],
+        (e) => e.name == map['role'],
         orElse: () => ChatRole.ai,
       ),
       text: map['text'] ?? '',
       card: ChatCardType.values.firstWhere(
-            (e) => e.name == map['card'],
+        (e) => e.name == map['card'],
         orElse: () => ChatCardType.none,
       ),
       attachments: ((map['attachments'] as List?) ?? [])
-          .map((a) => ChatAttachment.fromMap(Map<String, dynamic>.from(a as Map)))
+          .map(
+            (a) => ChatAttachment.fromMap(Map<String, dynamic>.from(a as Map)),
+          )
           .toList(),
       personalized: map['personalized'] ?? false,
       ocrText: map['ocrText'],
       imagePath: map['imagePath'],
       skinScanJson: map['skinScanJson'],
-      quickReplies: (map['quickReplies'] as List?)?.map((e) => e.toString()).toList(),
+      quickReplies: (map['quickReplies'] as List?)
+          ?.map((e) => e.toString())
+          .toList(),
       timestamp: map['timestampMs'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['timestampMs'])
           : null,
@@ -195,15 +184,12 @@ class Facility {
   final LatLng position;
   final double distanceMiles;
   final double rating;
-  final String openLabel; // "Open 24 hours", "Closes 9 PM"…
-  final int etaMinutes; // driving ETA used by the SOS ride flow
+  final String openLabel;
+  final int etaMinutes;
   final bool isOpen;
-  final List<String> tags; // "ER", "Trauma Center", "Drive-thru"…
+  final List<String> tags;
   final String phone;
 
-  /// Real straight-line distance in miles from [from] (the user's actual
-  /// GPS position) to this facility — used instead of the seeded
-  /// [distanceMiles] whenever we have a live location fix.
   double milesFrom(LatLng from) {
     final meters = Geolocator.distanceBetween(
       from.latitude,
@@ -213,6 +199,41 @@ class Facility {
     );
     return meters / 1609.344;
   }
+
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'type': type.name,
+    'address': address,
+    'lat': position.latitude,
+    'lon': position.longitude,
+    'distanceMiles': distanceMiles,
+    'rating': rating,
+    'openLabel': openLabel,
+    'etaMinutes': etaMinutes,
+    'isOpen': isOpen,
+    'tags': tags,
+    'phone': phone,
+  };
+
+  factory Facility.fromMap(Map<String, dynamic> map) => Facility(
+    name: map['name'] ?? '',
+    type: FacilityType.values.firstWhere(
+      (e) => e.name == map['type'],
+      orElse: () => FacilityType.hospital,
+    ),
+    address: map['address'] ?? '',
+    position: LatLng(
+      (map['lat'] as num).toDouble(),
+      (map['lon'] as num).toDouble(),
+    ),
+    distanceMiles: (map['distanceMiles'] as num?)?.toDouble() ?? 0,
+    rating: (map['rating'] as num?)?.toDouble() ?? 0,
+    openLabel: map['openLabel'] ?? '',
+    etaMinutes: map['etaMinutes'] ?? 0,
+    isOpen: map['isOpen'] ?? true,
+    tags: List<String>.from(map['tags'] ?? const []),
+    phone: map['phone'] ?? '',
+  );
 }
 
 // ── Reminders ───────────────────────────────────────────────────────────
@@ -221,49 +242,45 @@ enum DoseStatus { pending, taken, snoozed, skipped }
 
 class Reminder {
   Reminder({
-    this.id, // Firestore document ID, null until saved
+    this.id,
     required this.title,
     required this.dose,
     required this.time,
     required this.schedule,
     this.instructions = '',
-    this.addedBy = 'you', // 'you' | 'MedAI'
+    this.addedBy = 'you',
     this.status = DoseStatus.pending,
     this.snoozeLabel,
     this.streakDays = 0,
     this.enabled = true,
     this.groupId,
+    this.createdByUid,
     DateTime? lastStatusDate,
   }) : lastStatusDate = lastStatusDate ?? DateTime.now();
 
-  String? id; // Firestore document ID
+  String? id;
   final String title;
   String dose;
-  String time; // display string, e.g. "8:00 AM"
-  String schedule; // "Daily", "Weekdays", "Mon · Wed · Fri"…
-  String instructions; // "after food", "with a full glass of water"…
+  String time;
+  String schedule;
+  String instructions;
   final String addedBy;
   DoseStatus status;
-  String? snoozeLabel; // "rings again 9:10 AM"
+  String? snoozeLabel;
   int streakDays;
-  bool enabled; // controls whether alarm is scheduled
-
-  /// Links multiple dose-times of the SAME medicine (e.g. a prescription
-  /// that's "3 times a day") so the Reminders screen can show them as one
-  /// grouped card instead of separate cards for what is really one
-  /// medicine. Null for single-dose reminders, which don't need grouping.
+  bool enabled;
   final String? groupId;
 
-  /// The calendar day [status] applies to. A dose marked "taken" only
-  /// stays taken for that one day — this is what lets the app tell the
-  /// difference between "taken today" and "was taken yesterday, should be
-  /// pending (and re-alarmed) again today."
+  /// UID of the caregiver who created this reminder for someone else.
+  /// Null when the reminder was self-created. Used by the Caregiver
+  /// Reminder Sharing feature to grant edit/delete rights back to the
+  /// original sender, and to find/cancel their reminders on revoke.
+  final String? createdByUid;
+
   DateTime lastStatusDate;
 
   bool get taken => status == DoseStatus.taken;
 
-  /// True when [lastStatusDate] is not today — meaning this reminder's
-  /// status is stale from a previous day and needs resetting.
   bool get isStatusStale {
     final now = DateTime.now();
     return lastStatusDate.year != now.year ||
@@ -281,13 +298,14 @@ class Reminder {
       instructions: map['instructions'] ?? '',
       addedBy: map['addedBy'] ?? 'you',
       status: DoseStatus.values.firstWhere(
-            (e) => e.toString() == 'DoseStatus.${map['status'] ?? 'pending'}',
+        (e) => e.toString() == 'DoseStatus.${map['status'] ?? 'pending'}',
         orElse: () => DoseStatus.pending,
       ),
       snoozeLabel: map['snoozeLabel'],
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
       groupId: map['groupId'],
+      createdByUid: map['createdByUid'],
       lastStatusDate: map['lastStatusDateMs'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['lastStatusDateMs'])
           : DateTime.now(),
@@ -305,16 +323,13 @@ class Reminder {
     'streakDays': streakDays,
     'enabled': enabled,
     'groupId': groupId,
+    'createdByUid': createdByUid,
     'lastStatusDateMs': lastStatusDate.millisecondsSinceEpoch,
   };
 }
 
-// ── AI Insights (personalized data learned from MedAI chat) ─────────────
+// ── AI Insights ───────────────────────────────────────────────────────
 
-/// A short personalized fact MedAI picked up during a conversation —
-/// e.g. a recurring symptom, a health concern, or a preference — so the
-/// profile screen can show "what MedAI has learned about you" instead of
-/// that context living only inside old chat threads.
 enum AiInsightType { symptom, concern, preference, note }
 
 class AiInsight {
@@ -336,7 +351,7 @@ class AiInsight {
     return AiInsight(
       id: id,
       type: AiInsightType.values.firstWhere(
-            (e) => e.name == map['type'],
+        (e) => e.name == map['type'],
         orElse: () => AiInsightType.note,
       ),
       text: map['text'] ?? '',
@@ -365,7 +380,6 @@ class EmergencyContact {
     required this.phone,
   });
 
-  /// Firestore document id — null until it's been saved.
   final String? id;
   final String name;
   final String relation;
@@ -387,12 +401,6 @@ class EmergencyContact {
   };
 }
 
-// ── "For you" personalized AI advice (home screen) ───────────────────────
-
-/// One personalized piece of health advice generated from the user's
-/// health profile + what MedAI has learned from chat — shown on the home
-/// screen the way a professional health app's "For you" card works,
-/// instead of a static generic tip.
 class ForYouTip {
   const ForYouTip({
     required this.title,
@@ -435,20 +443,15 @@ class HealthProfile {
   final String name;
   final String dob;
   final String bloodType;
-  final int heightIn; // inches
-  final int weightLb; // pounds
+  final int heightIn;
+  final int weightLb;
   final List<String> allergies;
   final List<String> conditions;
   final List<String> medications;
-
-  /// Download URL of the user's profile photo in Firebase Storage.
-  /// Null (or empty) means no photo has been set — UI falls back to
-  /// initials avatar in that case.
   final String? imageUrl;
 
   String get heightLabel => "${heightIn ~/ 12}'${heightIn % 12}\"";
 
-  /// Used while data is still loading, or before Firestore has anything.
   factory HealthProfile.empty() => const HealthProfile(
     name: '',
     dob: '',
@@ -461,7 +464,6 @@ class HealthProfile {
     imageUrl: null,
   );
 
-  /// Written once, the first time a new user's profile doc is created.
   factory HealthProfile.starter({required String name}) => HealthProfile(
     name: name,
     dob: '',
@@ -528,7 +530,8 @@ class HealthProfile {
     if (date == null) return null;
     final now = DateTime.now();
     var years = now.year - date.year;
-    if (now.month < date.month || (now.month == date.month && now.day < date.day)) {
+    if (now.month < date.month ||
+        (now.month == date.month && now.day < date.day)) {
       years--;
     }
     return years;
@@ -562,11 +565,7 @@ class HealthProfile {
   }
 }
 
-enum HeartRateZone {
-  belowTypical,
-  normal,
-  aboveTypical,
-}
+enum HeartRateZone { belowTypical, normal, aboveTypical }
 
 extension HeartRateZoneX on HeartRateZone {
   String get label {

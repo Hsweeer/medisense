@@ -5,21 +5,16 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/services/places_service.dart';
+import '../../core/services/overpass_service.dart';
+import '../../core/services/facility_cache_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
-import '../../data/mock/mock_data.dart';
 import '../../data/models/models.dart';
 import '../../providers/location_provider.dart';
 
-/// Nearby care — Google-Maps-style basemap (free CARTO Voyager raster
-/// tiles), every hospital + pharmacy within 5 km pulled live from the
-/// Google Places API (rating, open/closed status, distance), with
-/// turn-by-turn directions deep-linked into the Google Maps app.
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key, this.initialType = 0, this.showBack = false});
 
-  /// 0 = all, 1 = hospitals only, 2 = pharmacies only.
   final int initialType;
   final bool showBack;
 
@@ -33,19 +28,17 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Facility? _selected;
   String? _lastCenteredLocation;
 
-  // Live Places results. Starts as the mock seed data so the screen never
-  // looks empty while the first request is in flight.
-  List<Facility> _all = [...MockData.hospitals, ...MockData.pharmacies];
+  List<Facility> _all = [];
   bool _loading = false;
   String? _error;
   bool _didInitialFetch = false;
   bool _didLiveFetch = false;
 
   List<Facility> get _facilities => switch (_filter) {
-        1 => _all.where((f) => f.type == FacilityType.hospital).toList(),
-        2 => _all.where((f) => f.type == FacilityType.pharmacy).toList(),
-        _ => _all,
-      };
+    1 => _all.where((f) => f.type == FacilityType.hospital).toList(),
+    2 => _all.where((f) => f.type == FacilityType.pharmacy).toList(),
+    _ => _all,
+  };
 
   static Color _accentOf(Facility f) =>
       f.type == FacilityType.hospital ? AppColors.danger : AppColors.primary;
@@ -64,20 +57,44 @@ class _NearbyScreenState extends State<NearbyScreen> {
   String _distanceLabel(Facility facility, LocationProvider location) =>
       '${_distanceFor(facility, location).toStringAsFixed(1)} mi';
 
-  /// Pulls hospitals + pharmacies within 5 km of [center] from Google
-  /// Places. Falls back to the seeded mock list on any failure (missing
-  /// key, offline, quota) so the screen always stays usable.
   Future<void> _load(LatLng center) async {
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
-      final results =
-          await PlacesService.instance.nearby(center: center, radiusMeters: 5000);
+      final results = await OverpassService.instance.fetchNearby(
+        latitude: center.latitude,
+        longitude: center.longitude,
+        userPosition: center,
+        radiusMeters: 5000,
+      );
+
+      if (results.isNotEmpty) {
+        await FacilityCacheService.instance.save(
+          latitude: center.latitude,
+          longitude: center.longitude,
+          facilities: results,
+        );
+      }
+
       if (!mounted) return;
       setState(() {
-        if (results.isNotEmpty) _all = results;
+        _all = results;
+        _loading = false;
+      });
+    } on OverpassAllEndpointsFailedException {
+      final cached = await FacilityCacheService.instance.load(
+        latitude: center.latitude,
+        longitude: center.longitude,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (cached != null && cached.facilities.isNotEmpty) {
+          _all = cached.facilities;
+        }
+        _error = 'Showing saved list — live results unavailable.';
         _loading = false;
       });
     } catch (_) {
@@ -92,12 +109,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Future<void> _openDirections(Facility f) async {
     final dest = '${f.position.latitude},${f.position.longitude}';
     final uri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=$dest'
-        '&travelmode=driving');
+      'https://www.google.com/maps/dir/?api=1&destination=$dest'
+      '&travelmode=driving',
+    );
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      showToast(context, 'Could not open Google Maps',
-          color: AppColors.danger);
+      showToast(context, 'Could not open Google Maps', color: AppColors.danger);
     }
   }
 
@@ -111,28 +128,23 @@ class _NearbyScreenState extends State<NearbyScreen> {
     final location = context.watch<LocationProvider>();
     final userPosition = location.positionOrFallback;
 
-    // Fetch #1: as soon as we have *some* center (real fix or fallback),
-    // so the screen shows live data on first open.
     if (!_didInitialFetch) {
       _didInitialFetch = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _load(userPosition));
     }
-    // Fetch #2: re-run once against the user's real GPS fix, since the
-    // first call may have used the fallback seed location. After this,
-    // results only refresh via the manual refresh button — Places API
-    // calls are billed per request, so we don't re-query on every GPS tick.
     if (!_didLiveFetch && location.position != null) {
       _didLiveFetch = true;
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _load(location.position!));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _load(location.position!),
+      );
     }
 
     final sorted = [..._facilities]
-      ..sort((a, b) =>
-          _distanceFor(a, location).compareTo(_distanceFor(b, location)));
+      ..sort(
+        (a, b) =>
+            _distanceFor(a, location).compareTo(_distanceFor(b, location)),
+      );
 
-    // FlutterMap reads initialCenter once. Recenter when the first real GPS
-    // fix arrives, without overriding a facility selection later.
     final locationKey = '${userPosition.latitude},${userPosition.longitude}';
     if (location.position != null && _lastCenteredLocation != locationKey) {
       _lastCenteredLocation = locationKey;
@@ -159,10 +171,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
           ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: MChip(location.displayLabel,
-                icon: Icons.my_location_rounded,
-                background: AppColors.soft,
-                foreground: AppColors.onSoft),
+            child: MChip(
+              location.displayLabel,
+              icon: Icons.my_location_rounded,
+              background: AppColors.soft,
+              foreground: AppColors.onSoft,
+            ),
           ),
         ],
       ),
@@ -173,35 +187,37 @@ class _NearbyScreenState extends State<NearbyScreen> {
               width: double.infinity,
               color: AppColors.warningSoft,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Text(_error!,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.warning)),
+              child: Text(
+                _error!,
+                style: const TextStyle(fontSize: 12, color: AppColors.warning),
+              ),
             ),
-          // Filter chips: All · Hospitals · Pharmacies
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
             child: Row(
               children: [
                 _FilterChip(
-                    label: 'All',
-                    selected: _filter == 0,
-                    onTap: () => _setFilter(0)),
+                  label: 'All',
+                  selected: _filter == 0,
+                  onTap: () => _setFilter(0),
+                ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                    label: 'Hospitals',
-                    icon: Icons.local_hospital_rounded,
-                    selected: _filter == 1,
-                    onTap: () => _setFilter(1)),
+                  label: 'Hospitals',
+                  icon: Icons.local_hospital_rounded,
+                  selected: _filter == 1,
+                  onTap: () => _setFilter(1),
+                ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                    label: 'Pharmacies',
-                    icon: Icons.local_pharmacy_rounded,
-                    selected: _filter == 2,
-                    onTap: () => _setFilter(2)),
+                  label: 'Pharmacies',
+                  icon: Icons.local_pharmacy_rounded,
+                  selected: _filter == 2,
+                  onTap: () => _setFilter(2),
+                ),
               ],
             ),
           ),
-          // Google-style basemap with every facility pinned.
           Expanded(
             flex: 5,
             child: Padding(
@@ -239,15 +255,17 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                 _map.move(f.position, 14);
                               },
                               child: _Pin(
-                                  color: _accentOf(f),
-                                  icon: _iconOf(f),
-                                  selected: _selected == f),
+                                color: _accentOf(f),
+                                icon: _iconOf(f),
+                                selected: _selected == f,
+                              ),
                             ),
                           ),
                       ],
                     ),
                     const SimpleAttributionWidget(
-                        source: Text('© OpenStreetMap · © CARTO')),
+                      source: Text('© OpenStreetMap · © CARTO'),
+                    ),
                   ],
                 ),
               ),
@@ -264,6 +282,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     onCall: () => _call(_selected!),
                     onClose: () => setState(() => _selected = null),
                   )
+                : _facilities.isEmpty && _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _facilities.isEmpty
+                ? _NoResultsView(filter: _filter)
                 : ListView.builder(
                     padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
                     itemCount: sorted.length,
@@ -289,34 +311,43 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                       : AppColors.soft,
                                   borderRadius: BorderRadius.circular(13),
                                 ),
-                                child:
-                                    Icon(_iconOf(f), color: accent, size: 22),
+                                child: Icon(
+                                  _iconOf(f),
+                                  color: accent,
+                                  size: 22,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(f.name,
-                                        style: GoogleFonts.sora(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w700)),
+                                    Text(
+                                      f.name,
+                                      style: GoogleFonts.sora(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                     const SizedBox(height: 3),
                                     Text(
-                                        '${_distanceLabel(f, location)} · '
-                                        '★ ${f.rating.toStringAsFixed(1)} · '
-                                        '${f.openLabel}',
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            color: AppColors.muted)),
+                                      '${_distanceLabel(f, location)} · '
+                                      '${f.rating > 0 ? '★ ${f.rating.toStringAsFixed(1)} · ' : ''}'
+                                      '${f.openLabel}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.muted,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
                               IconButton(
                                 onPressed: () => _openDirections(f),
-                                icon: Icon(Icons.directions_rounded,
-                                    color: accent),
+                                icon: Icon(
+                                  Icons.directions_rounded,
+                                  color: accent,
+                                ),
                                 tooltip: 'Directions',
                               ),
                             ],
@@ -332,9 +363,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
   }
 
   void _setFilter(int f) => setState(() {
-        _filter = f;
-        _selected = null;
-      });
+    _filter = f;
+    _selected = null;
+  });
 }
 
 class _FilterChip extends StatelessWidget {
@@ -360,22 +391,26 @@ class _FilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? AppColors.ink : AppColors.card,
           borderRadius: BorderRadius.circular(99),
-          border:
-              Border.all(color: selected ? AppColors.ink : AppColors.line),
+          border: Border.all(color: selected ? AppColors.ink : AppColors.line),
         ),
         child: Row(
           children: [
             if (icon != null) ...[
-              Icon(icon,
-                  size: 16,
-                  color: selected ? Colors.white : AppColors.muted),
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? Colors.white : AppColors.muted,
+              ),
               const SizedBox(width: 6),
             ],
-            Text(label,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : AppColors.inkSoft)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.inkSoft,
+              ),
+            ),
           ],
         ),
       ),
@@ -395,8 +430,9 @@ class _UserDot extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 3),
         boxShadow: [
           BoxShadow(
-              color: const Color(0xFF2A6DF4).withValues(alpha: .4),
-              blurRadius: 10),
+            color: const Color(0xFF2A6DF4).withValues(alpha: .4),
+            blurRadius: 10,
+          ),
         ],
       ),
     );
@@ -404,8 +440,7 @@ class _UserDot extends StatelessWidget {
 }
 
 class _Pin extends StatelessWidget {
-  const _Pin(
-      {required this.color, required this.icon, required this.selected});
+  const _Pin({required this.color, required this.icon, required this.selected});
 
   final Color color;
   final IconData icon;
@@ -423,7 +458,9 @@ class _Pin extends StatelessWidget {
           border: Border.all(color: Colors.white, width: 2.5),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withValues(alpha: .25), blurRadius: 8),
+              color: Colors.black.withValues(alpha: .25),
+              blurRadius: 8,
+            ),
           ],
         ),
         child: Icon(icon, color: Colors.white, size: 18),
@@ -460,43 +497,65 @@ class _FacilityDetail extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(facility.name,
-                      style: GoogleFonts.sora(
-                          fontSize: 17, fontWeight: FontWeight.w700)),
+                  child: Text(
+                    facility.name,
+                    style: GoogleFonts.sora(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 GestureDetector(
                   onTap: onClose,
-                  child: const Icon(Icons.close_rounded,
-                      color: AppColors.muted, size: 20),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    color: AppColors.muted,
+                    size: 20,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(facility.address,
-                style: const TextStyle(
-                    fontSize: 12.5, color: AppColors.muted, height: 1.4)),
+            Text(
+              facility.address,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppColors.muted,
+                height: 1.4,
+              ),
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: [
-                MChip('$distanceLabel away',
-                    icon: Icons.near_me_rounded,
-                    background: AppColors.paper,
-                    foreground: AppColors.inkSoft),
-                MChip('★ ${facility.rating.toStringAsFixed(1)}',
+                MChip(
+                  '$distanceLabel away',
+                  icon: Icons.near_me_rounded,
+                  background: AppColors.paper,
+                  foreground: AppColors.inkSoft,
+                ),
+                if (facility.rating > 0)
+                  MChip(
+                    '★ ${facility.rating.toStringAsFixed(1)}',
                     background: AppColors.warningSoft,
-                    foreground: AppColors.warning),
-                MChip(facility.openLabel,
-                    background: facility.isOpen
-                        ? AppColors.successSoft
-                        : AppColors.dangerSoft,
-                    foreground:
-                        facility.isOpen ? AppColors.success : AppColors.danger),
+                    foreground: AppColors.warning,
+                  ),
+                MChip(
+                  facility.openLabel,
+                  background: facility.isOpen
+                      ? AppColors.successSoft
+                      : AppColors.dangerSoft,
+                  foreground: facility.isOpen
+                      ? AppColors.success
+                      : AppColors.danger,
+                ),
                 for (final t in facility.tags)
-                  MChip(t,
-                      background: AppColors.paper,
-                      foreground: AppColors.muted),
+                  MChip(
+                    t,
+                    background: AppColors.paper,
+                    foreground: AppColors.muted,
+                  ),
               ],
             ),
             const SizedBox(height: 14),
@@ -523,15 +582,65 @@ class _FacilityDetail extends StatelessWidget {
                         side: BorderSide(color: accent, width: 1.4),
                         foregroundColor: accent,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                       icon: const Icon(Icons.call_rounded, size: 18),
-                      label: const Text('Call',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      label: const Text(
+                        'Call',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoResultsView extends StatelessWidget {
+  const _NoResultsView({required this.filter});
+
+  final int filter;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (filter) {
+      1 => 'hospitals',
+      2 => 'pharmacies',
+      _ => 'hospitals or pharmacies',
+    };
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.search_off_rounded,
+              size: 40,
+              color: AppColors.muted,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No $label found within 5 km',
+              style: GoogleFonts.sora(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'This area may not have this data mapped on OpenStreetMap yet. '
+              'Try refreshing, or check a different filter.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

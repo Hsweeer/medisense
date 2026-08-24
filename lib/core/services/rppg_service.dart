@@ -229,7 +229,9 @@ class RppgService {
       // measure spread
       final mean = _mean(candidates);
       double variance = 0.0;
-      for (final v in candidates) variance += (v - mean) * (v - mean);
+      for (final v in candidates) {
+        variance += (v - mean) * (v - mean);
+      }
       variance /= candidates.length;
       final stddev = sqrt(variance);
       windowsStdDev = stddev;
@@ -404,10 +406,14 @@ class RppgService {
 
     // normalize by lag 0 energy
     double energy0 = 0.0;
-    for (final v in xx) energy0 += v * v;
+    for (final v in xx) {
+      energy0 += v * v;
+    }
     if (energy0 <= 1e-9) return AutocorrResult(bpm: null, score: 0.0);
 
-    for (int i = 0; i < ac.length; i++) ac[i] = ac[i] / energy0;
+    for (int i = 0; i < ac.length; i++) {
+      ac[i] = ac[i] / energy0;
+    }
 
     // find peak lag
     int bestLag = minLag;

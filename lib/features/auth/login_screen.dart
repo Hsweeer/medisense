@@ -351,9 +351,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     SocialButton(
                       label: 'Continue with Google',
                       iconWidget: Image.network(
-                        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_\"G\"_logo.svg/1200px-Google_\"G\"_logo.svg.png',
+                        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_"G"_logo.svg/1200px-Google_"G"_logo.svg.png',
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Text('G', 
+                        errorBuilder: (_, _, _) => Text('G', 
                           style: GoogleFonts.sora(fontWeight: FontWeight.w900, color: Colors.blue)),
                       ),
                       onPressed: _continueWithGoogle,
@@ -364,7 +364,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       iconWidget: Image.network(
                         'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/1667px-Apple_logo_black.svg.png',
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.phone_iphone_rounded, color: Colors.black),
+                        errorBuilder: (_, _, _) => const Icon(Icons.phone_iphone_rounded, color: Colors.black),
                       ),
                       onPressed: _continueWithApple,
                     ),

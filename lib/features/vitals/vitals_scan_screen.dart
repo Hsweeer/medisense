@@ -44,10 +44,10 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
   String? _debugLog;
 
   // Debug overlay values
-  int _acceptedFrames = 0;
-  int _rejectedFrames = 0;
-  String _lastRejection = '';
-  String _lastFrameDebug = '';
+  final int _acceptedFrames = 0;
+  final int _rejectedFrames = 0;
+  final String _lastRejection = '';
+  final String _lastFrameDebug = '';
   Rect? _lastFaceBox;
   Rect? _lastTransformedFace;
   Rect? _lastRoi;

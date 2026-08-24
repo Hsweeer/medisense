@@ -95,7 +95,7 @@ class _MedAiHistoryScreenState extends State<MedAiHistoryScreen> {
                 : ListView.separated(
                     padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 20.h),
                     itemCount: chat.conversations.length,
-                    separatorBuilder: (_, __) => SizedBox(height: 8.h),
+                    separatorBuilder: (_, _) => SizedBox(height: 8.h),
                     itemBuilder: (context, i) {
                       final convo = chat.conversations[i];
                       final isOpen = convo.id == chat.currentConversationId;

@@ -33,7 +33,7 @@
 	<key>NSContactsUsageDescription</key>
 	<string>MediSense uses your contacts to allow you to select emergency contacts easily.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>MediSense uses your location while the app is open to show nearby hospitals and pharmacies.</string>
+	<string>MediSense uses your location to find nearby hospitals and pharmacies.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>MediSense uses your location to provide accurate nearby care information during emergencies.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

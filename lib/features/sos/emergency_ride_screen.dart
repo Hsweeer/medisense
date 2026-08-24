@@ -79,7 +79,7 @@ class EmergencyRideScreen extends StatelessWidget {
                   child: Container(
                     height: 180.h,
                     decoration: BoxDecoration(
-                      border: Border.all(color: AppColors.danger.withOpacity(0.1)),
+                      border: Border.all(color: AppColors.danger.withValues(alpha: 0.1)),
                     ),
                     child: FlutterMap(
                       options: MapOptions(

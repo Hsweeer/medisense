@@ -7,6 +7,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 
+import '../core/services/user_search_index.dart';
+
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -55,9 +57,8 @@ class AuthProvider extends ChangeNotifier {
 
       final user = credential.user;
       if (user != null) {
-        // Wait for profile setup to complete before telling the UI we are done
         await user.updateDisplayName(name.trim());
-        await _ensureUserDoc(user);
+        await _ensureUserDoc(user, fallbackPhone: phone);
       }
     } on FirebaseAuthException catch (error) {
       throw _friendlyAuthError(error);
@@ -74,7 +75,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       final googleSignIn = GoogleSignIn();
       await googleSignIn.signOut().catchError((_) => null);
-      
+
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
         isLoading = false;
@@ -98,7 +99,7 @@ class AuthProvider extends ChangeNotifier {
       isLoading = false;
       notifyListeners();
       debugPrint('Google Sign-In error details: $error');
-      
+
       String message = 'Google Sign-In failed.';
       final errStr = error.toString().toLowerCase();
       if (errStr.contains('network')) {
@@ -108,7 +109,7 @@ class AuthProvider extends ChangeNotifier {
       } else if (errStr.contains('7')) {
         message = 'Google Play Services is not working correctly.';
       }
-      
+
       throw message;
     }
   }
@@ -133,7 +134,7 @@ class AuthProvider extends ChangeNotifier {
       );
 
       final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      
+
       if (appleCredential.givenName != null && userCredential.user?.displayName == null) {
         await userCredential.user?.updateDisplayName(
           '${appleCredential.givenName} ${appleCredential.familyName}'.trim(),
@@ -154,13 +155,20 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _ensureUserDoc(User? user) async {
+  Future<void> _ensureUserDoc(User? user, {String fallbackPhone = ''}) async {
     if (user == null) return;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final doc = await ref.get();
     if (!doc.exists) {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'name': user.displayName ?? 'User',
-        'email': user.email ?? '',
+      final name = user.displayName ?? 'User';
+      final email = user.email ?? '';
+      final phoneNumber = user.phoneNumber ?? fallbackPhone;
+
+      await ref.set({
+        'name': name,
+        'email': email,
+        'phone': phoneNumber,
+        'searchIndex': UserSearchIndex.build(name: name, phone: phoneNumber, email: email),
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
@@ -171,7 +179,7 @@ class AuthProvider extends ChangeNotifier {
     final random = Random();
     return List.generate(length, (index) => charset[random.nextInt(charset.length)]).join();
   }
-  
+
   String _sha256Nonce(String input) {
     final bytes = utf8.encode(input);
     final digest = sha256.convert(bytes);
