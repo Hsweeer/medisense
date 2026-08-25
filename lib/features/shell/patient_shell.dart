@@ -39,7 +39,7 @@ class _PatientShellState extends State<PatientShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     _sosAnim = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -49,7 +49,11 @@ class _PatientShellState extends State<PatientShell>
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<LocationProvider>().requestAccess();
+      // silent: true — this is the automatic prompt on shell load, only
+      // meant to fire once ever. The user's own "enable location" tap
+      // (home_screen.dart) calls requestAccess() without silent so it
+      // can always retry.
+      if (mounted) context.read<LocationProvider>().requestAccess(silent: true);
     });
   }
 
@@ -77,18 +81,18 @@ class _PatientShellState extends State<PatientShell>
       ),
       floatingActionButton: index == 0
           ? FloatingActionButton.extended(
-              heroTag: 'med-ai',
-              backgroundColor: AppColors.ai,
-              foregroundColor: Colors.white,
-              onPressed: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const AiChatScreen())),
-              icon: const Icon(Icons.psychology_alt_rounded),
-              label: const Text(
-                'MedAI',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            )
+        heroTag: 'med-ai',
+        backgroundColor: AppColors.ai,
+        foregroundColor: Colors.white,
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AiChatScreen())),
+        icon: const Icon(Icons.psychology_alt_rounded),
+        label: const Text(
+          'MedAI',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      )
           : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

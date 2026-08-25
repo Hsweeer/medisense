@@ -41,30 +41,45 @@ class FoodVisionService {
 
     final bytes = await photo.readAsBytes();
 
-    // Use multipart/form-data so the image bytes are uploaded as a file
-    final request = http.MultipartRequest('POST', Uri.parse(_endpoint));
-    request.headers['Authorization'] = 'Bearer $apiKey';
-    request.fields['model'] = _model;
-    request.fields['messages'] = jsonEncode([
-      {
-        'role': 'user',
-        'content': [
+    // Groq's /chat/completions endpoint is OpenAI-compatible: it takes a
+    // plain JSON body, not multipart/form-data. There is no separate
+    // "file upload" field for vision -- the image has to be base64-encoded
+    // and embedded directly inside the message content as an image_url
+    // data URL, alongside the text. The previous multipart version sent
+    // the image nowhere the model could ever see it, so every call either
+    // failed outright or came back "confident: false".
+    final base64Image = base64Encode(bytes);
+
+    final response = await http.post(
+      Uri.parse(_endpoint),
+      headers: {
+        'Authorization': 'Bearer $apiKey',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'model': _model,
+        'messages': [
           {
-            'type': 'text',
-            'text':
+            'role': 'user',
+            'content': [
+              {
+                'type': 'text',
+                'text':
                 'Identify the food in this photo and estimate its portion size. '
-                'Reply ONLY as JSON: {"foodName": "...", "estimatedPortion": "...", "confident": true|false}. '
-                'If you cannot confidently identify the food, set confident to false.',
+                    'Reply ONLY as JSON: {"foodName": "...", "estimatedPortion": "...", "confident": true|false}. '
+                    'If you cannot confidently identify the food, set confident to false.',
+              },
+              {
+                'type': 'image_url',
+                'image_url': {
+                  'url': 'data:image/jpeg;base64,$base64Image',
+                },
+              },
+            ],
           },
         ],
-      },
-    ]);
-
-    request.files.add(http.MultipartFile.fromBytes('image', bytes,
-        filename: 'photo.jpg'));
-
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
+      }),
+    );
 
     if (response.statusCode != 200) {
       // Useful debug output when the API fails.

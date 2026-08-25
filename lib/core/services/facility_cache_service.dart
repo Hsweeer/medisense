@@ -16,6 +16,12 @@ class FacilityCacheService {
 
   static const _keyPrefix = 'facility_cache_';
 
+  // Bump this whenever the shape or meaning of cached fields changes (e.g.
+  // the open/closed label logic). Old entries written under a previous
+  // version are treated as absent so the app is forced to re-fetch live
+  // data instead of showing stale labels forever from local storage.
+  static const _cacheVersion = 2;
+
   String _keyFor(double latitude, double longitude) {
     final roundedLat = latitude.toStringAsFixed(3);
     final roundedLon = longitude.toStringAsFixed(3);
@@ -29,6 +35,7 @@ class FacilityCacheService {
   }) async {
     final preferences = await SharedPreferences.getInstance();
     final payload = jsonEncode({
+      'version': _cacheVersion,
       'fetchedAt': DateTime.now().toIso8601String(),
       'facilities': facilities.map((f) => f.toMap()).toList(),
     });
@@ -45,11 +52,22 @@ class FacilityCacheService {
 
     try {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      final facilities = (decoded['facilities'] as List)
-          .map(
-            (json) => Facility.fromMap(Map<String, dynamic>.from(json as Map)),
-          )
-          .toList();
+      // Stale cache written before a data-shape change (e.g. old-style
+      // openLabel text) -- discard it and let the caller re-fetch live.
+      if (decoded['version'] != _cacheVersion) return null;
+
+      // Skip individual bad entries instead of Facility.fromMap throwing
+      // and discarding the entire cached list over one corrupt record.
+      final facilities = <Facility>[];
+      for (final json in (decoded['facilities'] as List)) {
+        try {
+          facilities.add(
+            Facility.fromMap(Map<String, dynamic>.from(json as Map)),
+          );
+        } catch (_) {
+          continue;
+        }
+      }
       return CachedFacilities(
         facilities: facilities,
         fetchedAt: DateTime.parse(decoded['fetchedAt'] as String),

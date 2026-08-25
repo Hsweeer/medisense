@@ -47,6 +47,7 @@ class ChatProvider extends ChangeNotifier {
   bool recording = false;
   bool transcribing = false;
   String? currentConversationId;
+  bool _conversationPersisted = true;
   List<ChatConversationSummary> conversations = [];
   bool loadingConversations = false;
 
@@ -66,11 +67,10 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await loadConversations();
-      if (conversations.isNotEmpty) {
-        await openConversation(conversations.first.id);
-      } else {
-        await startNewConversation();
-      }
+      // Always open on a brand-new chat, same as ChatGPT/Claude — old
+      // conversations stay saved and reachable from history, but are
+      // never auto-resumed just because the app was reopened.
+      await startNewConversation();
     } finally {
       _initializing = false;
     }
@@ -84,8 +84,12 @@ class ChatProvider extends ChangeNotifier {
   Future<void> startNewConversation() async {
     messages.clear();
     pendingAttachments.clear();
-    final id = await ChatFirestoreService.instance.createConversation();
-    currentConversationId = id;
+    currentConversationId = null;
+    // Not created in Firestore yet — an empty chat the user never
+    // actually uses shouldn't clutter their saved history. It's created
+    // lazily the moment they send their first real message; see
+    // _ensureConversationPersisted().
+    _conversationPersisted = false;
     final greeting = ChatMessage(
       role: ChatRole.ai,
       text: learnFromData
@@ -95,15 +99,33 @@ class ChatProvider extends ChangeNotifier {
     );
     messages.add(greeting);
     notifyListeners();
-    await _persist(greeting);
   }
 
   Future<void> openConversation(String id) async {
     currentConversationId = id;
+    _conversationPersisted = true;
     messages.clear();
     final history = await ChatFirestoreService.instance.fetchMessages(id);
     messages.addAll(history);
     notifyListeners();
+  }
+
+  /// Lazily creates the Firestore conversation doc the first time this
+  /// (until-now local-only) chat actually gets a message — the greeting
+  /// bubble shown by [startNewConversation] is saved at that point too,
+  /// so reopening the conversation later shows the full thread from the
+  /// start. Reopening an existing conversation via [openConversation]
+  /// already marks it persisted, so this is a no-op there.
+  Future<void> _ensureConversationPersisted() async {
+    if (_conversationPersisted) return;
+    final id = await ChatFirestoreService.instance.createConversation();
+    _conversationPersisted = true;
+    if (id == null) return;
+    currentConversationId = id;
+    if (messages.isNotEmpty) {
+      await ChatFirestoreService.instance.saveMessage(id, messages.first);
+    }
+    await loadConversations();
   }
 
   void stageAttachment(ChatAttachment attachment) {
@@ -951,6 +973,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _persist(ChatMessage message) async {
+    await _ensureConversationPersisted();
     if (currentConversationId != null) {
       ChatFirestoreService.instance.saveMessage(currentConversationId!, message).catchError((_) {
         return ChatMessage(role: ChatRole.ai, text: '');

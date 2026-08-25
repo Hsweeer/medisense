@@ -25,19 +25,28 @@ class LocationService {
     return _fromPermission(await Geolocator.checkPermission());
   }
 
-  Future<LocationAccess> requestAccess() async {
+  /// [silent] is true only for the automatic prompt fired once when the
+  /// app shell first loads — it's gated behind [_hasPromptedKey] so that
+  /// auto-trigger never nags the user with the system dialog on every
+  /// app open/login. An explicit user action (tapping "enable location")
+  /// always passes silent: false and must be allowed to try again even
+  /// after an earlier denial — the OS itself already refuses to show the
+  /// dialog once permission is `deniedForever`, so there's no risk of
+  /// nagging there; only our own flag was wrongly blocking the retry.
+  Future<LocationAccess> requestAccess({bool silent = false}) async {
     final access = await currentAccess();
     if (access != LocationAccess.denied) return access;
 
-    final preferences = await SharedPreferences.getInstance();
-    if (preferences.getBool(_hasPromptedKey) ?? false) {
-      return LocationAccess.denied;
+    if (silent) {
+      final preferences = await SharedPreferences.getInstance();
+      if (preferences.getBool(_hasPromptedKey) ?? false) {
+        return LocationAccess.denied;
+      }
+      // Record this before opening the system dialog. This keeps the
+      // *automatic* shell-load prompt from firing again at next launch.
+      await preferences.setBool(_hasPromptedKey, true);
     }
-    // Record this before opening the system dialog. This keeps a dismissal or
-    // denial from causing another prompt at the next app launch.
-    await preferences.setBool(_hasPromptedKey, true);
 
-    // This is the sole system permission request made for this installation.
     return _fromPermission(await Geolocator.requestPermission());
   }
 
@@ -75,10 +84,10 @@ class LocationService {
   LocationAccess _fromPermission(LocationPermission permission) {
     return switch (permission) {
       LocationPermission.always || LocationPermission.whileInUse =>
-        LocationAccess.granted,
+      LocationAccess.granted,
       LocationPermission.deniedForever => LocationAccess.deniedForever,
       LocationPermission.denied || LocationPermission.unableToDetermine =>
-        LocationAccess.denied,
+      LocationAccess.denied,
     };
   }
 }

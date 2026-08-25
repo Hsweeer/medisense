@@ -52,16 +52,21 @@ class LocationProvider extends ChangeNotifier {
     return 'Location off · tap to enable';
   }
 
-  /// Call once when the patient shell first loads. Prompts the native
-  /// permission dialog only while the user has not made a decision yet.
-  Future<void> requestAccess() async {
+  /// Prompts the native permission dialog.
+  ///
+  /// [silent] should be true ONLY for the automatic call made once when
+  /// the patient shell first loads (see [LocationService.requestAccess]
+  /// for why) — every explicit user action, like tapping "enable
+  /// location", must call this with [silent] false so a prior denial
+  /// doesn't permanently prevent retrying.
+  Future<void> requestAccess({bool silent = false}) async {
     if (_requestInFlight) return;
     _requestInFlight = true;
     _state = LocationLoadState.loading;
     notifyListeners();
 
     try {
-      final access = await LocationService.instance.requestAccess();
+      final access = await LocationService.instance.requestAccess(silent: silent);
       _access = access;
       if (access == LocationAccess.granted) {
         await _loadPosition();
@@ -130,7 +135,7 @@ class LocationProvider extends ChangeNotifier {
     final pos = _position;
     if (pos == null) return;
     final label =
-        await LocationService.instance.labelFor(pos.latitude, pos.longitude);
+    await LocationService.instance.labelFor(pos.latitude, pos.longitude);
     if (label == null) return;
     _label = label;
     notifyListeners();

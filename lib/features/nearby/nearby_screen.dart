@@ -90,17 +90,23 @@ class _NearbyScreenState extends State<NearbyScreen> {
         longitude: center.longitude,
       );
       if (!mounted) return;
+      final hasCache = cached != null && cached.facilities.isNotEmpty;
       setState(() {
-        if (cached != null && cached.facilities.isNotEmpty) {
-          _all = cached.facilities;
-        }
-        _error = 'Showing saved list — live results unavailable.';
+        if (hasCache) _all = cached.facilities;
+        // Don't claim "showing saved list" when there isn't one — a
+        // fresh install/location with no cache yet needs an honest
+        // "couldn't reach live data, try again" message instead of a
+        // misleading label with an empty result below it.
+        _error = hasCache
+            ? 'Showing saved list — live results unavailable.'
+            : "Couldn't reach live results. Check your connection and tap refresh to try again.";
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[NearbyScreen] _load failed: $e');
       if (!mounted) return;
       setState(() {
-        _error = 'Showing saved list — live results unavailable.';
+        _error = "Couldn't reach live results. Check your connection and tap refresh to try again.";
         _loading = false;
       });
     }
@@ -110,7 +116,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
     final dest = '${f.position.latitude},${f.position.longitude}';
     final uri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=$dest'
-      '&travelmode=driving',
+          '&travelmode=driving',
     );
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
@@ -135,13 +141,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
     if (!_didLiveFetch && location.position != null) {
       _didLiveFetch = true;
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _load(location.position!),
+            (_) => _load(location.position!),
       );
     }
 
     final sorted = [..._facilities]
       ..sort(
-        (a, b) =>
+            (a, b) =>
             _distanceFor(a, location).compareTo(_distanceFor(b, location)),
       );
 
@@ -163,10 +169,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
             onPressed: _loading ? null : () => _load(userPosition),
             icon: _loading
                 ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
                 : const Icon(Icons.refresh_rounded),
           ),
           Padding(
@@ -233,7 +239,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   children: [
                     TileLayer(
                       urlTemplate:
-                          'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                      'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.medisense.medisense_app',
                     ),
                     MarkerLayer(
@@ -275,87 +281,184 @@ class _NearbyScreenState extends State<NearbyScreen> {
             flex: 4,
             child: _selected != null
                 ? _FacilityDetail(
-                    facility: _selected!,
-                    accent: _accentOf(_selected!),
-                    distanceLabel: _distanceLabel(_selected!, location),
-                    onDirections: () => _openDirections(_selected!),
-                    onCall: () => _call(_selected!),
-                    onClose: () => setState(() => _selected = null),
-                  )
+              facility: _selected!,
+              accent: _accentOf(_selected!),
+              distanceLabel: _distanceLabel(_selected!, location),
+              onDirections: () => _openDirections(_selected!),
+              onCall: () => _call(_selected!),
+              onClose: () => setState(() => _selected = null),
+            )
                 : _facilities.isEmpty && _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _facilities.isEmpty
                 ? _NoResultsView(filter: _filter)
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-                    itemCount: sorted.length,
-                    itemBuilder: (_, i) {
-                      final f = sorted[i];
-                      final accent = _accentOf(f);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: MCard(
-                          padding: const EdgeInsets.all(14),
-                          onTap: () {
-                            setState(() => _selected = f);
-                            _map.move(f.position, 14);
-                          },
-                          child: Row(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+              itemCount: sorted.length,
+              itemBuilder: (_, i) {
+                final f = sorted[i];
+                final accent = _accentOf(f);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: MCard(
+                    padding: const EdgeInsets.all(14),
+                    onTap: () {
+                      setState(() => _selected = f);
+                      _map.move(f.position, 14);
+                    },
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          margin: const EdgeInsets.only(top: 2),
+                          decoration: BoxDecoration(
+                            color: f.type == FacilityType.hospital
+                                ? AppColors.dangerSoft
+                                : AppColors.soft,
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Icon(
+                            _iconOf(f),
+                            color: accent,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  color: f.type == FacilityType.hospital
-                                      ? AppColors.dangerSoft
-                                      : AppColors.soft,
-                                  borderRadius: BorderRadius.circular(13),
-                                ),
-                                child: Icon(
-                                  _iconOf(f),
-                                  color: accent,
-                                  size: 22,
+                              Text(
+                                f.name,
+                                style: GoogleFonts.sora(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      f.name,
-                                      style: GoogleFonts.sora(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.near_me_rounded,
+                                    size: 12,
+                                    color: AppColors.muted,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    _distanceLabel(f, location),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.muted,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (f.rating > 0) ...[
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      '★',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.warning,
                                       ),
                                     ),
-                                    const SizedBox(height: 3),
+                                    const SizedBox(width: 2),
                                     Text(
-                                      '${_distanceLabel(f, location)} · '
-                                      '${f.rating > 0 ? '★ ${f.rating.toStringAsFixed(1)} · ' : ''}'
-                                      '${f.openLabel}',
+                                      f.rating.toStringAsFixed(1),
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: AppColors.muted,
                                       ),
                                     ),
                                   ],
-                                ),
+                                ],
                               ),
-                              IconButton(
-                                onPressed: () => _openDirections(f),
-                                icon: Icon(
-                                  Icons.directions_rounded,
-                                  color: accent,
-                                ),
-                                tooltip: 'Directions',
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    f.isOpen
+                                        ? Icons.check_circle_rounded
+                                        : Icons.cancel_rounded,
+                                    size: 12,
+                                    color: f.isOpen
+                                        ? AppColors.success
+                                        : AppColors.danger,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Flexible(
+                                    child: Text(
+                                      f.openLabel,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: f.isOpen
+                                            ? AppColors.success
+                                            : AppColors.danger,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
+                              if (f.phone.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.call_rounded,
+                                      size: 12,
+                                      color: AppColors.muted,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Flexible(
+                                      child: Text(
+                                        f.phone,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.muted,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
-                      );
-                    },
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (f.phone.isNotEmpty)
+                              IconButton(
+                                onPressed: () => _call(f),
+                                icon: Icon(
+                                  Icons.call_rounded,
+                                  color: accent,
+                                  size: 20,
+                                ),
+                                tooltip: 'Call',
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            IconButton(
+                              onPressed: () => _openDirections(f),
+                              icon: Icon(
+                                Icons.directions_rounded,
+                                color: accent,
+                              ),
+                              tooltip: 'Directions',
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -638,7 +741,7 @@ class _NoResultsView extends StatelessWidget {
             const SizedBox(height: 6),
             const Text(
               'This area may not have this data mapped on OpenStreetMap yet. '
-              'Try refreshing, or check a different filter.',
+                  'Try refreshing, or check a different filter.',
               style: TextStyle(fontSize: 12.5, color: AppColors.muted),
               textAlign: TextAlign.center,
             ),
