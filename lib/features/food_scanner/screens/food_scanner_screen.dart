@@ -1,9 +1,11 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/services/food_vision_service.dart';
 import '../../../core/services/open_food_facts_service.dart';
+import '../../../data/models/food_models.dart';
 import 'food_review_screen.dart';
 
 class FoodScannerScreen extends StatefulWidget {
@@ -17,55 +19,90 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
   bool _processing = false;
 
   Future<void> _capture(ImageSource source) async {
+    if (_processing) return;
     final picked = await ImagePicker().pickImage(
       source: source,
-      imageQuality: 85,
+      imageQuality: 90,
     );
     if (picked == null) return;
 
     setState(() => _processing = true);
     final photo = File(picked.path);
+    try {
+      final identification = await FoodVisionService.instance.identify(photo);
+      FoodNutrition nutrition;
+      try {
+        final databaseNutrition = await OpenFoodFactsService.instance.lookup(
+          identification.foodName,
+        );
+        nutrition = databaseNutrition == null
+            ? await FoodVisionService.instance.estimateNutrition(identification)
+            : _forDetectedPortion(databaseNutrition, identification);
+      } on NutritionLookupException {
+        nutrition = await FoodVisionService.instance.estimateNutrition(
+          identification,
+        );
+      }
 
-    final identification = await FoodVisionService.instance.identify(photo);
-
-    if (identification == null || !identification.confident) {
       if (!mounted) return;
       setState(() => _processing = false);
-      _goToManualSearch();
-      return;
-    }
-
-    final nutrition = await OpenFoodFactsService.instance.lookup(
-      identification.foodName,
-    );
-
-    if (!mounted) return;
-    setState(() => _processing = false);
-
-    if (nutrition == null) {
-      _goToManualSearch(prefill: identification.foodName);
-      return;
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FoodReviewScreen(
-          foodName: identification.foodName,
-          portionLabel: identification.estimatedPortion,
-          nutrition: nutrition,
-          photo: photo,
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FoodReviewScreen(
+            foodName: identification.foodName,
+            portionLabel: identification.estimatedPortion,
+            nutrition: nutrition,
+            photo: photo,
+          ),
         ),
-      ),
-    );
+      );
+    } on FoodScanException catch (error) {
+      if (!mounted) return;
+      setState(() => _processing = false);
+      _showError(error.message, source);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _processing = false);
+      _showError(
+        'Food analysis could not be completed. Please try again.',
+        source,
+      );
+    }
   }
 
-  void _goToManualSearch({String? prefill}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Could not confidently identify this food${prefill != null ? " ($prefill?)" : ""} — search manually.',
-        ),
+  FoodNutrition _forDetectedPortion(
+    FoodNutrition nutrition,
+    FoodIdentification food,
+  ) {
+    final weight = food.estimatedWeightGrams;
+    final baseWeight = nutrition.portionWeightGrams;
+    if (weight == null || baseWeight == null) return nutrition;
+    return nutrition.scaledBy(weight / baseWeight);
+  }
+
+  void _showError(String message, ImageSource source) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Food scan unsuccessful'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _capture(ImageSource.gallery);
+            },
+            child: const Text('Choose another photo'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _capture(source);
+            },
+            child: const Text('Try again'),
+          ),
+        ],
       ),
     );
   }
@@ -81,7 +118,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 12),
-                  Text('Identifying and verifying...'),
+                  Text('Analyzing your food...'),
                 ],
               )
             : Column(
