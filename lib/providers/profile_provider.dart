@@ -65,12 +65,19 @@ class ProfileProvider extends ChangeNotifier {
     final userDoc = _db.collection('users').doc(uid);
 
     _profileSub = userDoc.snapshots().listen(
-      (snap) async {
+          (snap) async {
         if (!snap.exists) {
+          // merge: true so this never clobbers the email/phone/searchIndex
+          // fields that AuthProvider._ensureUserDoc() writes for the same
+          // document. Without merge, whichever of the two writes lands
+          // second would wipe out the other's fields (a full .set() fully
+          // replaces the document) — this is what previously made some
+          // accounts unfindable in caregiver search.
           await userDoc.set(
             HealthProfile.starter(
               name: _auth.currentUser?.email?.split('@').first ?? 'New user',
             ).toMap(),
+            SetOptions(merge: true),
           );
           return;
         }
@@ -79,8 +86,8 @@ class ProfileProvider extends ChangeNotifier {
         forYouTip = tipMap is Map<String, dynamic>
             ? ForYouTip.fromMap(tipMap)
             : (tipMap is Map
-                  ? ForYouTip.fromMap(Map<String, dynamic>.from(tipMap))
-                  : null);
+            ? ForYouTip.fromMap(Map<String, dynamic>.from(tipMap))
+            : null);
         isLoading = false;
         notifyListeners();
         _maybeRefreshForYouTip();
@@ -98,19 +105,19 @@ class ProfileProvider extends ChangeNotifier {
         .snapshots()
         .listen(
           (snap) {
-            contacts = snap.docs
-                .map((d) => EmergencyContact.fromMap(d.data(), d.id))
-                .toList();
-            notifyListeners();
-          },
-          onError: (e) {
-            error = 'Could not load emergency contacts: $e';
-            notifyListeners();
-          },
-        );
+        contacts = snap.docs
+            .map((d) => EmergencyContact.fromMap(d.data(), d.id))
+            .toList();
+        notifyListeners();
+      },
+      onError: (e) {
+        error = 'Could not load emergency contacts: $e';
+        notifyListeners();
+      },
+    );
 
     _insightsSub = AiInsightsFirestoreService.instance.watchInsights().listen(
-      (list) {
+          (list) {
         aiInsights = list;
         notifyListeners();
         if (forYouTip == null) _maybeRefreshForYouTip();

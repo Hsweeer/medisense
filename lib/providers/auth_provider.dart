@@ -34,10 +34,14 @@ class AuthProvider extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
     try {
-      await _auth.signInWithEmailAndPassword(
+      final credential = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
+      // Self-heals accounts whose users/{uid} doc is missing email/phone/
+      // searchIndex (e.g. because ProfileProvider's listener won the
+      // first-sign-in race and created a health-profile-only doc first).
+      await _ensureUserDoc(credential.user);
     } on FirebaseAuthException catch (error) {
       throw _friendlyAuthError(error);
     } finally {
@@ -159,19 +163,31 @@ class AuthProvider extends ChangeNotifier {
     if (user == null) return;
     final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
     final doc = await ref.get();
-    if (!doc.exists) {
-      final name = user.displayName ?? 'User';
-      final email = user.email ?? '';
-      final phoneNumber = user.phoneNumber ?? fallbackPhone;
 
-      await ref.set({
-        'name': name,
-        'email': email,
-        'phone': phoneNumber,
-        'searchIndex': UserSearchIndex.build(name: name, phone: phoneNumber, email: email),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    }
+    // NOTE: don't gate this whole write on `!doc.exists`. ProfileProvider
+    // also listens to authStateChanges() and, on first sign-in, may race
+    // ahead and create this same document with only health-profile fields
+    // (no email/phone/searchIndex). If we only wrote here when the doc was
+    // completely missing, that race would permanently skip writing the
+    // search-critical fields whenever ProfileProvider won the race — which
+    // is exactly what caused accounts to be unfindable in caregiver search.
+    // Using a merge-set makes this idempotent and self-healing: it fills in
+    // whichever auth fields are missing without touching profile data that
+    // may already be there.
+    final existingName = doc.data()?['name'] as String?;
+    final name = (existingName != null && existingName.trim().isNotEmpty)
+        ? existingName
+        : (user.displayName ?? 'User');
+    final email = user.email ?? '';
+    final phoneNumber = user.phoneNumber ?? fallbackPhone;
+
+    await ref.set({
+      'name': name,
+      'email': email,
+      'phone': phoneNumber,
+      'searchIndex': UserSearchIndex.build(name: name, phone: phoneNumber, email: email),
+      if (!doc.exists) 'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   String _generateNonce([int length = 32]) {

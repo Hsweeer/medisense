@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/caregiver_service.dart';
 import '../../../data/models/caregiver_models.dart';
+import 'add_caregiver_screen.dart';
+import 'create_caregiver_reminder_screen.dart';
 
 class CaregiverRequestsScreen extends StatelessWidget {
   const CaregiverRequestsScreen({super.key});
@@ -13,7 +15,7 @@ class CaregiverRequestsScreen extends StatelessWidget {
         title: Text('Restrict ${link.senderName}?'),
         content: Text(
           '${link.senderName} won\'t be able to create new reminders for you. '
-          'Do you also want to cancel reminders they already created?',
+              'Do you also want to cancel reminders they already created?',
         ),
         actions: [
           TextButton(
@@ -38,7 +40,18 @@ class CaregiverRequestsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Caregiver requests')),
+      appBar: AppBar(
+        title: const Text('Caregiver requests'),
+        actions: [
+          IconButton(
+            tooltip: 'Send a new request',
+            icon: const Icon(Icons.person_add_alt_1),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AddCaregiverScreen()),
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         children: [
           const Padding(
@@ -115,6 +128,53 @@ class CaregiverRequestsScreen extends StatelessWidget {
                     ),
                   );
                 }).toList(),
+              );
+            },
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: Text(
+              'People you manage',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          StreamBuilder<List<CaregiverLink>>(
+            stream: CaregiverService.instance.myAcceptedRecipients(),
+            builder: (context, snapshot) {
+              final links = snapshot.data ?? [];
+              if (links.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'No accepted recipients yet — send a request above.',
+                  ),
+                );
+              }
+              return Column(
+                children: [
+                  ...links.map((l) {
+                    return ListTile(
+                      leading: const CircleAvatar(child: Icon(Icons.person)),
+                      title: Text(l.recipientName),
+                      subtitle: const Text('You can set reminders for them'),
+                    );
+                  }),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CreateCaregiverReminderScreen(),
+                          ),
+                        ),
+                        icon: const Icon(Icons.alarm_add),
+                        label: const Text('Create reminder for someone'),
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),

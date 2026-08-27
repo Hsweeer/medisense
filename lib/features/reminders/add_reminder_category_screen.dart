@@ -5,7 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../caregiver/screens/add_caregiver_screen.dart';
+import '../caregiver/screens/caregiver_requests_screen.dart';
 import 'add_reminder_form_screen.dart';
 import 'reminder_form_helpers.dart';
 
@@ -68,9 +68,17 @@ class AddReminderCategoryScreen extends StatelessWidget {
                     if (i == ReminderCategory.values.length) {
                       return _CaregiverCard(
                         onTap: () {
+                          // Route through the caregiver hub: it shows any
+                          // already-accepted recipients (with a button
+                          // straight into CreateCaregiverReminderScreen) and
+                          // lets the user send a new request if they don't
+                          // have one yet — this used to jump straight to the
+                          // search screen every time, which meant there was
+                          // no way back in to actually create a reminder
+                          // once a request was accepted.
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => const AddCaregiverScreen(),
+                              builder: (_) => const CaregiverRequestsScreen(),
                             ),
                           );
                         },
@@ -260,7 +268,7 @@ class _CaregiverCard extends StatelessWidget {
                   SizedBox(height: 4.h),
                   Text(
                     'Create a reminder on a family member or friend\'s '
-                    'account, with their permission.',
+                        'account, with their permission.',
                     style: TextStyle(
                       fontSize: 12.sp,
                       color: AppColors.muted,

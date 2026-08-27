@@ -9,6 +9,7 @@ import '../../data/models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
+import 'ai_insights_list_screen.dart';
 import 'edit_health_profile_sheet.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
@@ -167,8 +168,38 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
           SizedBox(height: 20.h),
-          const SectionHeader('AI Insights'),
-          _AiInsightsCard(insights: prov.aiInsights, onDismiss: prov.removeInsight),
+          Padding(
+            padding: EdgeInsets.only(bottom: 10.h, top: 4.h),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'AI Insights',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontSize: 16.sp),
+                  ),
+                ),
+                if (prov.aiInsights.isNotEmpty)
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const AiInsightsListScreen()),
+                    ),
+                    child: Text(
+                      'See all',
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          _AiInsightsSummaryCard(insights: prov.aiInsights),
           SizedBox(height: 20.h),
           const SectionHeader('Emergency'),
           MCard(
@@ -336,11 +367,10 @@ String firebaseAuthEmail(BuildContext context) {
 /// (symptoms, ongoing concerns, preferences) — a live view into what's
 /// making the AI's answers personalized, instead of that context living
 /// invisibly inside old chat threads.
-class _AiInsightsCard extends StatelessWidget {
-  const _AiInsightsCard({required this.insights, required this.onDismiss});
+class _AiInsightsSummaryCard extends StatelessWidget {
+  const _AiInsightsSummaryCard({required this.insights});
 
   final List<AiInsight> insights;
-  final void Function(AiInsight) onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -354,9 +384,7 @@ class _AiInsightsCard extends StatelessWidget {
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
-                'Nothing learned yet — as you chat with MedAI, useful '
-                    'context like symptoms or ongoing concerns will show up '
-                    'here and quietly sharpen its answers.',
+                'Nothing learned yet — context like symptoms will show up here as you chat.',
                 style: TextStyle(
                   fontSize: 12.5.sp,
                   height: 1.4,
@@ -369,94 +397,49 @@ class _AiInsightsCard extends StatelessWidget {
       );
     }
 
+    final latest = insights.first;
+
     return MCard(
-      padding: EdgeInsets.zero,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AiInsightsListScreen()),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 4.h),
-            child: Row(
-              children: [
-                Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 18.sp),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: Text(
-                    'What MedAI has learned from your chats',
-                    style: TextStyle(
-                      fontSize: 12.5.sp,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.ai,
-                    ),
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 16.sp),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'Latest from MedAI',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ai,
                   ),
                 ),
-              ],
+              ),
+              Text(
+                '${insights.length} total',
+                style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  size: 16.sp, color: AppColors.muted),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            latest.text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13.5.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ink,
             ),
           ),
-          for (int i = 0; i < insights.length; i++) ...[
-            if (i > 0) Divider(height: 1.h, indent: 16.w, endIndent: 16.w),
-            _AiInsightTile(insight: insights[i], onDismiss: () => onDismiss(insights[i])),
-          ],
-          SizedBox(height: 4.h),
         ],
-      ),
-    );
-  }
-}
-
-class _AiInsightTile extends StatelessWidget {
-  const _AiInsightTile({required this.insight, required this.onDismiss});
-
-  final AiInsight insight;
-  final VoidCallback onDismiss;
-
-  ({IconData icon, Color color, String label}) get _style {
-    switch (insight.type) {
-      case AiInsightType.symptom:
-        return (icon: Icons.sick_outlined, color: AppColors.warning, label: 'Symptom');
-      case AiInsightType.concern:
-        return (icon: Icons.priority_high_rounded, color: AppColors.danger, label: 'Concern');
-      case AiInsightType.preference:
-        return (icon: Icons.tune_rounded, color: AppColors.primary, label: 'Preference');
-      case AiInsightType.note:
-        return (icon: Icons.notes_rounded, color: AppColors.muted, label: 'Note');
-    }
-  }
-
-  String get _relativeTime {
-    final diff = DateTime.now().difference(insight.createdAt);
-    if (diff.inDays > 0) return '${diff.inDays}d ago';
-    if (diff.inHours > 0) return '${diff.inHours}h ago';
-    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
-    return 'Just now';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = _style;
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.symmetric(horizontal: 16.w),
-      leading: Container(
-        width: 34.r,
-        height: 34.r,
-        decoration: BoxDecoration(
-          color: s.color.withValues(alpha: .1),
-          borderRadius: BorderRadius.circular(10.r),
-        ),
-        child: Icon(s.icon, color: s.color, size: 17.sp),
-      ),
-      title: Text(
-        insight.text,
-        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        '${s.label} · $_relativeTime',
-        style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
-      ),
-      trailing: IconButton(
-        icon: Icon(Icons.close_rounded, size: 18.sp, color: AppColors.muted),
-        tooltip: 'Not relevant',
-        onPressed: onDismiss,
       ),
     );
   }
