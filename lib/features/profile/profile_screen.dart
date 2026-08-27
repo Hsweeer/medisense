@@ -13,6 +13,7 @@ import 'ai_insights_list_screen.dart';
 import 'edit_health_profile_sheet.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
+import 'nutrition_history_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../settings/alarm_sound_screen.dart';
 
@@ -74,8 +75,11 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded,
-                    color: AppColors.muted, size: 24.sp),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.muted,
+                  size: 24.sp,
+                ),
               ],
             ),
           ),
@@ -87,7 +91,9 @@ class ProfileScreen extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Health profile',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 16.sp),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleMedium?.copyWith(fontSize: 16.sp),
                   ),
                 ),
                 GestureDetector(
@@ -175,17 +181,17 @@ class ProfileScreen extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'AI Insights',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontSize: 16.sp),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleMedium?.copyWith(fontSize: 16.sp),
                   ),
                 ),
                 if (prov.aiInsights.isNotEmpty)
                   GestureDetector(
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                          builder: (_) => const AiInsightsListScreen()),
+                        builder: (_) => const AiInsightsListScreen(),
+                      ),
                     ),
                     child: Text(
                       'See all',
@@ -246,7 +252,11 @@ class ProfileScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: AppColors.muted, size: 24.sp),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.muted,
+                  size: 24.sp,
+                ),
               ],
             ),
           ),
@@ -327,6 +337,16 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 Divider(height: 1.h, indent: 56.w),
                 _SettingTile(
+                  icon: Icons.restaurant_rounded,
+                  label: 'Nutrition',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const NutritionHistoryScreen(),
+                    ),
+                  ),
+                ),
+                Divider(height: 1.h, indent: 56.w),
+                _SettingTile(
                   icon: Icons.lock_outline_rounded,
                   label: 'Privacy & data',
                   onTap: () => showToast(context, 'Privacy settings'),
@@ -400,15 +420,19 @@ class _AiInsightsSummaryCard extends StatelessWidget {
     final latest = insights.first;
 
     return MCard(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const AiInsightsListScreen()),
-      ),
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const AiInsightsListScreen())),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.auto_awesome_rounded, color: AppColors.ai, size: 16.sp),
+              Icon(
+                Icons.auto_awesome_rounded,
+                color: AppColors.ai,
+                size: 16.sp,
+              ),
               SizedBox(width: 8.w),
               Expanded(
                 child: Text(
@@ -424,8 +448,11 @@ class _AiInsightsSummaryCard extends StatelessWidget {
                 '${insights.length} total',
                 style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
               ),
-              Icon(Icons.chevron_right_rounded,
-                  size: 16.sp, color: AppColors.muted),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 16.sp,
+                color: AppColors.muted,
+              ),
             ],
           ),
           SizedBox(height: 12.h),
@@ -504,17 +531,17 @@ class _ChipRow extends StatelessWidget {
         Expanded(
           child: values.isEmpty
               ? Text(
-            'Not set yet',
-            style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
-          )
+                  'Not set yet',
+                  style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
+                )
               : Wrap(
-            spacing: 6.w,
-            runSpacing: 6.h,
-            children: [
-              for (final v in values)
-                MChip(v, background: background, foreground: foreground),
-            ],
-          ),
+                  spacing: 6.w,
+                  runSpacing: 6.h,
+                  children: [
+                    for (final v in values)
+                      MChip(v, background: background, foreground: foreground),
+                  ],
+                ),
         ),
       ],
     );

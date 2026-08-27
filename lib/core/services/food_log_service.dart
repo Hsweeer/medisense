@@ -19,6 +19,10 @@ class FoodLogService {
     await _log.add(entry.toMap());
   }
 
+  Future<void> delete(String entryId) async {
+    await _log.doc(entryId).delete();
+  }
+
   Stream<List<FoodLogEntry>> entriesForDay(DateTime day) {
     final start = DateTime(day.year, day.month, day.day);
     final end = start.add(const Duration(days: 1));
@@ -33,6 +37,20 @@ class FoodLogService {
         .map(
           (s) =>
               s.docs.map((d) => FoodLogEntry.fromMap(d.data(), d.id)).toList(),
+        );
+  }
+
+  Stream<List<FoodLogEntry>> allEntries() {
+    return _log
+        .orderBy('loggedAtMs', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(
+                (document) =>
+                    FoodLogEntry.fromMap(document.data(), document.id),
+              )
+              .toList(),
         );
   }
 
