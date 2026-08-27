@@ -1,7 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../../data/models/food_models.dart';
+
+class NutritionLookupException implements Exception {
+  const NutritionLookupException(this.message);
+  final String message;
+}
 
 class OpenFoodFactsService {
   OpenFoodFactsService._();
@@ -21,10 +28,34 @@ class OpenFoodFactsService {
       },
     );
 
-    final response = await http.get(uri);
-    if (response.statusCode != 200) return null;
+    late final http.Response response;
+    try {
+      response = await http.get(uri).timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      throw const NutritionLookupException('Nutrition database timed out.');
+    } on SocketException {
+      throw const NutritionLookupException(
+        'Nutrition database is unavailable.',
+      );
+    } catch (_) {
+      throw const NutritionLookupException(
+        'Nutrition database is unavailable.',
+      );
+    }
+    if (response.statusCode != 200) {
+      throw NutritionLookupException(
+        'Nutrition database returned status ${response.statusCode}.',
+      );
+    }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    late final Map<String, dynamic> decoded;
+    try {
+      decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw const NutritionLookupException(
+        'Nutrition database response was invalid.',
+      );
+    }
     final products = (decoded['products'] as List?) ?? const [];
     if (products.isEmpty) return null;
 
@@ -42,6 +73,7 @@ class OpenFoodFactsService {
       proteinG: (nutriments['proteins_100g'] as num?)?.toDouble() ?? 0,
       dietaryStatus: _dietaryStatusOf(product),
       portionLabel: 'per 100g',
+      portionWeightGrams: 100,
     );
   }
 

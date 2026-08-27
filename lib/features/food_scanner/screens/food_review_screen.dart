@@ -111,6 +111,17 @@ class _FoodReviewScreenState extends State<FoodReviewScreen> {
           _NutritionRow('Fat', '${n.fatG.toStringAsFixed(0)} g'),
           _NutritionRow('Protein', '${n.proteinG.toStringAsFixed(0)} g'),
           _NutritionRow('Dietary status', n.dietaryStatus.name),
+          if (n.isEstimated)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Estimated nutrition',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange,
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
           Text('Insight', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),

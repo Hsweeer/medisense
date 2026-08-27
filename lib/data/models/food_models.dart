@@ -8,6 +8,8 @@ class FoodNutrition {
     required this.proteinG,
     required this.dietaryStatus,
     required this.portionLabel,
+    this.isEstimated = false,
+    this.portionWeightGrams,
   });
 
   final double calories;
@@ -16,15 +18,21 @@ class FoodNutrition {
   final double proteinG;
   final DietaryStatus dietaryStatus;
   final String portionLabel;
+  final bool isEstimated;
+  final double? portionWeightGrams;
 
   FoodNutrition scaledBy(double factor) => FoodNutrition(
-        calories: calories * factor,
-        carbsG: carbsG * factor,
-        fatG: fatG * factor,
-        proteinG: proteinG * factor,
-        dietaryStatus: dietaryStatus,
-        portionLabel: portionLabel,
-      );
+    calories: calories * factor,
+    carbsG: carbsG * factor,
+    fatG: fatG * factor,
+    proteinG: proteinG * factor,
+    dietaryStatus: dietaryStatus,
+    portionLabel: portionLabel,
+    isEstimated: isEstimated,
+    portionWeightGrams: portionWeightGrams == null
+        ? null
+        : portionWeightGrams! * factor,
+  );
 }
 
 class FoodLogEntry {
@@ -45,19 +53,22 @@ class FoodLogEntry {
   final String? photoUrl;
 
   Map<String, dynamic> toMap() => {
-        'foodName': foodName,
-        'calories': nutrition.calories,
-        'carbsG': nutrition.carbsG,
-        'fatG': nutrition.fatG,
-        'proteinG': nutrition.proteinG,
-        'dietaryStatus': nutrition.dietaryStatus.name,
-        'portionLabel': nutrition.portionLabel,
-        'insightNote': insightNote,
-        'loggedAtMs': loggedAt.millisecondsSinceEpoch,
-        'photoUrl': photoUrl,
-      };
+    'foodName': foodName,
+    'calories': nutrition.calories,
+    'carbsG': nutrition.carbsG,
+    'fatG': nutrition.fatG,
+    'proteinG': nutrition.proteinG,
+    'dietaryStatus': nutrition.dietaryStatus.name,
+    'portionLabel': nutrition.portionLabel,
+    'isEstimated': nutrition.isEstimated,
+    'portionWeightGrams': nutrition.portionWeightGrams,
+    'insightNote': insightNote,
+    'loggedAtMs': loggedAt.millisecondsSinceEpoch,
+    'photoUrl': photoUrl,
+  };
 
-  factory FoodLogEntry.fromMap(Map<String, dynamic> map, String id) => FoodLogEntry(
+  factory FoodLogEntry.fromMap(Map<String, dynamic> map, String id) =>
+      FoodLogEntry(
         id: id,
         foodName: map['foodName'] ?? '',
         nutrition: FoodNutrition(
@@ -70,6 +81,8 @@ class FoodLogEntry {
             orElse: () => DietaryStatus.unknown,
           ),
           portionLabel: map['portionLabel'] ?? '',
+          isEstimated: map['isEstimated'] == true,
+          portionWeightGrams: (map['portionWeightGrams'] as num?)?.toDouble(),
         ),
         insightNote: map['insightNote'] ?? '',
         loggedAt: map['loggedAtMs'] != null
