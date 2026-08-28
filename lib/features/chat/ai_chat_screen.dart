@@ -23,6 +23,7 @@ import '../../data/mock/mock_data.dart';
 import '../../data/models/models.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/profile_provider.dart';
+import '../../providers/location_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../sos/sos_screen.dart';
 import '../vitals/vitals_history_screen.dart';
@@ -540,7 +541,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
               padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
               child: Text(
                 '⚠ MedAI offers general guidance — not a diagnosis. '
-                    'In an emergency call 911.',
+                    'In an emergency, call your local emergency services.',
                 style: TextStyle(
                     fontSize: 12.sp,
                     color: const Color(0xFF8A5B0B),
@@ -785,7 +786,9 @@ class _MessageBubble extends StatelessWidget {
           color: AppColors.dangerSoft,
           border: Border.all(color: AppColors.danger, width: 1.4.w),
           onTap: () {
-            context.read<SosProvider>().trigger();
+            final loc = context.read<LocationProvider>().position;
+            final contacts = context.read<ProfileProvider>().contacts;
+            context.read<SosProvider>().trigger(loc, contacts);
             Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => const SosScreen()));
           },

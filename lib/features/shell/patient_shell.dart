@@ -1,10 +1,10 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../providers/location_provider.dart';
+import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../chat/ai_chat_screen.dart';
 import '../home/home_screen.dart';
@@ -22,11 +22,8 @@ class PatientShell extends StatefulWidget {
 }
 
 class _PatientShellState extends State<PatientShell>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with WidgetsBindingObserver {
   int index = 0;
-  Timer? _sosTimer;
-  double _sosProgress = 0.0;
-  late AnimationController _sosAnim;
 
   static const _tabs = [
     HomeScreen(),
@@ -40,14 +37,6 @@ class _PatientShellState extends State<PatientShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _sosAnim = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    );
-    _sosAnim.addListener(() {
-      setState(() => _sosProgress = _sosAnim.value);
-    });
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // silent: true — this is the automatic prompt on shell load, only
       // meant to fire once ever. The user's own "enable location" tap
@@ -60,8 +49,6 @@ class _PatientShellState extends State<PatientShell>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _sosTimer?.cancel();
-    _sosAnim.dispose();
     super.dispose();
   }
 
@@ -164,7 +151,9 @@ class _PatientShellState extends State<PatientShell>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          context.read<SosProvider>().triggerImmediate();
+          final loc = context.read<LocationProvider>().position;
+          final contacts = context.read<ProfileProvider>().contacts;
+          context.read<SosProvider>().triggerImmediate(loc, contacts);
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const SosScreen()),
           );

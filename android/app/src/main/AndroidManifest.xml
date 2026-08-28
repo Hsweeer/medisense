@@ -16,12 +16,19 @@
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.REORDER_TASKS" />
-    <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Required on Android 14+ (API 34) to run a foreground service that
+         reports its type as "location". Used only while an SOS is ACTIVE,
+         via geolocator's AndroidSettings.foregroundNotificationConfig, so
+         live location tracking survives the screen locking or the app
+         being backgrounded during a real emergency — see SosProvider. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Precise location is used to show nearby care relative to the patient. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <application

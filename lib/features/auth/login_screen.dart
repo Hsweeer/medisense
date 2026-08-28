@@ -28,22 +28,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   static const _slides = [
     (
-      Icons.psychology_alt_rounded,
-      'Meet MedAI',
-      'A personal health assistant that reads your labs, photos, and voice '
-          'notes — and learns your health story over time.',
+    Icons.psychology_alt_rounded,
+    'Meet MedAI',
+    'A personal health assistant that reads your labs, photos, and voice '
+        'notes — and learns your health story over time.',
     ),
     (
-      Icons.map_rounded,
-      'Care, mapped around you',
-      'Find nearby hospitals and pharmacies on a live map with one-tap '
-          'directions when minutes matter.',
+    Icons.map_rounded,
+    'Care, mapped around you',
+    'Find nearby hospitals and pharmacies on a live map with one-tap '
+        'directions when minutes matter.',
     ),
     (
-      Icons.sos_rounded,
-      'Emergency SOS built in',
-      'One tap calls 911 and alerts your emergency contacts with your '
-          'location and medical profile.',
+    Icons.sos_rounded,
+    'Emergency SOS built in',
+    'One tap calls emergency services and alerts your emergency contacts '
+        'with your location and medical profile.',
     ),
   ];
 
@@ -327,10 +327,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       alignment: Alignment.centerRight,
                       child: GestureDetector(
                         onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ForgotPasswordScreen(),
-                            ),
+                          MaterialPageRoute(
+                            builder: (_) => const ForgotPasswordScreen(),
                           ),
+                        ),
                         child: Text(
                           'Forgot password?',
                           style: TextStyle(
@@ -353,8 +353,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       iconWidget: Image.network(
                         'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_"G"_logo.svg/1200px-Google_"G"_logo.svg.png',
                         fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => Text('G', 
-                          style: GoogleFonts.sora(fontWeight: FontWeight.w900, color: Colors.blue)),
+                        errorBuilder: (_, _, _) => Text('G',
+                            style: GoogleFonts.sora(fontWeight: FontWeight.w900, color: Colors.blue)),
                       ),
                       onPressed: _continueWithGoogle,
                     ),
@@ -372,10 +372,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     Center(
                       child: GestureDetector(
                         onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const SignupScreen(),
-                            ),
+                          MaterialPageRoute(
+                            builder: (_) => const SignupScreen(),
                           ),
+                        ),
                         child: Text.rich(
                           TextSpan(
                             text: "New here? ",

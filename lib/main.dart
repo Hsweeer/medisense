@@ -54,42 +54,26 @@ class MediSenseApp extends StatefulWidget {
 class _MediSenseAppState extends State<MediSenseApp> {
   static const _nativeChannel = MethodChannel('medisense_native_channel');
   StreamSubscription? _overlaySub;
-  Timer? _bootstrapRetryTimer;
-  Timer? _nativeReadyRetryTimer;
   bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
-    // Wait for the first frame so the platform view/engine is fully
-    // attached before making any platform channel calls (Firebase,
-    // notifications, native handshake). Calling these synchronously in
-    // initState() races with engine attachment and can throw
-    // PlatformException(channel-error, Unable to establish connection...).
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
   Future<void> _bootstrap() async {
-    // Critical path: this must complete so the splash screen can go away.
     try {
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
       await NotificationService.instance.initialize();
     } catch (e) {
       debugPrint('[Bootstrap] Critical init error: $e');
-      // Retry ONLY the critical path, not the whole app.
-      _bootstrapRetryTimer?.cancel();
-      _bootstrapRetryTimer = Timer(const Duration(seconds: 1), () {
-        if (mounted) _bootstrap();
-      });
+      Future.delayed(const Duration(seconds: 1), _bootstrap);
       return;
     }
 
     if (mounted) setState(() => _initialized = true);
     _setupListeners();
-
-    // Non-critical native handshake: give the platform view a frame to
-    // finish attaching before talking to it, and never let a failure here
-    // re-run Firebase/Notification init or block the splash screen.
     WidgetsBinding.instance.addPostFrameCallback((_) => _notifyNativeReady());
   }
 
@@ -99,10 +83,8 @@ class _MediSenseAppState extends State<MediSenseApp> {
     } catch (e) {
       debugPrint('[Bootstrap] flutterReady handshake error (attempt $attempt): $e');
       if (attempt < 5) {
-        _nativeReadyRetryTimer?.cancel();
-        _nativeReadyRetryTimer = Timer(const Duration(seconds: 1), () {
-          if (mounted) _notifyNativeReady(attempt: attempt + 1);
-        });
+        Future.delayed(const Duration(seconds: 1),
+                () => _notifyNativeReady(attempt: attempt + 1));
       }
     }
   }
@@ -110,8 +92,6 @@ class _MediSenseAppState extends State<MediSenseApp> {
   @override
   void dispose() {
     _overlaySub?.cancel();
-    _bootstrapRetryTimer?.cancel();
-    _nativeReadyRetryTimer?.cancel();
     super.dispose();
   }
 
@@ -121,12 +101,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
     });
 
     _nativeChannel.setMethodCallHandler((call) async {
-      if (call.method == "openSosScreen") {
-        _handleSosNavigation();
-      } else if (call.method == "stopAlarm") {
-        // If the app is open and the user clicks 'Take' on a notification,
-        // we can handle it here if needed.
-      }
+      if (call.method == "openSosScreen") _handleSosNavigation();
     });
   }
 
@@ -134,27 +109,22 @@ class _MediSenseAppState extends State<MediSenseApp> {
     debugPrint('SOS_DEBUG: _handleSosNavigation called');
     gPendingSosNavigation = true;
     final state = navigatorKey.currentState;
-    debugPrint('SOS_DEBUG: navigatorKey.currentState is ${state == null ? "NULL" : "available"}');
     if (state != null) {
       try {
-        state.context.read<SosProvider>().triggerImmediate();
-        debugPrint('SOS_DEBUG: SosProvider.triggerImmediate() done, phase set to active');
-        state.pushNamedAndRemoveUntil('/sos', (route) => false).then((_) {
-          debugPrint('SOS_DEBUG: pushNamedAndRemoveUntil(/sos) future completed');
-        });
-        debugPrint('SOS_DEBUG: pushNamedAndRemoveUntil(/sos) called (route push issued)');
-      } catch (e, st) {
-        debugPrint('SOS_DEBUG: EXCEPTION during SOS navigation: $e\n$st');
+        final locProvider = state.context.read<LocationProvider>();
+        final profileProvider = state.context.read<ProfileProvider>();
+        final sosProvider = state.context.read<SosProvider>();
+        sosProvider.triggerImmediate(locProvider.position, profileProvider.contacts);
+        state.pushNamedAndRemoveUntil('/sos', (route) => false);
+      } catch (e) {
+        debugPrint('SOS_DEBUG: navigation error: $e');
       }
       gPendingSosNavigation = false;
-    } else {
-      debugPrint('SOS_DEBUG: navigatorKey.currentState was null — cannot navigate, SOS will rely on gPendingSosNavigation flag in AuthWrapper splash timer instead');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // ScreenUtilInit must be at the very top of the build tree
     return ScreenUtilInit(
       designSize: const Size(390, 844),
       minTextAdapt: true,
@@ -183,7 +153,6 @@ class _MediSenseAppState extends State<MediSenseApp> {
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          // Use a simple ternary to show splash while initializing
           home: _initialized ? const AuthWrapper() : const SplashScreen(),
           routes: {
             '/sos': (ctx) => const SosScreen(),
@@ -210,11 +179,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     _splashTimer = Timer(const Duration(milliseconds: 2000), () {
       if (!mounted) return;
       setState(() => _splashVisible = false);
-      if (gPendingSosNavigation) {
-        gPendingSosNavigation = false;
-        context.read<SosProvider>().triggerImmediate();
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (route) => false);
-      }
     });
   }
 
