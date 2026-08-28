@@ -7,6 +7,7 @@ import '../../../core/services/food_vision_service.dart';
 import '../../../core/services/open_food_facts_service.dart';
 import '../../../data/models/food_models.dart';
 import 'food_review_screen.dart';
+import 'food_scan_camera_screen.dart';
 
 class FoodScannerScreen extends StatefulWidget {
   const FoodScannerScreen({super.key});
@@ -26,10 +27,18 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
     );
     if (picked == null) return;
 
+    await _processPhoto(picked, source);
+  }
+
+  Future<void> _processPhoto(XFile picked, ImageSource source) async {
+    if (_processing) return;
     setState(() => _processing = true);
     final photo = File(picked.path);
+    final photoBytes = await picked.readAsBytes();
     try {
-      final identification = await FoodVisionService.instance.identify(photo);
+      final identification = await FoodVisionService.instance.identifyBytes(
+        photoBytes,
+      );
       FoodNutrition nutrition;
       try {
         final databaseNutrition = await OpenFoodFactsService.instance.lookup(
@@ -54,6 +63,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
             portionLabel: identification.estimatedPortion,
             nutrition: nutrition,
             photo: photo,
+            photoBytes: photoBytes,
           ),
         ),
       );
@@ -125,7 +135,16 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   FilledButton.icon(
-                    onPressed: () => _capture(ImageSource.camera),
+                    onPressed: () async {
+                      final photo = await Navigator.of(context).push<XFile>(
+                        MaterialPageRoute(
+                          builder: (_) => const FoodScanCameraScreen(),
+                        ),
+                      );
+                      if (photo != null && mounted) {
+                        _processPhoto(photo, ImageSource.camera);
+                      }
+                    },
                     icon: const Icon(Icons.camera_alt_rounded),
                     label: const Text('Take a photo'),
                   ),

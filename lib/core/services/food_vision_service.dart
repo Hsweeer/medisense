@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as image_lib;
+import 'package:image_picker/image_picker.dart';
 
 import '../../data/models/food_models.dart';
 
@@ -50,13 +51,23 @@ class FoodVisionService {
   static const _endpoint = 'https://api.groq.com/openai/v1/chat/completions';
   static const _fallbackModel = 'qwen/qwen3.6-27b';
 
-  String get _model =>
-      dotenv.env['GROQ_VISION_MODEL']?.trim().isNotEmpty == true
-      ? dotenv.env['GROQ_VISION_MODEL']!.trim()
-      : _fallbackModel;
+  String get _model {
+    final configured = dotenv.env['GROQ_VISION_MODEL']?.trim() ?? '';
+    return configured == 'qwen/qwen3.6-27b' || configured == 'qwen/qwen3.8-27b'
+        ? configured
+        : _fallbackModel;
+  }
 
   Future<FoodIdentification> identify(File photo) async {
-    final image = await _prepareImage(photo);
+    return identifyBytes(await photo.readAsBytes());
+  }
+
+  Future<FoodIdentification> identifyXFile(XFile photo) async {
+    return identifyBytes(await photo.readAsBytes());
+  }
+
+  Future<FoodIdentification> identifyBytes(List<int> bytes) async {
+    final image = _prepareImage(bytes);
     final content = await _request([
       {
         'type': 'text',
@@ -131,21 +142,14 @@ class FoodVisionService {
     );
   }
 
-  Future<_PreparedImage> _prepareImage(File photo) async {
-    if (!await photo.exists()) {
-      throw const FoodScanException(
-        FoodScanErrorType.invalidImage,
-        'The photo could not be found.',
-      );
-    }
-    final bytes = await photo.readAsBytes();
+  _PreparedImage _prepareImage(List<int> bytes) {
     if (bytes.isEmpty) {
       throw const FoodScanException(
         FoodScanErrorType.invalidImage,
         'The photo is empty.',
       );
     }
-    final decoded = image_lib.decodeImage(bytes);
+    final decoded = image_lib.decodeImage(Uint8List.fromList(bytes));
     if (decoded == null) {
       throw const FoodScanException(
         FoodScanErrorType.invalidImage,
@@ -156,7 +160,9 @@ class FoodVisionService {
         ? image_lib.copyResize(decoded, width: 1600)
         : decoded;
     return _PreparedImage(
-      base64: base64Encode(image_lib.encodeJpg(resized, quality: 85)),
+      base64: base64Encode(
+        Uint8List.fromList(image_lib.encodeJpg(resized, quality: 85)),
+      ),
       mimeType: 'image/jpeg',
     );
   }
@@ -179,6 +185,7 @@ class FoodVisionService {
             },
             body: jsonEncode({
               'model': _model,
+              'response_format': {'type': 'json_object'},
               'messages': [
                 {'role': 'user', 'content': content},
               ],
@@ -195,6 +202,13 @@ class FoodVisionService {
         throw const FoodScanException(
           FoodScanErrorType.rateLimited,
           'Food analysis is temporarily busy.',
+        );
+      }
+      if (response.statusCode == 404) {
+        debugPrint('[FoodVisionService] configured vision model was not found');
+        throw const FoodScanException(
+          FoodScanErrorType.api,
+          'Food analysis model is unavailable. Please restart the app and try again.',
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -252,8 +266,12 @@ class FoodVisionService {
 
   Map<String, dynamic> _parseObject(String text) {
     final clean = text
-        .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
-        .replaceFirst(RegExp(r'\s*```$'), '')
+        .replaceAll(
+          RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+          '',
+        )
+        .replaceAll(RegExp(r'```(?:json)?', caseSensitive: false), '')
+        .replaceAll('```', '')
         .trim();
     final start = clean.indexOf('{');
     final end = clean.lastIndexOf('}');

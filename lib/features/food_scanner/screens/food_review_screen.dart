@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../../core/services/food_insight_service.dart';
 import '../../../core/services/food_log_service.dart';
+import '../../../core/services/nutrition_history_preferences.dart';
 import '../../../data/models/food_models.dart';
 import '../../../data/models/models.dart';
 
@@ -13,12 +15,14 @@ class FoodReviewScreen extends StatefulWidget {
     required this.portionLabel,
     required this.nutrition,
     this.photo,
+    this.photoBytes,
   });
 
   final String foodName;
   final String portionLabel;
   final FoodNutrition nutrition;
   final File? photo;
+  final Uint8List? photoBytes;
 
   @override
   State<FoodReviewScreen> createState() => _FoodReviewScreenState();
@@ -68,15 +72,17 @@ class _FoodReviewScreenState extends State<FoodReviewScreen> {
   Future<void> _confirm() async {
     setState(() => _saving = true);
 
-    await FoodLogService.instance.save(
-      FoodLogEntry(
-        foodName: widget.foodName,
-        nutrition: _adjusted,
-        insightNote: _insight ?? '',
-        loggedAt: DateTime.now(),
-        photoUrl: null,
-      ),
-    );
+    if (await NutritionHistoryPreferences.instance.isEnabled()) {
+      await FoodLogService.instance.save(
+        FoodLogEntry(
+          foodName: widget.foodName,
+          nutrition: _adjusted,
+          insightNote: _insight ?? '',
+          loggedAt: DateTime.now(),
+          photoUrl: null,
+        ),
+      );
+    }
 
     if (!mounted) return;
     Navigator.pop(context);
@@ -90,7 +96,16 @@ class _FoodReviewScreenState extends State<FoodReviewScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (widget.photo != null)
+          if (widget.photoBytes != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                widget.photoBytes!,
+                height: 180,
+                fit: BoxFit.cover,
+              ),
+            )
+          else if (widget.photo != null)
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.file(widget.photo!, height: 180, fit: BoxFit.cover),
