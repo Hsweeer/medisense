@@ -1,1 +1,29 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"medisense-7144b","appId":"1:248593836318:android:f48e585f0bb8a21cde810f","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"medisense-7144b","configurations":{"android":"1:248593836318:android:f48e585f0bb8a21cde810f","ios":"1:248593836318:ios:a830e0145e899b4dde810f","web":"1:248593836318:web:df59f57e8de7992ade810f"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "medisense-7144b",
+          "appId": "1:248593836318:android:f48e585f0bb8a21cde810f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "medisense-7144b",
+          "configurations": {
+            "android": "1:248593836318:android:f48e585f0bb8a21cde810f",
+            "ios": "1:248593836318:ios:a830e0145e899b4dde810f",
+            "web": "1:248593836318:web:df59f57e8de7992ade810f"
+          }
+        }
+      }
+    }
+  },
+  "functions": {
+    "source": "functions"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

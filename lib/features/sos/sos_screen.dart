@@ -14,12 +14,63 @@ import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../profile/emergency_contacts_screen.dart';
 
-/// Resolves the dial number using the user's real, detected country
-/// (from [LocationProvider.countryCode]) instead of an unset default.
-String _resolveEmergencyDialNumber(BuildContext context) {
+/// Resolves the police/ambulance/fire dial numbers using the user's real,
+/// detected country (from [LocationProvider.countryCode]) instead of an
+/// unset default.
+EmergencyNumbers _resolveEmergencyNumbers(BuildContext context) {
   final countryCode = context.read<LocationProvider>().countryCode;
   return EmergencyNumberService.instance
-      .emergencyDialNumber(countryCode: countryCode);
+      .emergencyNumbers(countryCode: countryCode);
+}
+
+void _callNumber(String number) {
+  launchUrl(Uri.parse('tel:$number'));
+}
+
+/// Row of three compact call buttons — Police / Ambulance / Fire — each
+/// dialling its own service-specific number for the user's country.
+class _EmergencyServiceButtons extends StatelessWidget {
+  const _EmergencyServiceButtons();
+
+  @override
+  Widget build(BuildContext context) {
+    final numbers = _resolveEmergencyNumbers(context);
+    return IntrinsicHeight(
+      child: Row(
+        children: [
+          Expanded(
+            child: PrimaryButton(
+              label: 'POLICE',
+              subLabel: numbers.police,
+              icon: Icons.local_police_rounded,
+              color: const Color(0xFF2A6DF4),
+              onPressed: () => _callNumber(numbers.police),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: PrimaryButton(
+              label: 'AMBULANCE',
+              subLabel: numbers.ambulance,
+              icon: Icons.local_hospital_rounded,
+              color: AppColors.danger,
+              onPressed: () => _callNumber(numbers.ambulance),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: PrimaryButton(
+              label: 'FIRE',
+              subLabel: numbers.fire,
+              icon: Icons.local_fire_department_rounded,
+              color: const Color(0xFFE07C1F),
+              onPressed: () => _callNumber(numbers.fire),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class SosScreen extends StatelessWidget {
@@ -69,18 +120,7 @@ class _SosErrorView extends StatelessWidget {
                 style: TextStyle(fontSize: 14.sp, color: AppColors.muted, height: 1.5),
               ),
               SizedBox(height: 24.h),
-              SizedBox(
-                width: double.infinity,
-                child: PrimaryButton(
-                  label: 'CALL EMERGENCY SERVICES',
-                  icon: Icons.call_rounded,
-                  color: AppColors.danger,
-                  onPressed: () {
-                    final dialNumber = _resolveEmergencyDialNumber(context);
-                    launchUrl(Uri.parse('tel:$dialNumber'));
-                  },
-                ),
-              ),
+              const _EmergencyServiceButtons(),
             ],
           ),
         ),
@@ -353,33 +393,17 @@ class _ActiveSosView extends StatelessWidget {
           ),
           SizedBox(height: 14.h),
 
-          Row(
-            children: [
-              Expanded(
-                child: PrimaryButton(
-                  label: 'CALL EMERGENCY',
-                  icon: Icons.call_rounded,
-                  color: AppColors.ink,
-                  onPressed: () {
-                    final dialNumber = _resolveEmergencyDialNumber(context);
-                    launchUrl(Uri.parse('tel:$dialNumber'));
-                  },
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: PrimaryButton(
-                  label: 'OPEN MAPS',
-                  icon: Icons.directions_rounded,
-                  color: AppColors.danger,
-                  onPressed: () {
-                    if (sos.selectedHospital != null) {
-                      _openDirections(sos.selectedHospital!);
-                    }
-                  },
-                ),
-              ),
-            ],
+          const _EmergencyServiceButtons(),
+          SizedBox(height: 10.h),
+          PrimaryButton(
+            label: 'OPEN MAPS',
+            icon: Icons.directions_rounded,
+            color: AppColors.ink,
+            onPressed: () {
+              if (sos.selectedHospital != null) {
+                _openDirections(sos.selectedHospital!);
+              }
+            },
           ),
 
           SizedBox(height: 20.h),
