@@ -26,6 +26,7 @@ dependencies:
   firebase_core: ^4.13.0
   firebase_auth: ^6.5.7
   cloud_firestore: ^6.8.0
+  cloud_functions: ^6.3.6
   image_picker: ^1.1.2
   firebase_storage: ^13.4.6
   http: ^1.2.2
@@ -50,6 +51,7 @@ dependencies:
   flutter_timezone: ^4.1.1
   flutter_screenutil: ^5.9.3
   flutter_dotenv: ^6.0.1
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:

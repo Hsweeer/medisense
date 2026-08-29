@@ -11,7 +11,9 @@ import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/profile_provider.dart';
 
-/// Manage the people alerted by Emergency SOS. 911 is always included.
+/// Manage the people alerted by Emergency SOS. The user's local emergency
+/// services number (country-aware, see EmergencyNumberService) is dialed
+/// only when the user explicitly taps "Call Emergency" — never automatically.
 class EmergencyContactsScreen extends StatelessWidget {
   const EmergencyContactsScreen({super.key});
 
@@ -37,8 +39,9 @@ class EmergencyContactsScreen extends StatelessWidget {
                 SizedBox(width: 12.w),
                 Expanded(
                   child: Text(
-                    '911 is always dialed first in an SOS. The contacts below '
-                    'also get a text with your live location and Medical ID.',
+                    'During an SOS you can call emergency services with one tap. '
+                        'The contacts below also get a text with your live location '
+                        'and Medical ID.',
                     style: TextStyle(
                       fontSize: 12.5.sp,
                       height: 1.4,
@@ -145,11 +148,11 @@ class EmergencyContactsScreen extends StatelessWidget {
               .where((contact) => contact.phones?.isNotEmpty == true)
               .map(
                 (contact) => ListTile(
-                  title: Text(contact.displayName ?? 'Unknown'),
-                  subtitle: Text(contact.phones!.first.value ?? ''),
-                  onTap: () => Navigator.pop(context, contact),
-                ),
-              )
+              title: Text(contact.displayName ?? 'Unknown'),
+              subtitle: Text(contact.phones!.first.value ?? ''),
+              onTap: () => Navigator.pop(context, contact),
+            ),
+          )
               .toList(),
         ),
       );

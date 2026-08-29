@@ -1,20 +1,78 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/services/emergency_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
-import '../../data/mock/mock_data.dart';
+import '../../data/models/models.dart';
+import '../../providers/location_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
 import '../profile/emergency_contacts_screen.dart';
-import 'emergency_ride_screen.dart';
 
-/// Emergency SOS — 5-second cancel countdown, then the Khidma-style
-/// emergency screen: call buttons that work without data, nearest ER
-/// selection, and a direct emergency-ride booking. ≤3 taps to a ride.
+/// Resolves the police/ambulance/fire dial numbers using the user's real,
+/// detected country (from [LocationProvider.countryCode]) instead of an
+/// unset default.
+EmergencyNumbers _resolveEmergencyNumbers(BuildContext context) {
+  final countryCode = context.read<LocationProvider>().countryCode;
+  return EmergencyNumberService.instance
+      .emergencyNumbers(countryCode: countryCode);
+}
+
+void _callNumber(String number) {
+  launchUrl(Uri.parse('tel:$number'));
+}
+
+/// Row of three compact call buttons — Police / Ambulance / Fire — each
+/// dialling its own service-specific number for the user's country.
+class _EmergencyServiceButtons extends StatelessWidget {
+  const _EmergencyServiceButtons();
+
+  @override
+  Widget build(BuildContext context) {
+    final numbers = _resolveEmergencyNumbers(context);
+    return IntrinsicHeight(
+      child: Row(
+        children: [
+          Expanded(
+            child: PrimaryButton(
+              label: 'POLICE',
+              subLabel: numbers.police,
+              icon: Icons.local_police_rounded,
+              color: const Color(0xFF2A6DF4),
+              onPressed: () => _callNumber(numbers.police),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: PrimaryButton(
+              label: 'AMBULANCE',
+              subLabel: numbers.ambulance,
+              icon: Icons.local_hospital_rounded,
+              color: AppColors.danger,
+              onPressed: () => _callNumber(numbers.ambulance),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: PrimaryButton(
+              label: 'FIRE',
+              subLabel: numbers.fire,
+              icon: Icons.local_fire_department_rounded,
+              color: const Color(0xFFE07C1F),
+              onPressed: () => _callNumber(numbers.fire),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class SosScreen extends StatelessWidget {
   const SosScreen({super.key});
 
@@ -22,11 +80,100 @@ class SosScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final sos = context.watch<SosProvider>();
     if (sos.phase == SosPhase.countdown) return const _CountdownView();
+    if (sos.phase == SosPhase.cancelling) return const _SosCancellingView();
+    if (sos.phase == SosPhase.failed) return const _SosErrorView();
+    if (sos.phase == SosPhase.cancelled || sos.phase == SosPhase.resolved) {
+      return const _SosEndedView();
+    }
     return const _ActiveSosView();
   }
 }
 
-// ── Phase 1 · dark countdown ────────────────────────────────────────────
+class _SosErrorView extends StatelessWidget {
+  const _SosErrorView();
+
+  @override
+  Widget build(BuildContext context) {
+    final sos = context.watch<SosProvider>();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Emergency SOS'),
+        backgroundColor: AppColors.dangerSoft,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(24.r),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.location_off_rounded, size: 64.sp, color: AppColors.danger),
+              SizedBox(height: 16.h),
+              Text(
+                'Unable to determine current location',
+                style: TextStyle(fontSize: 22.sp, fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 12.h),
+              Text(
+                sos.errorMessage ?? 'Location access is required to create a real SOS session.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14.sp, color: AppColors.muted, height: 1.5),
+              ),
+              SizedBox(height: 24.h),
+              const _EmergencyServiceButtons(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SosCancellingView extends StatelessWidget {
+  const _SosCancellingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Emergency SOS'), automaticallyImplyLeading: false),
+      body: const SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: AppColors.danger),
+              SizedBox(height: 16),
+              Text('Cancelling SOS…', style: TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SosEndedView extends StatelessWidget {
+  const _SosEndedView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Emergency SOS')),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24.r),
+            child: Text(
+              'SOS session closed.',
+              style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _CountdownView extends StatelessWidget {
   const _CountdownView();
@@ -44,9 +191,9 @@ class _CountdownView extends StatelessWidget {
             fontSize: 18.sp, fontWeight: FontWeight.w700, color: Colors.white),
         leading: IconButton(
           icon: Icon(Icons.close_rounded, size: 24.sp),
-          onPressed: () {
-            context.read<SosProvider>().cancel();
-            Navigator.of(context).pop();
+          onPressed: () async {
+            await context.read<SosProvider>().cancel();
+            if (context.mounted) Navigator.of(context).pop();
           },
         ),
       ),
@@ -83,7 +230,7 @@ class _CountdownView extends StatelessWidget {
               ),
               SizedBox(height: 26.h),
               Text(
-                  '911 + your emergency contacts will be alerted\nwith your live location',
+                  'Your emergency contacts will be alerted\nwith your live location',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 14.sp,
@@ -93,9 +240,9 @@ class _CountdownView extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: () {
-                    context.read<SosProvider>().cancel();
-                    Navigator.of(context).pop();
+                  onPressed: () async {
+                    await context.read<SosProvider>().cancel();
+                    if (context.mounted) Navigator.of(context).pop();
                   },
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: Colors.white, width: 1.4.w),
@@ -118,8 +265,6 @@ class _CountdownView extends StatelessWidget {
   }
 }
 
-// ── Phase 2 · active SOS (old Khidma layout) ────────────────────────────
-
 class _ActiveSosView extends StatelessWidget {
   const _ActiveSosView();
 
@@ -129,20 +274,92 @@ class _ActiveSosView extends StatelessWidget {
     final profile = context.watch<ProfileProvider>();
     final p = profile.profile;
     final contactNames =
-        profile.contacts.map((c) => c.name.split(' ').first).join(' · ');
+    profile.contacts.map((c) => c.name.split(' ').first).join(' · ');
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Emergency'),
         backgroundColor: AppColors.dangerSoft,
+        automaticallyImplyLeading: false,
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await context.read<SosProvider>().resolve();
+              if (context.mounted) {
+                Navigator.of(context).popUntil((r) => r.isFirst);
+              }
+            },
+            child: const Text('RESOLVE', style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
       backgroundColor: const Color(0xFFFFF7F6),
       body: ListView(
         padding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 24.h),
         children: [
+          // Live Map Tracker
+          if (sos.userLocation != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20.r),
+              child: Container(
+                height: 200.h,
+                margin: EdgeInsets.only(bottom: 16.h),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.danger.withValues(alpha: 0.1)),
+                ),
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: sos.userLocation!,
+                    initialZoom: 14.0,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.medisense.medisense_app',
+                    ),
+                    if (sos.currentRoutePoints.isNotEmpty)
+                      PolylineLayer(polylines: [
+                        Polyline(
+                          points: sos.currentRoutePoints,
+                          strokeWidth: 4.w,
+                          color: AppColors.danger,
+                        ),
+                      ]),
+                    MarkerLayer(markers: [
+                      Marker(
+                        point: sos.userLocation!,
+                        width: 30.r, height: 30.r,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A6DF4),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3.w),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+                          ),
+                        ),
+                      ),
+                      if (sos.selectedHospital != null)
+                        Marker(
+                          point: sos.selectedHospital!.position,
+                          width: 40.r, height: 40.r,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.danger,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2.w),
+                            ),
+                            child: const Icon(Icons.local_hospital_rounded, color: Colors.white, size: 20),
+                          ),
+                        ),
+                    ]),
+                  ],
+                ),
+              ),
+            ),
+
           Container(
             padding:
-                EdgeInsets.symmetric(horizontal: 18.w, vertical: 15.h),
+            EdgeInsets.symmetric(horizontal: 18.w, vertical: 15.h),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                   colors: [AppColors.danger, Color(0xFFE0554B)]),
@@ -150,131 +367,142 @@ class _ActiveSosView extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.gps_fixed_rounded, color: Colors.white, size: 24.sp),
+                Icon(sos.userLocation != null ? Icons.gps_fixed_rounded : Icons.gps_off_rounded, color: Colors.white, size: 24.sp),
                 SizedBox(width: 12.w),
                 Expanded(
-                  child: Text('SOS ACTIVE · location locked ✔',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15.sp,
-                          letterSpacing: .3)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        sos.userLocation != null ? 'SOS ACTIVE · Tracking on' : 'SOS ACTIVE · Locating...',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15.sp),
+                      ),
+                      if (sos.selectedHospital != null && sos.realEtaMinutes > 0)
+                        Text(
+                          'ETA to ER: ${sos.realEtaMinutes.toStringAsFixed(0)} min',
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12.sp, fontWeight: FontWeight.w600),
+                        ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
           SizedBox(height: 14.h),
-          // Native-dial buttons — always on top, work with zero data.
-          PrimaryButton(
-            label: 'CALL 911',
-            icon: Icons.call_rounded,
-            color: AppColors.ink,
-            subLabel: 'works without data',
-            onPressed: () => launchUrl(Uri.parse('tel:911')),
-          ),
+
+          const _EmergencyServiceButtons(),
           SizedBox(height: 10.h),
-          OutlinedButton(
-            onPressed: () => launchUrl(Uri.parse('tel:18002221222')),
-            style: OutlinedButton.styleFrom(
-              padding: EdgeInsets.symmetric(vertical: 15.h),
-              side: BorderSide(color: AppColors.ink, width: 1.3.w),
-              foregroundColor: AppColors.ink,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14.r)),
-            ),
-            child: Text('Poison Control · 1-800-222-1222',
-                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)),
+          PrimaryButton(
+            label: 'OPEN MAPS',
+            icon: Icons.directions_rounded,
+            color: AppColors.ink,
+            onPressed: () {
+              if (sos.selectedHospital != null) {
+                _openDirections(sos.selectedHospital!);
+              }
+            },
           ),
+
           SizedBox(height: 20.h),
-          Text('NEAREST HOSPITALS · ER OPEN',
+          Text('NEAREST HOSPITALS',
               style: TextStyle(
                   fontSize: 12.sp,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1,
                   color: AppColors.muted)),
           SizedBox(height: 10.h),
-          for (final h in MockData.hospitals)
-            Padding(
-              padding: EdgeInsets.only(bottom: 9.h),
-              child: MCard(
-                onTap: () => context.read<SosProvider>().selectHospital(h),
-                padding: EdgeInsets.symmetric(
-                    horizontal: 14.w, vertical: 12.h),
-                border: sos.selectedHospital == h
-                    ? Border.all(color: AppColors.danger, width: 1.5.w)
-                    : null,
-                child: Row(
-                  children: [
-                    Icon(
-                      sos.selectedHospital == h
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_off_rounded,
-                      color: sos.selectedHospital == h
-                          ? AppColors.danger
-                          : AppColors.line,
-                      size: 24.sp,
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(h.name,
-                              style: TextStyle(
-                                  fontSize: 14.5.sp,
-                                  fontWeight: FontWeight.w700)),
-                          Text(
-                              '${h.distanceMiles} mi · ETA ${h.etaMinutes} min',
-                              style: TextStyle(
-                                  fontSize: 12.sp, color: AppColors.muted)),
-                        ],
+          if (sos.isLoadingHospitals)
+            const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+          else if (sos.nearbyHospitals.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('No hospitals found nearby.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted)),
+            )
+          else
+            for (final h in sos.nearbyHospitals)
+              Padding(
+                padding: EdgeInsets.only(bottom: 9.h),
+                child: MCard(
+                  onTap: () => context.read<SosProvider>().selectHospital(h),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: 14.w, vertical: 12.h),
+                  border: sos.selectedHospital == h
+                      ? Border.all(color: AppColors.danger, width: 1.5.w)
+                      : null,
+                  child: Row(
+                    children: [
+                      Icon(
+                        sos.selectedHospital == h
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_off_rounded,
+                        color: sos.selectedHospital == h
+                            ? AppColors.danger
+                            : AppColors.line,
+                        size: 24.sp,
                       ),
-                    ),
-                    Icon(Icons.navigation_rounded,
-                        size: 18.sp, color: AppColors.muted),
-                  ],
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(h.name,
+                                style: TextStyle(
+                                    fontSize: 14.5.sp,
+                                    fontWeight: FontWeight.w700)),
+                            Text(
+                                '${h.distanceMiles.toStringAsFixed(1)} mi · ${h.openLabel}',
+                                style: TextStyle(
+                                    fontSize: 12.sp, color: AppColors.muted)),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.directions_rounded, color: AppColors.primary),
+                        onPressed: () => _openDirections(h),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          SizedBox(height: 10.h),
-          PrimaryButton(
-            label: 'BOOK EMERGENCY RIDE',
-            icon: Icons.emergency_share_rounded,
-            color: AppColors.danger,
-            subLabel:
-                'to ${sos.selectedHospital.name} · fare settles after the trip',
-            onPressed: () {
-              context.read<SosProvider>().bookRide();
-              Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const EmergencyRideScreen()));
-            },
-          ),
+
           SizedBox(height: 14.h),
           MCard(
             padding:
-                EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
-            child: Material(
-              color: Colors.transparent,
-              child: SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: sos.notifyContacts,
-                activeThumbColor: AppColors.danger,
-                onChanged: (v) =>
-                    context.read<SosProvider>().toggleNotifyContacts(v),
-                title: Text('Auto-text emergency contacts',
-                    style: TextStyle(
-                        fontSize: 14.sp, fontWeight: FontWeight.w600)),
-                subtitle: Text(
-                    contactNames.isEmpty
-                        ? 'No contacts yet — add one below'
-                        : '$contactNames — live tracking link',
-                    style: TextStyle(
-                        fontSize: 12.sp, color: AppColors.muted)),
-              ),
+            EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            child: Row(
+              children: [
+                Icon(
+                  sos.contactsNotified ? Icons.check_circle_rounded : Icons.sync_rounded,
+                  color: sos.contactsNotified ? AppColors.success : AppColors.muted,
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        sos.contactNotificationStatus == 'failed'
+                            ? 'Contact alerts failed'
+                            : sos.contactNotificationStatus == 'pending'
+                            ? 'Contact alerts pending'
+                            : 'Contacts notified',
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        contactNames.isEmpty ? 'No emergency contacts saved' : contactNames,
+                        style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          SizedBox(height: 10.h),
-          // Medical ID — the part responders see.
+
+          SizedBox(height: 14.h),
           MCard(
             border: Border.all(color: AppColors.danger.withValues(alpha: .3)),
             child: Column(
@@ -285,15 +513,15 @@ class _ActiveSosView extends StatelessWidget {
                     Icon(Icons.medical_information_rounded,
                         color: AppColors.danger, size: 20.sp),
                     SizedBox(width: 8.w),
-                    Text('Medical ID — shared with responders',
+                    Text('Medical ID',
                         style: GoogleFonts.sora(
                             fontSize: 13.5.sp, fontWeight: FontWeight.w700)),
                   ],
                 ),
                 SizedBox(height: 8.h),
                 Text(
-                  '${p.bloodType} · allergies: ${p.allergies.join(", ")} · '
-                  '${p.conditions.join(", ")} · meds: ${p.medications.join(", ")}',
+                  '${p.bloodType} · allergies: ${p.allergies.isEmpty ? "None" : p.allergies.join(", ")} · '
+                      '${p.conditions.isEmpty ? "No conditions" : p.conditions.join(", ")}',
                   style: TextStyle(
                       fontSize: 12.5.sp,
                       height: 1.5,
@@ -302,7 +530,7 @@ class _ActiveSosView extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(height: 10.h),
+          SizedBox(height: 20.h),
           Center(
             child: TextButton.icon(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
@@ -315,15 +543,17 @@ class _ActiveSosView extends StatelessWidget {
                       color: AppColors.muted, fontWeight: FontWeight.w600)),
             ),
           ),
-          Center(
-            child: Text(
-                'If no driver accepts within 90 seconds, a full-screen '
-                '911 call prompt opens automatically.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.sp, color: AppColors.muted)),
-          ),
         ],
       ),
     );
+  }
+
+  Future<void> _openDirections(Facility f) async {
+    final dest = '${f.position.latitude},${f.position.longitude}';
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$dest'
+          '&travelmode=driving',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }

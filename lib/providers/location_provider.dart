@@ -5,7 +5,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../core/services/location_service.dart';
-import '../data/mock/mock_data.dart';
 
 export '../core/services/location_service.dart' show LocationAccess;
 
@@ -27,6 +26,7 @@ class LocationProvider extends ChangeNotifier {
   LocationLoadState _state = LocationLoadState.initial;
   LatLng? _position;
   String? _label;
+  String? _countryCode;
   bool _requestInFlight = false;
   StreamSubscription<Position>? _posSub;
 
@@ -35,13 +35,18 @@ class LocationProvider extends ChangeNotifier {
   LatLng? get position => _position;
   String? get label => _label;
 
+  /// ISO country code (e.g. "US", "PK") derived from the user's real GPS
+  /// position via reverse geocoding. Null until resolved or if it's
+  /// unavailable — callers (e.g. emergency-number lookup) must handle that
+  /// by falling back to a sane default rather than assuming a country.
+  String? get countryCode => _countryCode;
+
   bool get isGranted => _access == LocationAccess.granted;
   bool get isLoading => _state == LocationLoadState.loading;
 
-  /// Real position when we have one; otherwise the app's seed location so
-  /// map widgets never crash on a null center. Screens should still check
-  /// [isGranted] before presenting distances as accurate.
-  LatLng get positionOrFallback => _position ?? MockData.userLocation;
+  /// Real position when we have one. Screens must handle null by showing an
+  /// explicit error state instead of silently falling back to any fake GPS.
+  LatLng? get positionOrFallback => _position;
 
   /// What to show next to a pin/greeting while we figure things out.
   String get displayLabel {
@@ -134,10 +139,11 @@ class LocationProvider extends ChangeNotifier {
   Future<void> _loadLabel() async {
     final pos = _position;
     if (pos == null) return;
-    final label =
-    await LocationService.instance.labelFor(pos.latitude, pos.longitude);
-    if (label == null) return;
-    _label = label;
+    final info =
+    await LocationService.instance.placeInfoFor(pos.latitude, pos.longitude);
+    if (info.label == null && info.countryCode == null) return;
+    _label = info.label ?? _label;
+    _countryCode = info.countryCode ?? _countryCode;
     notifyListeners();
   }
 

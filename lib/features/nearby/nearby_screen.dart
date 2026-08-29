@@ -132,7 +132,28 @@ class _NearbyScreenState extends State<NearbyScreen> {
   @override
   Widget build(BuildContext context) {
     final location = context.watch<LocationProvider>();
-    final userPosition = location.positionOrFallback;
+    final userPosition = location.position;
+
+    if (userPosition == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Nearby care'),
+          automaticallyImplyLeading: widget.showBack,
+        ),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Location unavailable. Enable location access to search nearby hospitals and pharmacies.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, color: AppColors.muted),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     if (!_didInitialFetch) {
       _didInitialFetch = true;

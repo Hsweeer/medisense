@@ -60,20 +60,36 @@ class LocationService {
   }
 
   Future<String?> labelFor(double latitude, double longitude) async {
+    final info = await placeInfoFor(latitude, longitude);
+    return info.label;
+  }
+
+  /// Reverse-geocodes once and returns both a human-readable label and the
+  /// ISO country code (e.g. "US", "PK") in a single lookup, so callers that
+  /// need the country (like country-aware emergency numbers) don't have to
+  /// make a second geocoding request.
+  Future<({String? label, String? countryCode})> placeInfoFor(
+      double latitude, double longitude) async {
     try {
       final places = await placemarkFromCoordinates(latitude, longitude);
-      if (places.isEmpty) return null;
+      if (places.isEmpty) return (label: null, countryCode: null);
       final place = places.first;
       final city = place.locality?.trim().isNotEmpty == true
           ? place.locality!.trim()
           : place.subAdministrativeArea?.trim();
       final region = place.administrativeArea?.trim();
-      return [city, region]
+      final label = [city, region]
           .whereType<String>()
           .where((part) => part.isNotEmpty)
           .join(', ');
+      return (
+      label: label.isEmpty ? null : label,
+      countryCode: place.isoCountryCode?.trim().isNotEmpty == true
+          ? place.isoCountryCode!.trim()
+          : null,
+      );
     } catch (_) {
-      return null;
+      return (label: null, countryCode: null);
     }
   }
 
