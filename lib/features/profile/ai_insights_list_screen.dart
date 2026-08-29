@@ -56,7 +56,7 @@ class AiInsightsListScreen extends StatelessWidget {
           : ListView.separated(
               padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 32.h),
               itemCount: insights.length,
-              separatorBuilder: (_, __) => SizedBox(height: 12.h),
+              separatorBuilder: (_, _) => SizedBox(height: 12.h),
               itemBuilder: (context, i) {
                 final insight = insights[i];
                 return _FullInsightCard(
