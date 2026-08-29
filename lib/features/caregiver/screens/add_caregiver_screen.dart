@@ -325,7 +325,7 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                 child: ListView.separated(
                   padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
                   itemCount: _searchResults.length,
-                  separatorBuilder: (_, __) => SizedBox(height: 10.h),
+                  separatorBuilder: (_, _) => SizedBox(height: 10.h),
                   itemBuilder: (_, i) {
                     final user = _searchResults[i];
                     return Container(
