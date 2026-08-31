@@ -38,6 +38,26 @@ class ChatProvider extends ChangeNotifier {
   bool typing = false;
   bool learnFromData = true;
 
+  /// Safety net for [systemPrompt]'s "PLAIN TEXT ONLY" rule — the model
+  /// mostly follows it, but occasionally still slips in markdown. The chat
+  /// bubble renders raw text (no markdown parser), so leftover ** / # / -
+  /// symbols would show up literally instead of as formatting. Strips the
+  /// common cases while leaving normal punctuation (like "9-5" or "it's a
+  /// well-known fact") untouched.
+  static String _stripMarkdown(String text) {
+    var out = text;
+    // **bold** / __bold__ -> bold
+    out = out.replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1)!);
+    out = out.replaceAllMapped(RegExp(r'__(.+?)__'), (m) => m.group(1)!);
+    // *italic* / _italic_ (only when it wraps a word, not mid-word like "well_known")
+    out = out.replaceAllMapped(RegExp(r'(?<!\w)\*(\S.*?\S|\S)\*(?!\w)'), (m) => m.group(1)!);
+    // Markdown headings: "## Title" -> "Title"
+    out = out.replaceAll(RegExp(r'^\s{0,3}#{1,6}\s+', multiLine: true), '');
+    // Bullet markers at the start of a line: "- item" / "* item" -> "• item"
+    out = out.replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '• ');
+    return out;
+  }
+
   // Speaks MedAI's replies aloud on-device (free, offline TTS) so voice
   // input ("hold mic to talk") can be a real two-way conversation instead
   // of talk-in / read-out. Off by default — a text chat that suddenly
@@ -381,7 +401,7 @@ class ChatProvider extends ChangeNotifier {
       final prompt = (userText.trim().isNotEmpty)
           ? userText.trim()
           : 'Describe what is in this image and tell me what it likely is, including any important details.';
-      final answer = await GeminiService.describeImage(imagePath, prompt: prompt);
+      final answer = _stripMarkdown(await GeminiService.describeImage(imagePath, prompt: prompt));
       typing = false;
       await _reply(ChatMessage(
         role: ChatRole.ai,
@@ -416,7 +436,7 @@ class ChatProvider extends ChangeNotifier {
           ? userText.trim()
           : 'Summarize what this document contains and flag anything that looks important.';
 
-      final answer = await GeminiService.describeDocument(filePath, prompt: prompt);
+      final answer = _stripMarkdown(await GeminiService.describeDocument(filePath, prompt: prompt));
       typing = false;
       await _reply(ChatMessage(role: ChatRole.ai, text: answer, personalized: learnFromData));
     } on UnsupportedDocumentException catch (e) {
@@ -452,10 +472,19 @@ class ChatProvider extends ChangeNotifier {
           "Answer like a thoughtful medical AI: clear, grounded, careful, and honest. "
           "Never invent facts, never guess a diagnosis, and never present a hunch as certainty. "
           "If the user sends a random photo, object, document, or anything not clearly medical, respond as a helpful general assistant: describe what you can observe, explain the likely purpose or meaning, ask clarifying questions if needed, and avoid overclaiming. "
-          "For medical questions, separate facts from uncertainty and encourage professional care when appropriate. "
+          "For medical questions, weave facts and uncertainty naturally into normal sentences and encourage professional care when appropriate. "
           "For all questions, give concise but useful answers, prioritize what is safe and realistic, and say what is uncertain instead of pretending certainty. "
           "Be practical, confident only when evidence supports it, and never be overly verbose. "
-          "Use a natural, professional tone like a premium health companion app, not a robotic script.";
+          "Use a natural, professional tone like a premium health companion app, not a robotic script.\n\n"
+          "REPLY STYLE: Write like a normal chat AI (e.g. ChatGPT) talking to a person — flowing sentences and short "
+          "paragraphs, not a clinical report. Do NOT default to headings, bold labels, or bullet lists for a simple "
+          "question — only use a list when the answer is naturally a set of steps or items the user needs to scan "
+          "(e.g. 'what foods should I avoid'). Match reply length to the question: a quick question gets 2-4 sentences, "
+          "not a multi-section writeup.\n"
+          "PLAIN TEXT ONLY: This chat displays raw text with no markdown rendering. Never use markdown syntax — no "
+          "**asterisks** for bold, no _underscores_ for italics, no '#' headings, and no '-' or '*' bullet markers. "
+          "If you list a few items, write them as a normal sentence separated by commas, or on separate lines using "
+          "plain numbers like '1.' if it truly needs to be a list.";
 
       if (learnFromData && profileProvider != null) {
         final p = profileProvider!.profile;
@@ -729,7 +758,7 @@ class ChatProvider extends ChangeNotifier {
           return;
         }
 
-        String responseText = result.content ?? '';
+        String responseText = _stripMarkdown(result.content ?? '');
         if (addedReminders.isNotEmpty && responseText.isEmpty) {
           responseText = addedReminders.length == 1
               ? '${addedReminders.first.title} reminder set for ${addedReminders.first.time}.'
@@ -743,7 +772,7 @@ class ChatProvider extends ChangeNotifier {
         // said instead of a generic filler line every single message.
         if (responseText.isEmpty && addedReminders.isEmpty && clarifyQuestion == null) {
           try {
-            responseText = await GroqService.chat(systemPrompt: systemPrompt, history: chatHistory);
+            responseText = _stripMarkdown(await GroqService.chat(systemPrompt: systemPrompt, history: chatHistory));
           } catch (_) {
             // fall through to the generic line below if this retry also fails
           }
@@ -763,7 +792,7 @@ class ChatProvider extends ChangeNotifier {
           await _reply(ChatMessage(role: ChatRole.ai, text: responseText, personalized: learnFromData));
         }
       } else {
-        final finalText = result.content ?? '';
+        final finalText = _stripMarkdown(result.content ?? '');
         if (streamIndex != null) {
           // Content already streamed in live — just drop the streaming
           // indicator and persist the final version.
@@ -818,7 +847,7 @@ class ChatProvider extends ChangeNotifier {
         result = event.result!;
         break;
       }
-      final text = event.textSoFar ?? '';
+      final text = _stripMarkdown(event.textSoFar ?? '');
       if (text.isEmpty) continue;
       typing = false; // first tokens arrived — swap the "typing…" dots for live text
       if (streamIndex == null) {

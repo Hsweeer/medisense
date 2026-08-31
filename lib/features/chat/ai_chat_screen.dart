@@ -441,7 +441,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
       if (currentCount != _lastMessageCount) {
         _lastMessageCount = currentCount;
-        if (_userIsNearBottom) {
+        // Always snap to bottom for the user's own new message (whether typed,
+        // a quick-reply/suggestion chip tap, or a voice note) — sending a
+        // message is a clear signal they want to see it and the reply that
+        // follows, regardless of where they had scrolled to. Otherwise (an AI
+        // reply arriving while they're reading older messages), only follow
+        // along if they were already near the bottom.
+        final isOwnMessage = chat.messages.last.role == ChatRole.user;
+        if (isOwnMessage) _userIsNearBottom = true;
+        if (isOwnMessage || _userIsNearBottom) {
           _scroll.animateTo(
             maxScroll,
             duration: const Duration(milliseconds: 260),
