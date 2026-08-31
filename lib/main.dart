@@ -26,6 +26,7 @@ import 'providers/password_reset_provider.dart';
 import 'providers/profile_provider.dart';
 import 'providers/reminder_provider.dart';
 import 'providers/sos_provider.dart';
+import 'services/caregiver_alert_watcher.dart';
 import 'services/notification_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -76,6 +77,10 @@ class _MediSenseAppState extends State<MediSenseApp> {
         options: DefaultFirebaseOptions.currentPlatform,
       );
       await NotificationService.instance.initialize();
+      // Turns caregiver-request and SOS Firestore events into local
+      // notifications (see CaregiverAlertWatcher for what it covers).
+      // Starts/re-attaches itself per signed-in account.
+      CaregiverAlertWatcher.instance.start();
     } catch (e) {
       debugPrint('[Bootstrap] Critical init error: $e');
       Future.delayed(const Duration(seconds: 1), _bootstrap);

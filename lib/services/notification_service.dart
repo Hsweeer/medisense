@@ -59,6 +59,21 @@ class NotificationService {
     importance: Importance.max,
   );
 
+  /// Separate channel (so the user can mute/tune it independently of dose
+  /// reminders) for caregiver-relationship and SOS activity alerts — see
+  /// [logGenericAlert] / CaregiverAlertWatcher.
+  static const _alertsChannel = AndroidNotificationChannel(
+    'medisense_alerts',
+    'Caregiver & SOS Alerts',
+    description: 'Caregiver requests, responses, and SOS activity',
+    importance: Importance.max,
+  );
+
+  // Notification ids for _alertsChannel are handed out from a private
+  // range so they never collide with the deterministic reminder ids
+  // produced by _baseIdFor.
+  int _nextAlertId = 900000;
+
   // ── Initialization ───────────────────────────────────────────────────
 
   Future<void> initialize() async {
@@ -97,6 +112,7 @@ class NotificationService {
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.createNotificationChannel(_androidChannel);
+    await androidImpl?.createNotificationChannel(_alertsChannel);
     await androidImpl?.requestNotificationsPermission();
     await androidImpl?.requestExactAlarmsPermission();
 
@@ -448,7 +464,7 @@ class NotificationService {
 
   Future<void> snoozeReminder(Reminder reminder, {int minutes = 10}) async {
     final selectedSound = await AlarmSoundPrefs.instance.getSelected();
-    
+
     // 1. Android: schedule a real full-screen alarm 10 min from now
     if (defaultTargetPlatform == TargetPlatform.android) {
       await NativeAlarmBridge.instance.snoozeAlarm(
@@ -465,7 +481,7 @@ class NotificationService {
     final message = reminder.dose.trim().isEmpty
         ? 'Snoozed reminder for ${reminder.title}'
         : 'Snoozed reminder: ${reminder.title} · ${reminder.dose}';
-        
+
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
         _androidChannel.id,
@@ -567,6 +583,60 @@ class NotificationService {
     final period = d.hour >= 12 ? 'PM' : 'AM';
     final minute = d.minute.toString().padLeft(2, '0');
     return '$hour12:$minute $period';
+  }
+
+  // ── Generic alerts (caregiver requests / responses / SOS activity) ───
+  //
+  // Unlike scheduled medicine reminders, these are fired the moment a
+  // relevant Firestore change is observed (see CaregiverAlertWatcher) —
+  // there's nothing to schedule ahead of time. They go through the same
+  // "save to local JSON history" path as reminders so they show up in the
+  // Notifications screen consistently, and additionally show an immediate
+  // system notification via [_alertsChannel] so the user is alerted even
+  // if they aren't looking at the app right now.
+  Future<void> logGenericAlert({
+    required String title,
+    required String message,
+    bool urgent = false,
+  }) async {
+    debugPrint('[NotificationService] logGenericAlert title=$title urgent=$urgent');
+    final now = DateTime.now();
+    final item = NotificationItem(
+      id: now.microsecondsSinceEpoch.toString(),
+      title: title,
+      message: message,
+      date: formatDate(now),
+      time: formatTime(now),
+      createdAt: now,
+      isRead: false,
+    );
+    await NotificationStorageHelper.append(item);
+    onHistoryChanged?.call();
+
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _alertsChannel.id,
+        _alertsChannel.name,
+        channelDescription: _alertsChannel.description,
+        importance: Importance.max,
+        priority: urgent ? Priority.max : Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+        presentBadge: true,
+      ),
+    );
+
+    try {
+      await _plugin.show(_nextAlertId++, title, message, details);
+    } catch (e) {
+      // The JSON history write above already succeeded, so the alert is
+      // never silently lost even if showing the system banner fails
+      // (e.g. permission revoked mid-session).
+      debugPrint('[NotificationService] logGenericAlert: show() failed: $e');
+    }
   }
 
   // ── History CRUD (delegates to the local JSON storage helper) ────────
