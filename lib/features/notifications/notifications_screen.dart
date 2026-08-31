@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/notification_model.dart';
 import '../../providers/notification_provider.dart';
@@ -16,7 +17,8 @@ class NotificationsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final prov = context.watch<NotificationProvider>();
     debugPrint(
-        '[NotificationsScreen] build() — ${prov.notifications.length} notifications, isLoading=${prov.isLoading}');
+      '[NotificationsScreen] build() — ${prov.notifications.length} notifications, isLoading=${prov.isLoading}',
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -25,9 +27,13 @@ class NotificationsScreen extends StatelessWidget {
           if (prov.notifications.isNotEmpty)
             TextButton(
               onPressed: () => _confirmClearAll(context),
-              child: const Text('Clear all',
-                  style: TextStyle(
-                      color: AppColors.danger, fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Clear all',
+                style: TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
         ],
       ),
@@ -39,49 +45,35 @@ class NotificationsScreen extends StatelessWidget {
             : prov.notifications.isEmpty
             ? const _EmptyState()
             : ListView.builder(
-          padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
-          itemCount: prov.notifications.length,
-          itemBuilder: (context, i) {
-            final item = prov.notifications[i];
-            return Padding(
-              padding: EdgeInsets.only(bottom: 10.h),
-              child: _NotificationCard(item: item),
-            );
-          },
-        ),
+                padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
+                itemCount: prov.notifications.length,
+                itemBuilder: (context, i) {
+                  final item = prov.notifications[i];
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 10.h),
+                    child: _NotificationCard(item: item),
+                  );
+                },
+              ),
       ),
     );
   }
 
-  void _confirmClearAll(BuildContext context) {
-    showDialog(
+  void _confirmClearAll(BuildContext context) async {
+    final confirmed = await AppDialog.confirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Clear all notifications?'),
-        content: const Text(
-            'This removes your entire local notification history. This can\'t be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.muted)),
-          ),
-          TextButton(
-            onPressed: () {
-              context.read<NotificationProvider>().clearAll();
-              Navigator.of(ctx).pop();
-              showToast(context, 'Notification history cleared');
-            },
-            child: const Text('Clear all',
-                style: TextStyle(
-                    color: AppColors.danger, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
+      title: 'Clear all notifications?',
+      message:
+          'This removes your entire local notification history. This action cannot be undone.',
+      confirmText: 'Clear all',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
+
+    if (!confirmed || !context.mounted) return;
+
+    context.read<NotificationProvider>().clearAll();
+    showToast(context, 'Notification history cleared');
   }
 }
 
@@ -105,8 +97,11 @@ class _NotificationCard extends StatelessWidget {
           color: AppColors.dangerSoft,
           borderRadius: BorderRadius.circular(18.r),
         ),
-        child: Icon(Icons.delete_outline_rounded,
-            color: AppColors.danger, size: 24.sp),
+        child: Icon(
+          Icons.delete_outline_rounded,
+          color: AppColors.danger,
+          size: 24.sp,
+        ),
       ),
       onDismissed: (_) {
         prov.delete(item);
@@ -131,8 +126,11 @@ class _NotificationCard extends StatelessWidget {
                 color: item.isRead ? AppColors.paper : Colors.white,
                 borderRadius: BorderRadius.circular(13.r),
               ),
-              child: Icon(Icons.medication_rounded,
-                  color: AppColors.primary, size: 22.sp),
+              child: Icon(
+                Icons.medication_rounded,
+                color: AppColors.primary,
+                size: 22.sp,
+              ),
             ),
             SizedBox(width: 12.w),
             Expanded(
@@ -146,8 +144,9 @@ class _NotificationCard extends StatelessWidget {
                           item.title,
                           style: TextStyle(
                             fontSize: 14.5.sp,
-                            fontWeight:
-                            item.isRead ? FontWeight.w600 : FontWeight.w700,
+                            fontWeight: item.isRead
+                                ? FontWeight.w600
+                                : FontWeight.w700,
                             color: AppColors.ink,
                           ),
                         ),
@@ -168,27 +167,40 @@ class _NotificationCard extends StatelessWidget {
                   Text(
                     item.message,
                     style: TextStyle(
-                        fontSize: 12.5.sp, color: AppColors.muted, height: 1.35),
+                      fontSize: 12.5.sp,
+                      color: AppColors.muted,
+                      height: 1.35,
+                    ),
                   ),
                   SizedBox(height: 8.h),
                   Row(
                     children: [
-                      MChip(item.date,
-                          icon: Icons.event_rounded,
-                          background: AppColors.paper,
-                          foreground: AppColors.inkSoft),
+                      MChip(
+                        item.date,
+                        icon: Icons.event_rounded,
+                        background: AppColors.paper,
+                        foreground: AppColors.inkSoft,
+                      ),
                       SizedBox(width: 6.w),
-                      MChip(item.time,
-                          icon: Icons.schedule_rounded,
-                          background: AppColors.paper,
-                          foreground: AppColors.inkSoft),
+                      MChip(
+                        item.time,
+                        icon: Icons.schedule_rounded,
+                        background: AppColors.paper,
+                        foreground: AppColors.inkSoft,
+                      ),
                       const Spacer(),
                       if (item.isRead)
-                        Icon(Icons.done_all_rounded,
-                            size: 16.sp, color: AppColors.muted)
+                        Icon(
+                          Icons.done_all_rounded,
+                          size: 16.sp,
+                          color: AppColors.muted,
+                        )
                       else
-                        Icon(Icons.fiber_manual_record_rounded,
-                            size: 8.sp, color: AppColors.primary),
+                        Icon(
+                          Icons.fiber_manual_record_rounded,
+                          size: 8.sp,
+                          color: AppColors.primary,
+                        ),
                     ],
                   ),
                 ],
@@ -224,15 +236,21 @@ class _EmptyState extends StatelessWidget {
                       color: AppColors.soft,
                       borderRadius: BorderRadius.circular(28.r),
                     ),
-                    child: Icon(Icons.notifications_none_rounded,
-                        size: 46.sp, color: AppColors.primary),
+                    child: Icon(
+                      Icons.notifications_none_rounded,
+                      size: 46.sp,
+                      color: AppColors.primary,
+                    ),
                   ),
                   SizedBox(height: 18.h),
-                  Text('No notifications yet.',
-                      style: GoogleFonts.sora(
-                          fontSize: 17.sp,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.ink)),
+                  Text(
+                    'No notifications yet.',
+                    style: GoogleFonts.sora(
+                      fontSize: 17.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink,
+                    ),
+                  ),
                   SizedBox(height: 6.h),
                   Text(
                     'Reminders and updates will show up here as they arrive.',
@@ -260,7 +278,7 @@ class _LoadingState extends StatelessWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: constraints.maxHeight),
           child: const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
+            child: AppSectionLoader(label: 'Loading notifications…'),
           ),
         ),
       ),

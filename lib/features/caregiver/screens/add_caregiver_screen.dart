@@ -92,9 +92,14 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
               padding: EdgeInsets.symmetric(horizontal: 20.w),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Choose a contact',
-                    style: GoogleFonts.sora(
-                        fontSize: 15.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
+                child: Text(
+                  'Choose a contact',
+                  style: GoogleFonts.sora(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink,
+                  ),
+                ),
               ),
             ),
             SizedBox(height: 8.h),
@@ -106,17 +111,30 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                     .where((c) => c.phones?.isNotEmpty == true)
                     .map(
                       (c) => ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: AppColors.soft,
-                      child: Icon(Icons.person_rounded, color: AppColors.onSoft),
-                    ),
-                    title: Text(c.displayName ?? 'Unknown',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.sp)),
-                    subtitle: Text(c.phones!.first.value ?? '',
-                        style: TextStyle(color: AppColors.muted, fontSize: 12.sp)),
-                    onTap: () => Navigator.pop(context, c),
-                  ),
-                )
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.soft,
+                          child: Icon(
+                            Icons.person_rounded,
+                            color: AppColors.onSoft,
+                          ),
+                        ),
+                        title: Text(
+                          c.displayName ?? 'Unknown',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14.sp,
+                          ),
+                        ),
+                        subtitle: Text(
+                          c.phones!.first.value ?? '',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12.sp,
+                          ),
+                        ),
+                        onTap: () => Navigator.pop(context, c),
+                      ),
+                    )
                     .toList(),
               ),
             ),
@@ -137,76 +155,42 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
     }
   }
 
-  void _showInvite(String name) {
-    showDialog(
+  Future<void> _showInvite(String name) async {
+    final shouldShare = await AppDialog.confirm(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
-        title: Text('$name doesn\'t have MediSense yet',
-            style: GoogleFonts.sora(
-                fontSize: 15.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
-        content: Text('Invite them to download the app and try again.',
-            style: TextStyle(fontSize: 13.5.sp, color: AppColors.muted)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Close',
-                style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)),
-          ),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              // Share.share('Get MediSense: https://medisense.app/download');
-            },
-            icon: const Icon(Icons.share_rounded, size: 18),
-            label: const Text('Share invite'),
-          ),
-        ],
-      ),
+      title: '$name doesn\'t have MediSense yet',
+      message: 'Invite them to download the app and try again.',
+      confirmText: 'Share invite',
+      cancelText: 'Close',
+      icon: Icons.share_rounded,
+      accentColor: AppColors.primary,
     );
+
+    if (!shouldShare || !mounted) return;
+    // Share.share('Get MediSense: https://medisense.app/download');
   }
 
   Future<void> _confirmAndSend(AppUserSummary recipient) async {
     FocusScope.of(context).unfocus();
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppDialog.confirm(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
-        title: Text('Send request to ${recipient.name}?',
-            style: GoogleFonts.sora(
-                fontSize: 15.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
-        content: Text(
+      title: 'Send request to ${recipient.name}?',
+      message:
           'They\'ll be able to see and accept a request for you to manage their reminders.',
-          style: TextStyle(fontSize: 13.5.sp, color: AppColors.muted, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel',
-                style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700)),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Send request'),
-          ),
-        ],
-      ),
+      confirmText: 'Send request',
+      cancelText: 'Cancel',
+      icon: Icons.person_add_alt_1_rounded,
+      accentColor: AppColors.primary,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     await CaregiverService.instance.sendRequest(recipient);
     if (!mounted) return;
-    showToast(context, 'Request sent to ${recipient.name}', color: AppColors.primary);
+    showToast(
+      context,
+      'Request sent to ${recipient.name}',
+      color: AppColors.primary,
+    );
     Navigator.pop(context);
   }
 
@@ -220,9 +204,14 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
         appBar: AppBar(
           backgroundColor: AppColors.paper,
           elevation: 0,
-          title: Text('Add caregiver contact',
-              style: GoogleFonts.sora(
-                  fontSize: 17.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          title: Text(
+            'Add caregiver contact',
+            style: GoogleFonts.sora(
+              fontSize: 17.sp,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
         ),
         body: SafeArea(
           child: Column(
@@ -232,19 +221,33 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                 child: TextField(
                   controller: _searchController,
                   onChanged: _onSearchChanged,
-                  style: TextStyle(fontSize: 14.5.sp, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontSize: 14.5.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Search by name, phone, username, or email',
-                    hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.muted),
-                    prefixIcon: Icon(Icons.search_rounded, color: AppColors.muted, size: 22.sp),
+                    hintStyle: TextStyle(
+                      fontSize: 13.sp,
+                      color: AppColors.muted,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: AppColors.muted,
+                      size: 22.sp,
+                    ),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
-                      icon: Icon(Icons.close_rounded, color: AppColors.muted, size: 20.sp),
-                      onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                      },
-                    )
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: AppColors.muted,
+                              size: 20.sp,
+                            ),
+                            onPressed: () {
+                              _searchController.clear();
+                              _onSearchChanged('');
+                            },
+                          )
                         : null,
                   ),
                 ),
@@ -255,7 +258,10 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                 child: GestureDetector(
                   onTap: _pickFromContacts,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 12.h,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.soft,
                       borderRadius: BorderRadius.circular(14.r),
@@ -270,18 +276,28 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                             borderRadius: BorderRadius.circular(10.r),
                           ),
                           alignment: Alignment.center,
-                          child: Icon(Icons.contacts_rounded,
-                              color: AppColors.primary, size: 18.sp),
+                          child: Icon(
+                            Icons.contacts_rounded,
+                            color: AppColors.primary,
+                            size: 18.sp,
+                          ),
                         ),
                         SizedBox(width: 12.w),
                         Expanded(
-                          child: Text('Pick from phone contacts',
-                              style: TextStyle(
-                                  fontSize: 13.5.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.onSoft)),
+                          child: Text(
+                            'Pick from phone contacts',
+                            style: TextStyle(
+                              fontSize: 13.5.sp,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.onSoft,
+                            ),
+                          ),
                         ),
-                        Icon(Icons.chevron_right_rounded, color: AppColors.onSoft, size: 20.sp),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.onSoft,
+                          size: 20.sp,
+                        ),
                       ],
                     ),
                   ),
@@ -308,14 +324,21 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 20.sp),
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: AppColors.warning,
+                          size: 20.sp,
+                        ),
                         SizedBox(width: 10.w),
                         Expanded(
-                          child: Text('No matching MediSense account found.',
-                              style: TextStyle(
-                                  fontSize: 12.5.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.warning)),
+                          child: Text(
+                            'No matching MediSense account found.',
+                            style: TextStyle(
+                              fontSize: 12.5.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.warning,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -329,7 +352,10 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                   itemBuilder: (_, i) {
                     final user = _searchResults[i];
                     return Container(
-                      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 10.h,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.card,
                         borderRadius: BorderRadius.circular(16.r),
@@ -341,11 +367,14 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                             radius: 20.r,
                             backgroundColor: AppColors.soft,
                             child: Text(
-                              user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                              user.name.isNotEmpty
+                                  ? user.name[0].toUpperCase()
+                                  : '?',
                               style: TextStyle(
-                                  fontSize: 15.sp,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.onSoft),
+                                fontSize: 15.sp,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.onSoft,
+                              ),
                             ),
                           ),
                           SizedBox(width: 12.w),
@@ -353,15 +382,23 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(user.name,
-                                    style: TextStyle(
-                                        fontSize: 14.sp,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.ink)),
+                                Text(
+                                  user.name,
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
                                 SizedBox(height: 2.h),
                                 Text(
-                                  user.phone.isNotEmpty ? user.phone : user.email,
-                                  style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
+                                  user.phone.isNotEmpty
+                                      ? user.phone
+                                      : user.email,
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: AppColors.muted,
+                                  ),
                                 ),
                               ],
                             ),
@@ -370,13 +407,22 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                           FilledButton(
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.primary,
-                              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16.w,
+                                vertical: 10.h,
+                              ),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10.r)),
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
                             ),
                             onPressed: () => _confirmAndSend(user),
-                            child: Text('Request',
-                                style: TextStyle(fontSize: 12.5.sp, fontWeight: FontWeight.w700)),
+                            child: Text(
+                              'Request',
+                              style: TextStyle(
+                                fontSize: 12.5.sp,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ],
                       ),

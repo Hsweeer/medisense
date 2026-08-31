@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/notification_provider.dart';
@@ -14,7 +15,6 @@ import '../caregiver/screens/caregiver_requests_screen.dart';
 import '../food_scanner/screens/food_scanner_screen.dart';
 import '../nearby/nearby_screen.dart';
 import '../notifications/notifications_screen.dart';
-import '../profile/emergency_contacts_screen.dart';
 import '../reminders/reminders_screen.dart';
 
 /// Home — "what do I need to do right now?"
@@ -173,45 +173,6 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: _QuickTile(
-                    icon: Icons.local_hospital_rounded,
-                    label: 'Hospitals near me',
-                    sub: 'ER open · directions',
-                    color: AppColors.primary,
-                    soft: AppColors.soft,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            const NearbyScreen(initialType: 1, showBack: true),
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: _QuickTile(
-                    icon: Icons.local_pharmacy_rounded,
-                    label: 'Pharmacies near me',
-                    sub: '2 open 24 hrs',
-                    color: AppColors.warning,
-                    soft: AppColors.warningSoft,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            const NearbyScreen(initialType: 2, showBack: true),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 12.h),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _QuickTile(
                     icon: Icons.alarm_rounded,
                     label: 'My reminders',
                     sub: '${reminders.reminders.length} active',
@@ -227,29 +188,6 @@ class HomeScreen extends StatelessWidget {
                 SizedBox(width: 12.w),
                 Expanded(
                   child: _QuickTile(
-                    icon: Icons.contact_emergency_rounded,
-                    label: 'Emergency contacts',
-                    sub: 'Alerted during SOS',
-                    color: AppColors.danger,
-                    soft: AppColors.dangerSoft,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const EmergencyContactsScreen(),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 12.h),
-          // NEW ROW — Scan food + Caregivers
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _QuickTile(
                     icon: Icons.camera_alt_rounded,
                     label: 'Scan food',
                     sub: 'Check nutrition',
@@ -262,22 +200,20 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: _QuickTile(
-                    icon: Icons.people_alt_rounded,
-                    label: 'Caregivers',
-                    sub: 'Manage access',
-                    color: AppColors.primary,
-                    soft: AppColors.soft,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CaregiverRequestsScreen(),
-                      ),
-                    ),
-                  ),
-                ),
               ],
+            ),
+          ),
+          SizedBox(height: 12.h),
+          _QuickTile(
+            icon: Icons.people_alt_rounded,
+            label: 'Caregivers',
+            sub: 'Manage access',
+            color: AppColors.primary,
+            soft: AppColors.soft,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const CaregiverRequestsScreen(),
+              ),
             ),
           ),
           SizedBox(height: 20.h),
@@ -322,11 +258,7 @@ class _ForYouSection extends StatelessWidget {
               child: Padding(
                 padding: EdgeInsets.all(4.r),
                 child: loading
-                    ? SizedBox(
-                        width: 15.sp,
-                        height: 15.sp,
-                        child: const CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? AppSpinner.inline(size: 15.sp, color: AppColors.primary)
                     : Icon(
                         Icons.refresh_rounded,
                         size: 18.sp,

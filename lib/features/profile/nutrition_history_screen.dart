@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../core/services/food_log_service.dart';
 import '../../core/services/nutrition_history_preferences.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/food_models.dart';
 
 class NutritionHistoryScreen extends StatefulWidget {
@@ -113,23 +114,14 @@ class _NutritionHistoryScreenState extends State<NutritionHistoryScreen> {
   }
 
   Future<void> _confirmDelete(FoodLogEntry entry) async {
-    final shouldDelete = await showDialog<bool>(
+    final shouldDelete = await AppDialog.confirm(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete nutrition entry?'),
-        content: Text('Remove ${entry.foodName} from your nutrition history?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: 'Delete nutrition entry?',
+      message: 'Remove ${entry.foodName} from your nutrition history?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (shouldDelete != true || entry.id == null || !mounted) return;
     try {

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -9,8 +8,18 @@ import '../../providers/profile_provider.dart';
 const _bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 /// Opens the "Edit Health Profile" bottom sheet. Reads the current
@@ -52,14 +61,18 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
   void initState() {
     super.initState();
     final p = context.read<ProfileProvider>().profile;
-    _bloodType =
-    _bloodGroups.contains(p.bloodType) ? p.bloodType : _bloodGroups.first;
-    _feetCtrl =
-        TextEditingController(text: p.heightIn > 0 ? (p.heightIn ~/ 12).toString() : '');
-    _inchesCtrl =
-        TextEditingController(text: p.heightIn > 0 ? (p.heightIn % 12).toString() : '');
-    _weightCtrl =
-        TextEditingController(text: p.weightLb > 0 ? p.weightLb.toString() : '');
+    _bloodType = _bloodGroups.contains(p.bloodType)
+        ? p.bloodType
+        : _bloodGroups.first;
+    _feetCtrl = TextEditingController(
+      text: p.heightIn > 0 ? (p.heightIn ~/ 12).toString() : '',
+    );
+    _inchesCtrl = TextEditingController(
+      text: p.heightIn > 0 ? (p.heightIn % 12).toString() : '',
+    );
+    _weightCtrl = TextEditingController(
+      text: p.weightLb > 0 ? p.weightLb.toString() : '',
+    );
     _dob = _parseDob(p.dob);
     _allergies = List.of(p.allergies);
     _conditions = List.of(p.conditions);
@@ -121,7 +134,11 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
       await prov.updateProfile(updated);
       if (!mounted) return;
       Navigator.of(context).pop();
-      showToast(context, 'Profile updated successfully!', color: AppColors.success);
+      showToast(
+        context,
+        'Profile updated successfully!',
+        color: AppColors.success,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -141,35 +158,36 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
         expand: false,
         builder: (context, scrollController) {
           return Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.paper,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.ink.withValues(alpha: .10),
+                  blurRadius: 30,
+                  offset: const Offset(0, -8),
+                ),
+              ],
             ),
             child: Column(
               children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.line,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+                const SizedBox(height: 12),
+                const SheetHandle(),
                 Expanded(
                   child: ListView(
                     controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                     children: [
-                      Text('Edit Health Profile',
-                          style: GoogleFonts.sora(
-                              fontSize: 20, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Update your medical information to improve recommendations.',
-                        style: TextStyle(fontSize: 13, color: AppColors.muted),
+                      const SheetHeader(
+                        icon: Icons.favorite_rounded,
+                        color: AppColors.primary,
+                        title: 'Edit Health Profile',
+                        subtitle:
+                            'Update your medical information to improve recommendations.',
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 22),
                       const SectionHeader('Basic information'),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,23 +233,32 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
                         foreground: AppColors.onSoft,
                         onChanged: (v) => setState(() => _medications = v),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 30),
                       Row(
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed:
-                              _saving ? null : () => Navigator.of(context).pop(),
+                              onPressed: _saving
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
                               style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                side: const BorderSide(color: AppColors.line),
+                                foregroundColor: AppColors.inkSoft,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                side: const BorderSide(
+                                  color: AppColors.line,
+                                  width: 1.3,
+                                ),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                              child: const Text('Cancel',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.ink)),
+                              child: const Text('Cancel'),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -283,7 +310,10 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
               controller: _feetCtrl,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                  isDense: true, border: InputBorder.none, suffixText: 'ft'),
+                isDense: true,
+                border: InputBorder.none,
+                suffixText: 'ft',
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -292,7 +322,10 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
               controller: _inchesCtrl,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                  isDense: true, border: InputBorder.none, suffixText: 'in'),
+                isDense: true,
+                border: InputBorder.none,
+                suffixText: 'in',
+              ),
             ),
           ),
         ],
@@ -308,7 +341,10 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
         controller: _weightCtrl,
         keyboardType: TextInputType.number,
         decoration: const InputDecoration(
-            isDense: true, border: InputBorder.none, suffixText: 'lb'),
+          isDense: true,
+          border: InputBorder.none,
+          suffixText: 'lb',
+        ),
       ),
     );
   }
@@ -322,7 +358,9 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
         child: Text(
           _dob != null ? _formatDob(_dob!) : 'Select date',
           style: TextStyle(
-              fontSize: 14, color: _dob != null ? AppColors.ink : AppColors.muted),
+            fontSize: 14,
+            color: _dob != null ? AppColors.ink : AppColors.muted,
+          ),
         ),
       ),
     );
@@ -330,7 +368,11 @@ class _EditHealthProfileSheetState extends State<_EditHealthProfileSheet> {
 }
 
 class _FieldShell extends StatelessWidget {
-  const _FieldShell({required this.icon, required this.label, required this.child});
+  const _FieldShell({
+    required this.icon,
+    required this.label,
+    required this.child,
+  });
 
   final IconData icon;
   final String label;
@@ -342,8 +384,15 @@ class _FieldShell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: .03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,8 +401,10 @@ class _FieldShell extends StatelessWidget {
             children: [
               Icon(icon, size: 14, color: AppColors.muted),
               const SizedBox(width: 6),
-              Text(label,
-                  style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -435,7 +486,10 @@ class _ChipEditorState extends State<_ChipEditor> {
                 isDense: true,
                 border: OutlineInputBorder(),
                 hintText: 'Type and press enter',
-                contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
               ),
             ),
           )
@@ -447,7 +501,9 @@ class _ChipEditorState extends State<_ChipEditor> {
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary,
               side: BorderSide(color: AppColors.primary.withValues(alpha: .4)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
       ],

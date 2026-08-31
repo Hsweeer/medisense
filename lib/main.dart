@@ -2,12 +2,15 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show debugPaintBaselinesEnabled;
 import 'package:flutter/services.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 
+import 'core/services/loading_overlay_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -30,7 +33,12 @@ bool gPendingSosNavigation = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Prevent Flutter inspector baseline guides from appearing over app text.
+  debugPaintBaselinesEnabled = false;
   await dotenv.load(fileName: ".env");
+  // GetX is used only for lightweight, context-free UI control of the
+  // premium loading overlay. All business/app state stays in Provider.
+  Get.put(LoadingOverlayController(), permanent: true);
   runApp(const MediSenseApp());
 }
 
@@ -64,7 +72,9 @@ class _MediSenseAppState extends State<MediSenseApp> {
 
   Future<void> _bootstrap() async {
     try {
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
       await NotificationService.instance.initialize();
     } catch (e) {
       debugPrint('[Bootstrap] Critical init error: $e');
@@ -81,10 +91,14 @@ class _MediSenseAppState extends State<MediSenseApp> {
     try {
       await _nativeChannel.invokeMethod('flutterReady');
     } catch (e) {
-      debugPrint('[Bootstrap] flutterReady handshake error (attempt $attempt): $e');
+      debugPrint(
+        '[Bootstrap] flutterReady handshake error (attempt $attempt): $e',
+      );
       if (attempt < 5) {
-        Future.delayed(const Duration(seconds: 1),
-                () => _notifyNativeReady(attempt: attempt + 1));
+        Future.delayed(
+          const Duration(seconds: 1),
+          () => _notifyNativeReady(attempt: attempt + 1),
+        );
       }
     }
   }
@@ -114,7 +128,10 @@ class _MediSenseAppState extends State<MediSenseApp> {
         final locProvider = state.context.read<LocationProvider>();
         final profileProvider = state.context.read<ProfileProvider>();
         final sosProvider = state.context.read<SosProvider>();
-        sosProvider.triggerImmediate(locProvider.position, profileProvider.contacts);
+        sosProvider.triggerImmediate(
+          locProvider.position,
+          profileProvider.contacts,
+        );
         state.pushNamedAndRemoveUntil('/sos', (route) => false);
       } catch (e) {
         debugPrint('SOS_DEBUG: navigation error: $e');
@@ -138,8 +155,9 @@ class _MediSenseAppState extends State<MediSenseApp> {
           ChangeNotifierProvider(create: (_) => ReminderProvider()),
           ChangeNotifierProvider(
             create: (ctx) => ChatProvider(
-                reminderEngine: ctx.read<ReminderProvider>(),
-                profileProvider: ctx.read<ProfileProvider>()),
+              reminderEngine: ctx.read<ReminderProvider>(),
+              profileProvider: ctx.read<ProfileProvider>(),
+            ),
           ),
           ChangeNotifierProvider(create: (_) => SosProvider()),
           ChangeNotifierProvider(
@@ -154,9 +172,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
           home: _initialized ? const AuthWrapper() : const SplashScreen(),
-          routes: {
-            '/sos': (ctx) => const SosScreen(),
-          },
+          routes: {'/sos': (ctx) => const SosScreen()},
         ),
       ),
     );

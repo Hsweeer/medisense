@@ -300,48 +300,11 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
         if (isLoading)
-          const _LoadingOverlay(),
-      ],
-    );
-  }
-}
-
-class _LoadingOverlay extends StatelessWidget {
-  const _LoadingOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black.withValues(alpha: .5),
-      child: Center(
-        child: MCard(
-          padding: EdgeInsets.all(24.r),
-          color: Colors.white,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(color: AppColors.primary),
-              SizedBox(height: 16.h),
-              Text(
-                'Connecting...',
-                style: GoogleFonts.sora(
-                  fontSize: 15.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Please wait a moment',
-                style: TextStyle(
-                  fontSize: 12.5.sp,
-                  color: AppColors.muted,
-                ),
-              ),
-            ],
+          const AppLoadingOverlay(
+            title: 'Creating your account',
+            message: 'Securing your details and setting things up.',
           ),
-        ),
-      ),
+      ],
     );
   }
 }

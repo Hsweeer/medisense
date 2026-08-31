@@ -18,8 +18,6 @@ class VitalsScanScreen extends StatefulWidget {
   State<VitalsScanScreen> createState() => _VitalsScanScreenState();
 }
 
-
-
 enum _ScanState { idle, initializing, scanning, done, error }
 
 class _VitalsScanScreenState extends State<VitalsScanScreen> {
@@ -73,13 +71,14 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
     try {
       final cameras = await availableCameras();
       final front = cameras.firstWhere(
-            (c) => c.lensDirection == CameraLensDirection.front,
+        (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
       final controller = CameraController(
         front,
-        ResolutionPreset.medium, // enough detail for face ROI, keeps CPU load sane
+        ResolutionPreset
+            .medium, // enough detail for face ROI, keeps CPU load sane
         enableAudio: false,
       );
       await controller.initialize();
@@ -144,7 +143,8 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
     } catch (e) {
       setState(() {
         _state = _ScanState.error;
-        _error = 'Could not access the camera. Check camera permission in '
+        _error =
+            'Could not access the camera. Check camera permission in '
             'your phone settings and try again.';
       });
     }
@@ -158,34 +158,55 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
     final res = RppgService.estimateWithDebug(_samples);
     // Print a short debug summary to console for developers/testers
     try {
-      print('[RPPG] bpm=${res.bpm} confidence=${res.confidence.toStringAsFixed(2)} samples=${res.resampled.length} fs=${res.fs}');
+      print(
+        '[RPPG] bpm=${res.bpm} confidence=${res.confidence.toStringAsFixed(2)} samples=${res.resampled.length} fs=${res.fs}',
+      );
       // Print top 5 resampled values and top 5 powers to help tuning
-      print('[RPPG] resampled(sample0..4) = ${res.resampled.take(5).map((v) => v.toStringAsFixed(3)).toList()}');
+      print(
+        '[RPPG] resampled(sample0..4) = ${res.resampled.take(5).map((v) => v.toStringAsFixed(3)).toList()}',
+      );
       final topPowers = res.powers.asMap().entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
-      print('[RPPG] top peaks (bpm,power) = ${topPowers.take(3).map((e) => [(42 + e.key*0.5).toStringAsFixed(1), e.value.toStringAsFixed(4)])}');
+      print(
+        '[RPPG] top peaks (bpm,power) = ${topPowers.take(3).map((e) => [(42 + e.key * 0.5).toStringAsFixed(1), e.value.toStringAsFixed(4)])}',
+      );
 
       // Additional diagnostics
-      print('[RPPG] diagnosticReason=${res.diagnosticReason} fullPeak=${res.fullWindowPeak} fullMedian=${res.fullWindowMedian} windowsStdDev=${res.windowsStdDev} acceptedWindows=${res.acceptedWindowCount}');
-      print('[RPPG] windowCandidates=${res.windowCandidates} windowRatios=${res.windowRatios} windowAutocorrs=${res.windowAutocorrs}');
+      print(
+        '[RPPG] diagnosticReason=${res.diagnosticReason} fullPeak=${res.fullWindowPeak} fullMedian=${res.fullWindowMedian} windowsStdDev=${res.windowsStdDev} acceptedWindows=${res.acceptedWindowCount}',
+      );
+      print(
+        '[RPPG] windowCandidates=${res.windowCandidates} windowRatios=${res.windowRatios} windowAutocorrs=${res.windowAutocorrs}',
+      );
       if (_processor != null) {
-        print('[RPPG] processor accepted=${_processor!.acceptedFrames} rejected=${_processor!.rejectedFrames} rejectionCounts=${_processor!.rejectionCounts} lastFrame=${_processor!.lastFrameDebug} lastReject=${_processor!.lastRejectionReason}');
+        print(
+          '[RPPG] processor accepted=${_processor!.acceptedFrames} rejected=${_processor!.rejectedFrames} rejectionCounts=${_processor!.rejectionCounts} lastFrame=${_processor!.lastFrameDebug} lastReject=${_processor!.lastRejectionReason}',
+        );
       }
     } catch (_) {}
 
     if (!mounted) return;
     // Build debug log string for UI copy/view
     final sb = StringBuffer();
-    sb.writeln('[RPPG] bpm=${res.bpm} confidence=${res.confidence.toStringAsFixed(2)} samples=${res.resampled.length} fs=${res.fs}');
-    sb.writeln('[RPPG] resampled(sample0..4) = ${res.resampled.take(10).map((v) => v.toStringAsFixed(3)).toList()}');
+    sb.writeln(
+      '[RPPG] bpm=${res.bpm} confidence=${res.confidence.toStringAsFixed(2)} samples=${res.resampled.length} fs=${res.fs}',
+    );
+    sb.writeln(
+      '[RPPG] resampled(sample0..4) = ${res.resampled.take(10).map((v) => v.toStringAsFixed(3)).toList()}',
+    );
     sb.writeln('[RPPG] top powers length=${res.powers.length}');
-    if (res.autocorrBpm != null) sb.writeln('[RPPG] autocorr=${res.autocorrBpm!.toStringAsFixed(1)} score=${res.autocorrScore!.toStringAsFixed(2)}');
+    if (res.autocorrBpm != null) {
+      sb.writeln(
+        '[RPPG] autocorr=${res.autocorrBpm!.toStringAsFixed(1)} score=${res.autocorrScore!.toStringAsFixed(2)}',
+      );
+    }
 
     if (!mounted) return;
     setState(() {
       if (res.bpm == null) {
         _state = _ScanState.error;
-        _error = "Couldn't get a steady enough reading — try again with "
+        _error =
+            "Couldn't get a steady enough reading — try again with "
             "better lighting and holding still.";
       } else {
         _resultBpm = res.bpm;
@@ -212,8 +233,9 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
       appBar: AppBar(title: const Text('Vitals scan')),
       body: switch (_state) {
         _ScanState.idle => _IntroView(onStart: _start),
-        _ScanState.initializing =>
-        const Center(child: CircularProgressIndicator()),
+        _ScanState.initializing => const Center(
+          child: CircularProgressIndicator(),
+        ),
         _ScanState.scanning => _ScanningView(
           controller: _controller!,
           progress: _progress,
@@ -255,21 +277,22 @@ class _IntroView extends StatelessWidget {
         children: [
           const Icon(Icons.favorite_rounded, size: 64, color: AppColors.danger),
           const SizedBox(height: 20),
-          Text('Heart rate scan',
-              style:
-              GoogleFonts.sora(fontSize: 20, fontWeight: FontWeight.w700)),
+          Text(
+            'Heart rate scan',
+            style: GoogleFonts.sora(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 10),
           const Text(
             'Hold your face steady in frame in good lighting for about 18 '
-                'seconds. This estimates your pulse from subtle color changes '
-                'in your skin — nothing is recorded or uploaded.',
+            'seconds. This estimates your pulse from subtle color changes '
+            'in your skin — nothing is recorded or uploaded.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, height: 1.5),
           ),
           const SizedBox(height: 8),
           const Text(
             'This is an estimate, not a medical device — for irregular or '
-                'concerning readings, check with a doctor.',
+            'concerning readings, check with a doctor.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
@@ -287,11 +310,12 @@ class _IntroView extends StatelessWidget {
 }
 
 class _ScanningView extends StatelessWidget {
-  const _ScanningView(
-      {required this.controller,
-        required this.progress,
-        required this.sampleCount,
-        this.processor});
+  const _ScanningView({
+    required this.controller,
+    required this.progress,
+    required this.sampleCount,
+    this.processor,
+  });
 
   final CameraController controller;
   final double progress;
@@ -320,9 +344,13 @@ class _ScanningView extends StatelessWidget {
                       backgroundColor: Colors.white24,
                       color: AppColors.danger,
                     ),
-                    Text('${(progress * 100).toInt()}%',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w700)),
+                    Text(
+                      '${(progress * 100).toInt()}%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -391,53 +419,81 @@ class _ResultView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline_rounded,
-                size: 48, color: AppColors.warning),
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: AppColors.warning,
+            ),
             const SizedBox(height: 16),
-            Text(error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.muted)),
+            Text(
+              error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.muted),
+            ),
             const SizedBox(height: 20),
             PrimaryButton(
-                label: 'Try again',
-                icon: Icons.refresh_rounded,
-                onPressed: onRetry),
+              label: 'Try again',
+              icon: Icons.refresh_rounded,
+              onPressed: onRetry,
+            ),
           ],
         ),
       );
     }
-    final bool validated = bpm != null && autocorrBpm != null && (bpm! - autocorrBpm!).abs() <= 3.0;
+    final bool validated =
+        bpm != null &&
+        autocorrBpm != null &&
+        (bpm! - autocorrBpm!).abs() <= 3.0;
 
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text('${bpm?.round() ?? '--'}',
-              style:
-              GoogleFonts.sora(fontSize: 56, fontWeight: FontWeight.w800)),
-          const Text('BPM',
-              style: TextStyle(color: AppColors.muted, letterSpacing: 2)),
+          Text(
+            '${bpm?.round() ?? '--'}',
+            style: GoogleFonts.sora(fontSize: 56, fontWeight: FontWeight.w800),
+          ),
+          const Text(
+            'BPM',
+            style: TextStyle(color: AppColors.muted, letterSpacing: 2),
+          ),
           const SizedBox(height: 8),
           if (validated) ...[
             Chip(
-              avatar: const Icon(Icons.check_circle, color: Colors.white, size: 16),
-              label: const Text('Signal checks agree', style: TextStyle(color: Colors.white)),
+              avatar: const Icon(
+                Icons.check_circle,
+                color: Colors.white,
+                size: 16,
+              ),
+              label: const Text(
+                'Signal checks agree',
+                style: TextStyle(color: Colors.white),
+              ),
               backgroundColor: AppColors.danger,
             ),
             const SizedBox(height: 8),
           ] else if (confidence != null && confidence! >= 6.0) ...[
             Chip(
-              avatar: const Icon(Icons.check_circle_outline, color: Colors.white, size: 16),
-              label: const Text('High confidence', style: TextStyle(color: Colors.white)),
+              avatar: const Icon(
+                Icons.check_circle_outline,
+                color: Colors.white,
+                size: 16,
+              ),
+              label: const Text(
+                'High confidence',
+                style: TextStyle(color: Colors.white),
+              ),
               backgroundColor: Colors.green,
             ),
             const SizedBox(height: 8),
           ] else if (confidence != null) ...[
             const Chip(
               avatar: Icon(Icons.info_outline, color: Colors.white, size: 16),
-              label: Text('Low confidence — hold still & try again for accuracy',
-                  style: TextStyle(color: Colors.white, fontSize: 12)),
+              label: Text(
+                'Low confidence — hold still & try again for accuracy',
+                style: TextStyle(color: Colors.white, fontSize: 12),
+              ),
               backgroundColor: Colors.orange,
             ),
             const SizedBox(height: 8),
@@ -445,7 +501,7 @@ class _ResultView extends StatelessWidget {
 
           const Text(
             'Estimate only — not a medical diagnosis. If this feels off or '
-                'you have symptoms, check with a doctor.',
+            'you have symptoms, check with a doctor.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
@@ -453,10 +509,11 @@ class _ResultView extends StatelessWidget {
 
           if (onUseReading != null) ...[
             PrimaryButton(
-                label: 'Use this reading',
-                icon: Icons.check_rounded,
-                color: AppColors.danger,
-                onPressed: onUseReading),
+              label: 'Use this reading',
+              icon: Icons.check_rounded,
+              color: AppColors.danger,
+              onPressed: onUseReading,
+            ),
             const SizedBox(height: 10),
           ],
 
@@ -472,23 +529,22 @@ class _ResultView extends StatelessWidget {
               if (debugLog != null) ...[
                 OutlinedButton.icon(
                   onPressed: () async {
-                    await showDialog<void>(
+                    final shouldCopy = await AppDialog.confirm(
                       context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Debug details'),
-                        content: SingleChildScrollView(child: Text(debugLog!)),
-                        actions: [
-                          TextButton(
-                              onPressed: () {
-                                Clipboard.setData(ClipboardData(text: debugLog!));
-                                Navigator.of(ctx).pop();
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debug copied')));
-                              },
-                              child: const Text('Copy')),
-                          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
-                        ],
-                      ),
+                      title: 'Debug details',
+                      message: debugLog!,
+                      confirmText: 'Copy',
+                      cancelText: 'Close',
+                      accentColor: AppColors.ai,
+                      icon: Icons.bug_report_rounded,
                     );
+                    if (!shouldCopy || !context.mounted) return;
+                    await Clipboard.setData(ClipboardData(text: debugLog!));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Debug copied')),
+                      );
+                    }
                   },
                   icon: const Icon(Icons.bug_report, size: 18),
                   label: const Text('Details'),

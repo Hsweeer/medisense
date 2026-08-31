@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/auth_provider.dart';
@@ -25,7 +26,12 @@ class ProfileScreen extends StatelessWidget {
     final prov = context.watch<ProfileProvider>();
 
     if (prov.isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Profile')),
+        body: const Center(
+          child: AppSectionLoader(label: 'Loading your profile…'),
+        ),
+      );
     }
 
     final p = prov.profile;
@@ -363,9 +369,18 @@ class ProfileScreen extends StatelessWidget {
                   label: 'Sign out',
                   color: AppColors.danger,
                   onTap: () async {
-                    // Just call logout. AuthWrapper will handle the screen switch.
+                    final confirmed = await AppDialog.confirm(
+                      context: context,
+                      title: 'Sign out?',
+                      message:
+                          'You will be signed out of your account and need to sign in again to continue.',
+                      confirmText: 'Sign out',
+                      destructive: true,
+                      icon: Icons.logout_rounded,
+                    );
+
+                    if (!confirmed || !context.mounted) return;
                     await context.read<AuthProvider>().logout();
-                    // No Navigator.push here!
                   },
                 ),
               ],

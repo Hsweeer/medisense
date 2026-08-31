@@ -1,7 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../theme/app_colors.dart';
+import '../services/loading_overlay_controller.dart';
+import 'app_loading.dart';
 
 /// Big filled call-to-action used at the bottom of most flows.
 class PrimaryButton extends StatelessWidget {
@@ -160,10 +164,7 @@ class SocialButton extends StatelessWidget {
             SizedBox(width: 12.w),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 14.5.sp,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 14.5.sp, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -469,6 +470,288 @@ class _PulsePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PulsePainter old) => old.color != color;
+}
+
+/// Drag handle shown at the top of every modal bottom sheet in the app —
+/// one consistent visual cue, everywhere, that the sheet is draggable.
+class SheetHandle extends StatelessWidget {
+  const SheetHandle({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 40.w,
+        height: 4.5.h,
+        decoration: BoxDecoration(
+          color: AppColors.line,
+          borderRadius: BorderRadius.circular(99.r),
+        ),
+      ),
+    );
+  }
+}
+
+/// Icon-badge header used at the top of bottom sheets across the app —
+/// a soft gradient icon badge, a bold title, and an optional one-line
+/// subtitle, so every sheet opens with the same premium, consistent moment.
+class SheetHeader extends StatelessWidget {
+  const SheetHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.icon,
+    this.color = AppColors.primary,
+    this.trailing,
+  });
+
+  final String title;
+  final String? subtitle;
+  final IconData? icon;
+  final Color color;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (icon != null) ...[
+          Container(
+            width: 46.r,
+            height: 46.r,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  color.withValues(alpha: .18),
+                  color.withValues(alpha: .07),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(15.r),
+              border: Border.all(color: color.withValues(alpha: .15)),
+            ),
+            child: Icon(icon, color: color, size: 22.sp),
+          ),
+          SizedBox(width: 14.w),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 19.sp,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -.3,
+                  color: AppColors.ink,
+                ),
+              ),
+              if (subtitle != null) ...[
+                SizedBox(height: 3.h),
+                Text(
+                  subtitle!,
+                  style: TextStyle(
+                    fontSize: 12.5.sp,
+                    height: 1.4,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
+/// Professional confirmation dialog used across the app for destructive
+/// actions like sign out, delete, and clear history.
+class AppDialog {
+  static Future<bool> confirm({
+    required BuildContext context,
+    required String title,
+    required String message,
+    required String confirmText,
+    String cancelText = 'Cancel',
+    bool destructive = false,
+    IconData icon = Icons.info_outline_rounded,
+    Color? accentColor,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final color =
+            accentColor ?? (destructive ? AppColors.danger : AppColors.primary);
+        return Dialog(
+          insetPadding: EdgeInsets.symmetric(horizontal: 22.w),
+          backgroundColor: Colors.transparent,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28.r),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(
+                padding: EdgeInsets.fromLTRB(22.r, 22.r, 22.r, 18.r),
+                decoration: BoxDecoration(
+                  color: AppColors.card.withValues(alpha: .96),
+                  borderRadius: BorderRadius.circular(28.r),
+                  border: Border.all(color: Colors.white.withValues(alpha: .8)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.ink.withValues(alpha: .18),
+                      blurRadius: 32.r,
+                      offset: Offset(0, 16.h),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 64.r,
+                      height: 64.r,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [color.withValues(alpha: .18), color.withValues(alpha: .07)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: color.withValues(alpha: .15)),
+                      ),
+                      child: Icon(icon, color: color, size: 30.sp),
+                    ),
+                    SizedBox(height: 17.h),
+                    Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.w800, letterSpacing: -.3, color: AppColors.ink)),
+                    SizedBox(height: 9.h),
+                    Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 14.sp, height: 1.5, color: AppColors.muted)),
+                    SizedBox(height: 22.h),
+                    Divider(height: 1, color: AppColors.line.withValues(alpha: .8)),
+                    SizedBox(height: 14.h),
+                    Row(
+                      children: [
+                        Expanded(child: OutlinedButton(onPressed: () => Navigator.of(ctx).pop(false), style: OutlinedButton.styleFrom(foregroundColor: AppColors.ink, side: BorderSide(color: AppColors.line, width: 1.2.w), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)), padding: EdgeInsets.symmetric(vertical: 14.h), textStyle: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)), child: Text(cancelText))),
+                        SizedBox(width: 12.w),
+                        Expanded(child: FilledButton(onPressed: () => Navigator.of(ctx).pop(true), style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)), padding: EdgeInsets.symmetric(vertical: 14.h), textStyle: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)), child: Text(confirmText))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    return confirmed ?? false;
+  }
+}
+
+/// Branded, blocking progress surface for authentication and remote actions.
+class AppLoadingOverlay extends StatefulWidget {
+  const AppLoadingOverlay({
+    super.key,
+    this.title = 'Connecting securely',
+    this.message = 'Please wait while we prepare your account.',
+  });
+
+  final String title;
+  final String message;
+
+  @override
+  State<AppLoadingOverlay> createState() => _AppLoadingOverlayState();
+}
+
+class _AppLoadingOverlayState extends State<AppLoadingOverlay> {
+  @override
+  void initState() {
+    super.initState();
+    // UI-level only: lets other UI (e.g. the SOS overlay button) know a
+    // blocking loader is on screen, without touching Provider/business state.
+    LoadingOverlayController.to.register();
+  }
+
+  @override
+  void dispose() {
+    LoadingOverlayController.to.unregister();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+      child: ColoredBox(
+        color: AppColors.ink.withValues(alpha: .5),
+        child: Center(
+          child: Container(
+            width: 280.w,
+            margin: EdgeInsets.symmetric(horizontal: 28.w),
+            padding: EdgeInsets.fromLTRB(24.r, 25.r, 24.r, 22.r),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.card, AppColors.soft.withValues(alpha: .72)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.circular(26.r),
+              border: Border.all(color: AppColors.primary.withValues(alpha: .2)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .22), blurRadius: 30.r, offset: Offset(0, 14.h))],
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 68.r,
+                height: 68.r,
+                decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: AppColors.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight)),
+                child: Padding(
+                  padding: EdgeInsets.all(17.r),
+                  child: const AppSpinner.inline(size: 34, color: Colors.white),
+                ),
+              ),
+              SizedBox(height: 19.h),
+              Text(widget.title, textAlign: TextAlign.center, style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.w800, color: AppColors.ink, decoration: TextDecoration.none)),
+              SizedBox(height: 7.h),
+              Text(widget.message, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5.sp, height: 1.45, color: AppColors.muted, decoration: TextDecoration.none)),
+              SizedBox(height: 19.h),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: AppColors.soft,
+                  borderRadius: BorderRadius.circular(99.r),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.lock_rounded,
+                      size: 14.sp,
+                      color: AppColors.primaryDark,
+                    ),
+                    SizedBox(width: 6.w),
+                    Text(
+                      'Your information stays protected',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryDark,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Standard toast helper.

@@ -28,13 +28,19 @@ class RemindersScreen extends StatelessWidget {
               padding: EdgeInsets.only(right: 8.w),
               child: TextButton.icon(
                 onPressed: () => _confirmClearAll(context, prov),
-                icon: Icon(Icons.delete_sweep_rounded,
-                    color: AppColors.danger, size: 20.sp),
-                label: Text('Clear all',
-                    style: TextStyle(
-                        color: AppColors.danger,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13.sp)),
+                icon: Icon(
+                  Icons.delete_sweep_rounded,
+                  color: AppColors.danger,
+                  size: 20.sp,
+                ),
+                label: Text(
+                  'Clear all',
+                  style: TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.sp,
+                  ),
+                ),
               ),
             ),
         ],
@@ -44,44 +50,48 @@ class RemindersScreen extends StatelessWidget {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Add reminder',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+        label: const Text(
+          'Add reminder',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
       ),
       body: prov.isLoading
           ? const Center(child: CircularProgressIndicator())
           : prov.reminders.isEmpty
           ? _buildEmptyState(context)
           : ListView(
-        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
-        children: [
-          // Stats header: done · streak · adherence
-          MCard(
-            color: AppColors.soft,
-            border: Border.all(
-                color: AppColors.primary.withValues(alpha: .3)),
-            padding: EdgeInsets.symmetric(
-                horizontal: 14.w, vertical: 14.h),
-            child: Row(
+              padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
               children: [
-                _Stat(
-                    value:
-                    '${prov.takenCount}/${prov.reminders.length}',
-                    label: 'Done today'),
-                _statDivider(),
-                _Stat(
-                    value: '${prov.bestStreak} days',
-                    label: 'Best streak'),
-                _statDivider(),
-                _Stat(
-                    value: '${prov.adherencePct}%',
-                    label: 'This week'),
+                // Stats header: done · streak · adherence
+                MCard(
+                  color: AppColors.soft,
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: .3),
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 14.h,
+                  ),
+                  child: Row(
+                    children: [
+                      _Stat(
+                        value: '${prov.takenCount}/${prov.reminders.length}',
+                        label: 'Done today',
+                      ),
+                      _statDivider(),
+                      _Stat(
+                        value: '${prov.bestStreak} days',
+                        label: 'Best streak',
+                      ),
+                      _statDivider(),
+                      _Stat(value: '${prov.adherencePct}%', label: 'This week'),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                ..._buildGroupedCards(prov),
               ],
             ),
-          ),
-          SizedBox(height: 16.h),
-          ..._buildGroupedCards(prov),
-        ],
-      ),
     );
   }
 
@@ -96,19 +106,24 @@ class RemindersScreen extends StatelessWidget {
       if (r.groupId != null) {
         if (renderedGroups.contains(r.groupId)) continue;
         renderedGroups.add(r.groupId!);
-        final groupReminders =
-        prov.reminders.where((x) => x.groupId == r.groupId).toList();
-        cards.add(Padding(
-          padding: EdgeInsets.only(bottom: 10.h),
-          child: groupReminders.length > 1
-              ? _GroupedReminderCard(reminders: groupReminders)
-              : _ReminderCard(reminder: groupReminders.first),
-        ));
+        final groupReminders = prov.reminders
+            .where((x) => x.groupId == r.groupId)
+            .toList();
+        cards.add(
+          Padding(
+            padding: EdgeInsets.only(bottom: 10.h),
+            child: groupReminders.length > 1
+                ? _GroupedReminderCard(reminders: groupReminders)
+                : _ReminderCard(reminder: groupReminders.first),
+          ),
+        );
       } else {
-        cards.add(Padding(
-          padding: EdgeInsets.only(bottom: 10.h),
-          child: _ReminderCard(reminder: r),
-        ));
+        cards.add(
+          Padding(
+            padding: EdgeInsets.only(bottom: 10.h),
+            child: _ReminderCard(reminder: r),
+          ),
+        );
       }
     }
     return cards;
@@ -121,16 +136,27 @@ class RemindersScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_alert_rounded,
-                size: 64.sp, color: AppColors.muted.withValues(alpha: .5)),
+            Icon(
+              Icons.add_alert_rounded,
+              size: 64.sp,
+              color: AppColors.muted.withValues(alpha: .5),
+            ),
             SizedBox(height: 20.h),
-            Text('No reminders yet',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 20.sp)),
+            Text(
+              'No reminders yet',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontSize: 20.sp),
+            ),
             SizedBox(height: 8.h),
             Text(
               'Create your first reminder to get started.\nGet notified when it\'s time to take your medication.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.muted, height: 1.5, fontSize: 13.sp),
+              style: TextStyle(
+                color: AppColors.muted,
+                height: 1.5,
+                fontSize: 13.sp,
+              ),
             ),
             SizedBox(height: 20.h),
             PrimaryButton(
@@ -144,85 +170,45 @@ class RemindersScreen extends StatelessWidget {
   }
 
   Widget _statDivider() => Container(
-      width: 1.w,
-      height: 30.h,
-      margin: EdgeInsets.symmetric(horizontal: 4.w),
-      color: AppColors.primary.withValues(alpha: .2));
+    width: 1.w,
+    height: 30.h,
+    margin: EdgeInsets.symmetric(horizontal: 4.w),
+    color: AppColors.primary.withValues(alpha: .2),
+  );
 
-  void _confirmClearAll(BuildContext context, ReminderProvider prov) {
-    showDialog(
+  void _confirmClearAll(BuildContext context, ReminderProvider prov) async {
+    final confirmed = await AppDialog.confirm(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
-        title: Text('Clear all reminders?',
-            style: GoogleFonts.sora(fontWeight: FontWeight.w800, fontSize: 18.sp)),
-        content: Text(
-            'This will permanently delete all your scheduled reminders and alarms.',
-            style: TextStyle(fontSize: 14.sp, color: AppColors.muted)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel',
-                style:
-                TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
-          ),
-          Container(
-            margin: EdgeInsets.only(left: 8.w),
-            child: FilledButton(
-              onPressed: () {
-                prov.clearAll();
-                Navigator.pop(ctx);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.danger,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-              ),
-              child: Text('Delete all',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.sp)),
-            ),
-          ),
-        ],
-      ),
+      title: 'Clear all reminders?',
+      message:
+          'This will permanently delete all your scheduled reminders and alarms.',
+      confirmText: 'Delete all',
+      destructive: true,
+      icon: Icons.alarm_off_rounded,
     );
-  }
 
+    if (!confirmed) return;
+    prov.clearAll();
+  }
 }
 
-void _confirmDeleteDialog(BuildContext context, ReminderProvider prov, Reminder reminder) {
-  showDialog(
+void _confirmDeleteDialog(
+  BuildContext context,
+  ReminderProvider prov,
+  Reminder reminder,
+) async {
+  final confirmed = await AppDialog.confirm(
     context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
-      title: Text('Delete reminder?',
-          style: GoogleFonts.sora(fontWeight: FontWeight.w800, fontSize: 18.sp)),
-      content: Text(
-          'Are you sure you want to delete "${reminder.title}"? This cannot be undone.',
-          style: TextStyle(fontSize: 14.sp, color: AppColors.muted)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: Text('Cancel',
-              style:
-              TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600, fontSize: 14.sp)),
-        ),
-        Container(
-          margin: EdgeInsets.only(left: 8.w),
-          child: FilledButton(
-            onPressed: () {
-              prov.remove(reminder);
-              Navigator.pop(ctx);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.danger,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
-            ),
-            child: Text('Delete',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.sp)),
-          ),
-        ),
-      ],
-    ),
+    title: 'Delete reminder?',
+    message:
+        'Are you sure you want to delete "${reminder.title}"? This action cannot be undone.',
+    confirmText: 'Delete',
+    destructive: true,
+    icon: Icons.delete_outline_rounded,
   );
+
+  if (!confirmed) return;
+  prov.remove(reminder);
 }
 
 class _Stat extends StatelessWidget {
@@ -236,15 +222,19 @@ class _Stat extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(value,
-              style: GoogleFonts.sora(
-                  fontSize: 17.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.onSoft)),
+          Text(
+            value,
+            style: GoogleFonts.sora(
+              fontSize: 17.sp,
+              fontWeight: FontWeight.w700,
+              color: AppColors.onSoft,
+            ),
+          ),
           SizedBox(height: 2.h),
-          Text(label,
-              style:
-              TextStyle(fontSize: 11.sp, color: AppColors.onSoft)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11.sp, color: AppColors.onSoft),
+          ),
         ],
       ),
     );
@@ -287,19 +277,26 @@ class _ReminderCard extends StatelessWidget {
                         ? AppColors.warning
                         : Colors.white,
                     border: Border.all(
-                        color: r.taken
-                            ? AppColors.success
-                            : isSnoozed
-                            ? AppColors.warning
-                            : AppColors.line,
-                        width: 2.w),
+                      color: r.taken
+                          ? AppColors.success
+                          : isSnoozed
+                          ? AppColors.warning
+                          : AppColors.line,
+                      width: 2.w,
+                    ),
                   ),
                   child: r.taken
-                      ? Icon(Icons.check_rounded,
-                      size: 16.sp, color: Colors.white)
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 16.sp,
+                          color: Colors.white,
+                        )
                       : isSnoozed
-                      ? Icon(Icons.snooze_rounded,
-                      size: 15.sp, color: Colors.white)
+                      ? Icon(
+                          Icons.snooze_rounded,
+                          size: 15.sp,
+                          color: Colors.white,
+                        )
                       : null,
                 ),
               ),
@@ -311,33 +308,37 @@ class _ReminderCard extends StatelessWidget {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(r.title,
-                              style: TextStyle(
-                                fontSize: 14.5.sp,
-                                fontWeight: FontWeight.w700,
-                                decoration: r.taken || isSkipped
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                color: r.taken || isSkipped
-                                    ? AppColors.muted
-                                    : AppColors.ink,
-                              )),
+                          child: Text(
+                            r.title,
+                            style: TextStyle(
+                              fontSize: 14.5.sp,
+                              fontWeight: FontWeight.w700,
+                              decoration: r.taken || isSkipped
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: r.taken || isSkipped
+                                  ? AppColors.muted
+                                  : AppColors.ink,
+                            ),
+                          ),
                         ),
                         if (r.addedBy == 'MedAI') ...[
                           SizedBox(width: 6.w),
-                          const MChip('MedAI',
-                              icon: Icons.auto_awesome_rounded,
-                              background: AppColors.aiSoft,
-                              foreground: AppColors.ai),
+                          const MChip(
+                            'MedAI',
+                            icon: Icons.auto_awesome_rounded,
+                            background: AppColors.aiSoft,
+                            foreground: AppColors.ai,
+                          ),
                         ],
                       ],
                     ),
                     SizedBox(height: 2.h),
                     Text(
-                        '${r.dose} · ${r.schedule}'
-                            '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
-                        style: TextStyle(
-                            fontSize: 12.sp, color: AppColors.muted)),
+                      '${r.dose} · ${r.schedule}'
+                      '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
+                      style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
+                    ),
                     SizedBox(height: 8.h),
                     Row(
                       children: [
@@ -361,18 +362,23 @@ class _ReminderCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  MChip(r.time,
-                      icon: Icons.schedule_rounded,
-                      background: AppColors.paper,
-                      foreground: AppColors.inkSoft),
+                  MChip(
+                    r.time,
+                    icon: Icons.schedule_rounded,
+                    background: AppColors.paper,
+                    foreground: AppColors.inkSoft,
+                  ),
                   if (r.streakDays > 0)
                     Padding(
                       padding: EdgeInsets.only(top: 4.h),
-                      child: Text('🔥 ${r.streakDays}-day streak',
-                          style: TextStyle(
-                              fontSize: 10.5.sp,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.warning)),
+                      child: Text(
+                        '🔥 ${r.streakDays}-day streak',
+                        style: TextStyle(
+                          fontSize: 10.5.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.warning,
+                        ),
+                      ),
                     ),
                 ],
               ),
@@ -384,57 +390,72 @@ class _ReminderCard extends StatelessWidget {
               padding: EdgeInsets.only(top: 10.h),
               child: Row(
                 children: [
-                  Icon(Icons.snooze_rounded,
-                      size: 15.sp, color: AppColors.warning),
+                  Icon(
+                    Icons.snooze_rounded,
+                    size: 15.sp,
+                    color: AppColors.warning,
+                  ),
                   SizedBox(width: 6.w),
-                  Text('Snoozed — ${r.snoozeLabel}',
-                      style: TextStyle(
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.warning)),
+                  Text(
+                    'Snoozed — ${r.snoozeLabel}',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.warning,
+                    ),
+                  ),
                   const Spacer(),
                   _MiniAction(
-                      label: 'Take now',
-                      color: AppColors.success,
-                      onTap: () => prov.take(r)),
+                    label: 'Take now',
+                    color: AppColors.success,
+                    onTap: () => prov.take(r),
+                  ),
                 ],
               ),
             )
           else if (isSkipped)
             Padding(
               padding: EdgeInsets.only(top: 10.h),
-              child: Text('Skipped today — streak reset',
-                  style: TextStyle(
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.muted)),
-            )
-          else if (isPending)
-              Padding(
-                padding: EdgeInsets.only(top: 10.h),
-                child: Row(
-                  children: [
-                    _MiniAction(
-                        label: 'Take now',
-                        color: AppColors.success,
-                        onTap: () => prov.take(r)),
-                    SizedBox(width: 8.w),
-                    _MiniAction(
-                        label: 'Snooze 10 min',
-                        color: AppColors.warning,
-                        onTap: () {
-                          prov.snooze(r);
-                          showToast(context,
-                              '${r.title} snoozed — rings again in 10 min');
-                        }),
-                    SizedBox(width: 8.w),
-                    _MiniAction(
-                        label: 'Skip',
-                        color: AppColors.muted,
-                        onTap: () => prov.skip(r)),
-                  ],
+              child: Text(
+                'Skipped today — streak reset',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.muted,
                 ),
               ),
+            )
+          else if (isPending)
+            Padding(
+              padding: EdgeInsets.only(top: 10.h),
+              child: Row(
+                children: [
+                  _MiniAction(
+                    label: 'Take now',
+                    color: AppColors.success,
+                    onTap: () => prov.take(r),
+                  ),
+                  SizedBox(width: 8.w),
+                  _MiniAction(
+                    label: 'Snooze 10 min',
+                    color: AppColors.warning,
+                    onTap: () {
+                      prov.snooze(r);
+                      showToast(
+                        context,
+                        '${r.title} snoozed — rings again in 10 min',
+                      );
+                    },
+                  ),
+                  SizedBox(width: 8.w),
+                  _MiniAction(
+                    label: 'Skip',
+                    color: AppColors.muted,
+                    onTap: () => prov.skip(r),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -469,25 +490,34 @@ class _GroupedReminderCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Flexible(
-                      child: Text(first.title,
-                          style: TextStyle(
-                              fontSize: 14.5.sp, fontWeight: FontWeight.w700)),
+                      child: Text(
+                        first.title,
+                        style: TextStyle(
+                          fontSize: 14.5.sp,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                     if (first.addedBy == 'MedAI') ...[
                       SizedBox(width: 6.w),
-                      const MChip('MedAI',
-                          icon: Icons.auto_awesome_rounded,
-                          background: AppColors.aiSoft,
-                          foreground: AppColors.ai),
+                      const MChip(
+                        'MedAI',
+                        icon: Icons.auto_awesome_rounded,
+                        background: AppColors.aiSoft,
+                        foreground: AppColors.ai,
+                      ),
                     ],
                   ],
                 ),
               ),
-              Text('$takenCount/${sorted.length} today',
-                  style: TextStyle(
-                      fontSize: 11.5.sp,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.muted)),
+              Text(
+                '$takenCount/${sorted.length} today',
+                style: TextStyle(
+                  fontSize: 11.5.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
+                ),
+              ),
               SizedBox(width: 6.w),
               _QuickAction(
                 icon: Icons.delete_outline_rounded,
@@ -498,9 +528,10 @@ class _GroupedReminderCard extends StatelessWidget {
           ),
           SizedBox(height: 2.h),
           Text(
-              '${first.dose} · ${sorted.length}× daily · ${first.schedule}'
-                  '${first.instructions.isEmpty ? '' : ' · ${first.instructions}'}',
-              style: TextStyle(fontSize: 12.sp, color: AppColors.muted)),
+            '${first.dose} · ${sorted.length}× daily · ${first.schedule}'
+            '${first.instructions.isEmpty ? '' : ' · ${first.instructions}'}',
+            style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
+          ),
           SizedBox(height: 10.h),
           for (final r in sorted)
             Padding(
@@ -517,26 +548,38 @@ class _GroupedReminderCard extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: r.taken ? AppColors.success : Colors.white,
                         border: Border.all(
-                            color: r.taken ? AppColors.success : AppColors.line,
-                            width: 2.w),
+                          color: r.taken ? AppColors.success : AppColors.line,
+                          width: 2.w,
+                        ),
                       ),
                       child: r.taken
-                          ? Icon(Icons.check_rounded,
-                          size: 13.sp, color: Colors.white)
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: 13.sp,
+                              color: Colors.white,
+                            )
                           : null,
                     ),
                   ),
                   SizedBox(width: 10.w),
-                  Text(r.time,
-                      style: TextStyle(
-                          fontSize: 13.sp,
-                          fontWeight: FontWeight.w600,
-                          decoration: r.taken ? TextDecoration.lineThrough : null,
-                          color: r.taken ? AppColors.muted : AppColors.ink)),
+                  Text(
+                    r.time,
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                      decoration: r.taken ? TextDecoration.lineThrough : null,
+                      color: r.taken ? AppColors.muted : AppColors.ink,
+                    ),
+                  ),
                   const Spacer(),
                   if (r.status == DoseStatus.snoozed)
-                    Text('Snoozed',
-                        style: TextStyle(fontSize: 11.sp, color: AppColors.warning)),
+                    Text(
+                      'Snoozed',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppColors.warning,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -547,37 +590,34 @@ class _GroupedReminderCard extends StatelessWidget {
 }
 
 void _confirmDeleteGroupDialog(
-    BuildContext context, ReminderProvider prov, List<Reminder> group) {
-  showDialog(
+  BuildContext context,
+  ReminderProvider prov,
+  List<Reminder> group,
+) async {
+  final confirmed = await AppDialog.confirm(
     context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
-      title: Text('Delete reminder?',
-          style: GoogleFonts.sora(fontWeight: FontWeight.w800, fontSize: 18.sp)),
-      content: Text(
-          'Are you sure you want to delete all ${group.length} doses of '
-              '"${group.first.title}"? This cannot be undone.'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.pop(ctx);
-            for (final r in group) {
-              prov.remove(r);
-            }
-          },
-          child: Text('Delete', style: TextStyle(color: AppColors.danger)),
-        ),
-      ],
-    ),
+    title: 'Delete reminder?',
+    message:
+        'Are you sure you want to delete all ${group.length} doses of '
+        '"${group.first.title}"? This cannot be undone.',
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    destructive: true,
+    icon: Icons.delete_outline_rounded,
   );
+
+  if (!confirmed) return;
+  for (final r in group) {
+    prov.remove(r);
+  }
 }
 
 class _QuickAction extends StatelessWidget {
-  const _QuickAction({required this.icon, required this.color, required this.onTap});
+  const _QuickAction({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
 
   final IconData icon;
   final Color color;
@@ -600,8 +640,11 @@ class _QuickAction extends StatelessWidget {
 }
 
 class _MiniAction extends StatelessWidget {
-  const _MiniAction(
-      {required this.label, required this.color, required this.onTap});
+  const _MiniAction({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
   final String label;
   final Color color;
@@ -618,9 +661,14 @@ class _MiniAction extends StatelessWidget {
           borderRadius: BorderRadius.circular(9.r),
           border: Border.all(color: color.withValues(alpha: .35), width: 1.w),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12.sp, fontWeight: FontWeight.w700, color: color)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
       ),
     );
   }
@@ -630,9 +678,9 @@ class _MiniAction extends StatelessWidget {
 /// which then opens a full-screen, category-themed add-reminder form.
 /// Editing an existing card still uses the compact [_showEditSheet].
 void _openAddReminderFlow(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const AddReminderCategoryScreen()),
-  );
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const AddReminderCategoryScreen()));
 }
 
 void _showEditSheet(BuildContext context, {Reminder? reminder}) {
@@ -647,8 +695,9 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
       .map((t) => t.trim())
       .where((t) => t.isNotEmpty)
       .toList();
-  final instructions =
-  TextEditingController(text: reminder?.instructions ?? '');
+  final instructions = TextEditingController(
+    text: reminder?.instructions ?? '',
+  );
   var schedule = reminder?.schedule ?? 'Daily';
   const scheduleOptions = ['Daily', 'Weekdays', 'Mon · Wed · Fri', 'Custom'];
 
@@ -668,7 +717,7 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
       'Thu': 4,
       'Fri': 5,
       'Sat': 6,
-      'Sun': 7
+      'Sun': 7,
     };
     for (var p in parts) {
       if (dayMap.containsKey(p)) selectedDays.add(dayMap[p]!);
@@ -679,71 +728,116 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppColors.card,
-    useSafeArea: true, // Make it larger/taller
-    shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32.r))),
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    useSafeArea: true,
     builder: (sheetCtx) => StatefulBuilder(
       builder: (ctx, setSheetState) => Container(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(ctx).size.height * 0.85,
         ),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30.r)),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.ink.withValues(alpha: .10),
+              blurRadius: 30.r,
+              offset: Offset(0, -8.h),
+            ),
+          ],
+        ),
         padding: EdgeInsets.fromLTRB(
-            24.w, 24.h, 24.w, (24.h + MediaQuery.of(ctx).viewInsets.bottom)),
+          24.w,
+          14.h,
+          24.w,
+          (24.h + MediaQuery.of(ctx).viewInsets.bottom),
+        ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SheetHandle(),
+              SizedBox(height: 18.h),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(
-                        reminder == null ? 'Add Reminder' : 'Edit Reminder',
-                        style: GoogleFonts.sora(
-                            fontSize: 20.sp, fontWeight: FontWeight.w800)),
+                    child: SheetHeader(
+                      icon: reminder == null
+                          ? Icons.add_alarm_rounded
+                          : Icons.edit_calendar_rounded,
+                      color: AppColors.primary,
+                      title: reminder == null
+                          ? 'Add Reminder'
+                          : 'Edit Reminder',
+                      subtitle: reminder == null
+                          ? 'Set a medication, note, or schedule.'
+                          : 'Update the details below.',
+                    ),
                   ),
                   if (reminder != null)
-                    IconButton(
-                      onPressed: () async {
-                        final prov = sheetCtx.read<ReminderProvider>();
-                        await prov.remove(reminder);
-                        if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
-                      },
-                      icon: Icon(Icons.delete_outline_rounded,
-                          color: AppColors.danger, size: 26.sp),
+                    Container(
+                      margin: EdgeInsets.only(left: 8.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.dangerSoft,
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                      child: IconButton(
+                        onPressed: () async {
+                          final prov = sheetCtx.read<ReminderProvider>();
+                          await prov.remove(reminder);
+                          if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
+                        },
+                        icon: Icon(
+                          Icons.delete_outline_rounded,
+                          color: AppColors.danger,
+                          size: 22.sp,
+                        ),
+                      ),
                     ),
                 ],
               ),
-              SizedBox(height: 20.h),
-              Text('WHAT & HOW MUCH',
-                  style: TextStyle(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      color: AppColors.muted)),
+              SizedBox(height: 24.h),
+              Text(
+                'WHAT & HOW MUCH',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: AppColors.muted,
+                ),
+              ),
               SizedBox(height: 10.h),
               TextField(
-                  controller: title,
-                  enabled: reminder == null,
-                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
-                  decoration: InputDecoration(
-                      hintText: 'Medication name',
-                      prefixIcon: Icon(Icons.medication_rounded, size: 22.sp))),
+                controller: title,
+                enabled: reminder == null,
+                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+                decoration: InputDecoration(
+                  hintText: 'Medication name',
+                  prefixIcon: Icon(Icons.medication_rounded, size: 22.sp),
+                ),
+              ),
               SizedBox(height: 12.h),
               TextField(
-                  controller: dose,
-                  style: TextStyle(fontSize: 16.sp),
-                  decoration: InputDecoration(
-                      hintText: 'Dose (e.g. 1 tablet, 500mg)',
-                      prefixIcon: Icon(Icons.fitness_center_rounded, size: 22.sp))),
+                controller: dose,
+                style: TextStyle(fontSize: 16.sp),
+                decoration: InputDecoration(
+                  hintText: 'Dose (e.g. 1 tablet, 500mg)',
+                  prefixIcon: Icon(Icons.fitness_center_rounded, size: 22.sp),
+                ),
+              ),
               SizedBox(height: 24.h),
-              Text('WHEN',
-                  style: TextStyle(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      color: AppColors.muted)),
+              Text(
+                'WHEN',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: AppColors.muted,
+                ),
+              ),
               SizedBox(height: 10.h),
               Wrap(
                 spacing: 8.w,
@@ -752,24 +846,33 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                   for (final t in times)
                     Container(
                       padding: EdgeInsets.symmetric(
-                          horizontal: 12.w, vertical: 9.h),
+                        horizontal: 12.w,
+                        vertical: 9.h,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.primary.withValues(alpha: .10),
                         borderRadius: BorderRadius.circular(12.r),
                         border: Border.all(
-                            color: AppColors.primary.withValues(alpha: .3)),
+                          color: AppColors.primary.withValues(alpha: .3),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.access_time_filled_rounded,
-                              color: AppColors.primary, size: 16.sp),
+                          Icon(
+                            Icons.access_time_filled_rounded,
+                            color: AppColors.primary,
+                            size: 16.sp,
+                          ),
                           SizedBox(width: 6.w),
-                          Text(t,
-                              style: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.ink)),
+                          Text(
+                            t,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
                           SizedBox(width: 4.w),
                           GestureDetector(
                             onTap: () {
@@ -779,8 +882,11 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                                 setSheetState(() => times.remove(t));
                               }
                             },
-                            child: Icon(Icons.close_rounded,
-                                size: 16.sp, color: AppColors.muted),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 16.sp,
+                              color: AppColors.muted,
+                            ),
                           ),
                         ],
                       ),
@@ -797,31 +903,43 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                             final t = parseTimeLabel(s) ?? TimeOfDay.now();
                             return t.hour * 60 + t.minute;
                           }
+
                           times.sort(
-                                  (a, b) => minutesOf(a).compareTo(minutesOf(b)));
+                            (a, b) => minutesOf(a).compareTo(minutesOf(b)),
+                          );
                         });
                       }
                     },
                     child: Container(
                       padding: EdgeInsets.symmetric(
-                          horizontal: 14.w, vertical: 9.h),
+                        horizontal: 14.w,
+                        vertical: 9.h,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.paper,
                         borderRadius: BorderRadius.circular(12.r),
                         border: Border.all(
-                            color: AppColors.line, style: BorderStyle.solid),
+                          color: AppColors.line,
+                          style: BorderStyle.solid,
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.add_rounded,
-                              size: 16.sp, color: AppColors.primary),
+                          Icon(
+                            Icons.add_rounded,
+                            size: 16.sp,
+                            color: AppColors.primary,
+                          ),
                           SizedBox(width: 4.w),
-                          Text('Add time',
-                              style: TextStyle(
-                                  fontSize: 13.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary)),
+                          Text(
+                            'Add time',
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -829,15 +947,20 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                 ],
               ),
               SizedBox(height: 6.h),
-              Text('Add every time this medicine is due — one card handles all of them.',
-                  style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
+              Text(
+                'Add every time this medicine is due — one card handles all of them.',
+                style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+              ),
               SizedBox(height: 24.h),
-              Text('SCHEDULE',
-                  style: TextStyle(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      color: AppColors.muted)),
+              Text(
+                'SCHEDULE',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: AppColors.muted,
+                ),
+              ),
               SizedBox(height: 12.h),
               Wrap(
                 spacing: 8.w,
@@ -856,7 +979,9 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         padding: EdgeInsets.symmetric(
-                            horizontal: 16.w, vertical: 10.h),
+                          horizontal: 16.w,
+                          vertical: 10.h,
+                        ),
                         decoration: BoxDecoration(
                           color: s == schedule
                               ? AppColors.primary
@@ -868,13 +993,16 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                                 : AppColors.line,
                           ),
                         ),
-                        child: Text(s,
-                            style: TextStyle(
-                                fontSize: 13.sp,
-                                fontWeight: FontWeight.w700,
-                                color: s == schedule
-                                    ? Colors.white
-                                    : AppColors.muted)),
+                        child: Text(
+                          s,
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w700,
+                            color: s == schedule
+                                ? Colors.white
+                                : AppColors.muted,
+                          ),
+                        ),
                       ),
                     ),
                 ],
@@ -912,11 +1040,13 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
               ],
               SizedBox(height: 24.h),
               TextField(
-                  controller: instructions,
-                  style: TextStyle(fontSize: 15.sp),
-                  decoration: InputDecoration(
-                      hintText: 'Additional instructions (optional)',
-                      prefixIcon: Icon(Icons.notes_rounded, size: 22.sp))),
+                controller: instructions,
+                style: TextStyle(fontSize: 15.sp),
+                decoration: InputDecoration(
+                  hintText: 'Additional instructions (optional)',
+                  prefixIcon: Icon(Icons.notes_rounded, size: 22.sp),
+                ),
+              ),
               SizedBox(height: 32.h),
               PrimaryButton(
                 label: reminder == null ? 'Set Reminder' : 'Update Reminder',
@@ -933,32 +1063,36 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                       'Thu',
                       'Fri',
                       'Sat',
-                      'Sun'
+                      'Sun',
                     ];
-                    finalSchedule =
-                        sorted.map((d) => dayNames[d]).join(' · ');
+                    finalSchedule = sorted.map((d) => dayNames[d]).join(' · ');
                   }
 
-                  final joinedTimes =
-                  times.isEmpty ? '9:00 AM' : times.join(', ');
+                  final joinedTimes = times.isEmpty
+                      ? '9:00 AM'
+                      : times.join(', ');
 
                   if (reminder == null) {
                     if (title.text.trim().isEmpty) return;
-                    await prov.add(Reminder(
-                      title: title.text.trim(),
-                      dose: dose.text.trim().isEmpty
-                          ? '1 dose'
-                          : dose.text.trim(),
+                    await prov.add(
+                      Reminder(
+                        title: title.text.trim(),
+                        dose: dose.text.trim().isEmpty
+                            ? '1 dose'
+                            : dose.text.trim(),
+                        time: joinedTimes,
+                        schedule: finalSchedule,
+                        instructions: instructions.text.trim(),
+                      ),
+                    );
+                  } else {
+                    await prov.update(
+                      reminder,
+                      dose: dose.text.trim(),
                       time: joinedTimes,
                       schedule: finalSchedule,
                       instructions: instructions.text.trim(),
-                    ));
-                  } else {
-                    await prov.update(reminder,
-                        dose: dose.text.trim(),
-                        time: joinedTimes,
-                        schedule: finalSchedule,
-                        instructions: instructions.text.trim());
+                    );
                   }
                   if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
                 },
