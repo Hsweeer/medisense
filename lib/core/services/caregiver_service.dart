@@ -50,23 +50,23 @@ class CaregiverService {
     await _links
         .doc(id)
         .set(
-          CaregiverLink(
-            id: id,
-            senderUid: _uid,
-            senderName: myName,
-            recipientUid: recipient.uid,
-            recipientName: recipient.name,
-            status: CaregiverLinkStatus.pending,
-            requestedAt: DateTime.now(),
-          ).toMap(),
-        );
+      CaregiverLink(
+        id: id,
+        senderUid: _uid,
+        senderName: myName,
+        recipientUid: recipient.uid,
+        recipientName: recipient.name,
+        status: CaregiverLinkStatus.pending,
+        requestedAt: DateTime.now(),
+      ).toMap(),
+    );
   }
 
   Future<void> respondToRequest(String linkId, {required bool accept}) async {
     await _links.doc(linkId).update({
       'status':
-          (accept ? CaregiverLinkStatus.accepted : CaregiverLinkStatus.declined)
-              .name,
+      (accept ? CaregiverLinkStatus.accepted : CaregiverLinkStatus.declined)
+          .name,
       'respondedAtMs': DateTime.now().millisecondsSinceEpoch,
     });
   }
@@ -78,8 +78,22 @@ class CaregiverService {
         .snapshots()
         .map(
           (s) =>
-              s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
-        );
+          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+    );
+  }
+
+  /// Every request I've ever sent, in every status (pending, accepted,
+  /// declined, restricted). Unlike [myAcceptedRecipients] (accepted only),
+  /// this exists so a watcher can detect the pending → accepted/declined
+  /// transition and notify me when someone responds to my request.
+  Stream<List<CaregiverLink>> mySentRequests() {
+    return _links
+        .where('senderUid', isEqualTo: _uid)
+        .snapshots()
+        .map(
+          (s) =>
+          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+    );
   }
 
   Stream<List<CaregiverLink>> myAcceptedRecipients() {
@@ -89,8 +103,8 @@ class CaregiverService {
         .snapshots()
         .map(
           (s) =>
-              s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
-        );
+          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+    );
   }
 
   Stream<List<CaregiverLink>> whoHasAccessToMe() {
@@ -100,8 +114,8 @@ class CaregiverService {
         .snapshots()
         .map(
           (s) =>
-              s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
-        );
+          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+    );
   }
 
   Future<void> revokeAccess(String linkId) async {
