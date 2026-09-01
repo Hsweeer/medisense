@@ -60,44 +60,46 @@ class RemindersScreen extends StatelessWidget {
           : prov.reminders.isEmpty
           ? _buildEmptyState(context)
           : ListView(
-              padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
+        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
+        children: [
+          // Stats header: done · streak · adherence
+          MCard(
+            color: AppColors.soft,
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: .3),
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: 14.w,
+              vertical: 14.h,
+            ),
+            child: Row(
               children: [
-                // Stats header: done · streak · adherence
-                MCard(
-                  color: AppColors.soft,
-                  border: Border.all(
-                    color: AppColors.primary.withValues(alpha: .3),
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 14.w,
-                    vertical: 14.h,
-                  ),
-                  child: Row(
-                    children: [
-                      _Stat(
-                        value: '${prov.takenCount}/${prov.reminders.length}',
-                        label: 'Done today',
-                      ),
-                      _statDivider(),
-                      _Stat(
-                        value: '${prov.bestStreak} days',
-                        label: 'Best streak',
-                      ),
-                      _statDivider(),
-                      _Stat(value: '${prov.adherencePct}%', label: 'This week'),
-                    ],
-                  ),
+                _Stat(
+                  value: '${prov.takenCount}/${prov.reminders.length}',
+                  label: 'Done today',
                 ),
-                SizedBox(height: 16.h),
-                ..._buildGroupedCards(prov),
+                _statDivider(),
+                _Stat(
+                  value: '${prov.bestStreak} days',
+                  label: 'Best streak',
+                ),
+                _statDivider(),
+                _Stat(value: '${prov.adherencePct}%', label: 'This week'),
               ],
             ),
+          ),
+          SizedBox(height: 16.h),
+          ..._buildGroupedCards(prov),
+        ],
+      ),
     );
   }
 
   /// Same-medicine multi-dose reminders (sharing a groupId, e.g. from a
-  /// "3x daily" prescription) render as one combined card. Everything else
-  /// renders as before, one card each.
+  /// "3x daily" prescription) render as one combined card. Reminders for
+  /// *different* medicines that happen to share the exact same clock time
+  /// (groupType == 'time') render as one combined time-slot card instead.
+  /// Everything else renders as before, one card each.
   List<Widget> _buildGroupedCards(ReminderProvider prov) {
     final cards = <Widget>[];
     final renderedGroups = <String>{};
@@ -109,14 +111,15 @@ class RemindersScreen extends StatelessWidget {
         final groupReminders = prov.reminders
             .where((x) => x.groupId == r.groupId)
             .toList();
-        cards.add(
-          Padding(
-            padding: EdgeInsets.only(bottom: 10.h),
-            child: groupReminders.length > 1
-                ? _GroupedReminderCard(reminders: groupReminders)
-                : _ReminderCard(reminder: groupReminders.first),
-          ),
-        );
+        Widget card;
+        if (groupReminders.length <= 1) {
+          card = _ReminderCard(reminder: groupReminders.first);
+        } else if (r.groupType == 'time') {
+          card = _TimeGroupedReminderCard(reminders: groupReminders);
+        } else {
+          card = _GroupedReminderCard(reminders: groupReminders);
+        }
+        cards.add(Padding(padding: EdgeInsets.only(bottom: 10.h), child: card));
       } else {
         cards.add(
           Padding(
@@ -181,7 +184,7 @@ class RemindersScreen extends StatelessWidget {
       context: context,
       title: 'Clear all reminders?',
       message:
-          'This will permanently delete all your scheduled reminders and alarms.',
+      'This will permanently delete all your scheduled reminders and alarms.',
       confirmText: 'Delete all',
       destructive: true,
       icon: Icons.alarm_off_rounded,
@@ -193,15 +196,15 @@ class RemindersScreen extends StatelessWidget {
 }
 
 void _confirmDeleteDialog(
-  BuildContext context,
-  ReminderProvider prov,
-  Reminder reminder,
-) async {
+    BuildContext context,
+    ReminderProvider prov,
+    Reminder reminder,
+    ) async {
   final confirmed = await AppDialog.confirm(
     context: context,
     title: 'Delete reminder?',
     message:
-        'Are you sure you want to delete "${reminder.title}"? This action cannot be undone.',
+    'Are you sure you want to delete "${reminder.title}"? This action cannot be undone.',
     confirmText: 'Delete',
     destructive: true,
     icon: Icons.delete_outline_rounded,
@@ -287,16 +290,16 @@ class _ReminderCard extends StatelessWidget {
                   ),
                   child: r.taken
                       ? Icon(
-                          Icons.check_rounded,
-                          size: 16.sp,
-                          color: Colors.white,
-                        )
+                    Icons.check_rounded,
+                    size: 16.sp,
+                    color: Colors.white,
+                  )
                       : isSnoozed
                       ? Icon(
-                          Icons.snooze_rounded,
-                          size: 15.sp,
-                          color: Colors.white,
-                        )
+                    Icons.snooze_rounded,
+                    size: 15.sp,
+                    color: Colors.white,
+                  )
                       : null,
                 ),
               ),
@@ -336,7 +339,7 @@ class _ReminderCard extends StatelessWidget {
                     SizedBox(height: 2.h),
                     Text(
                       '${r.dose} · ${r.schedule}'
-                      '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
+                          '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
                       style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
                     ),
                     SizedBox(height: 8.h),
@@ -426,36 +429,36 @@ class _ReminderCard extends StatelessWidget {
               ),
             )
           else if (isPending)
-            Padding(
-              padding: EdgeInsets.only(top: 10.h),
-              child: Row(
-                children: [
-                  _MiniAction(
-                    label: 'Take now',
-                    color: AppColors.success,
-                    onTap: () => prov.take(r),
-                  ),
-                  SizedBox(width: 8.w),
-                  _MiniAction(
-                    label: 'Snooze 10 min',
-                    color: AppColors.warning,
-                    onTap: () {
-                      prov.snooze(r);
-                      showToast(
-                        context,
-                        '${r.title} snoozed — rings again in 10 min',
-                      );
-                    },
-                  ),
-                  SizedBox(width: 8.w),
-                  _MiniAction(
-                    label: 'Skip',
-                    color: AppColors.muted,
-                    onTap: () => prov.skip(r),
-                  ),
-                ],
+              Padding(
+                padding: EdgeInsets.only(top: 10.h),
+                child: Row(
+                  children: [
+                    _MiniAction(
+                      label: 'Take now',
+                      color: AppColors.success,
+                      onTap: () => prov.take(r),
+                    ),
+                    SizedBox(width: 8.w),
+                    _MiniAction(
+                      label: 'Snooze 10 min',
+                      color: AppColors.warning,
+                      onTap: () {
+                        prov.snooze(r);
+                        showToast(
+                          context,
+                          '${r.title} snoozed — rings again in 10 min',
+                        );
+                      },
+                    ),
+                    SizedBox(width: 8.w),
+                    _MiniAction(
+                      label: 'Skip',
+                      color: AppColors.muted,
+                      onTap: () => prov.skip(r),
+                    ),
+                  ],
+                ),
               ),
-            ),
         ],
       ),
     );
@@ -529,7 +532,7 @@ class _GroupedReminderCard extends StatelessWidget {
           SizedBox(height: 2.h),
           Text(
             '${first.dose} · ${sorted.length}× daily · ${first.schedule}'
-            '${first.instructions.isEmpty ? '' : ' · ${first.instructions}'}',
+                '${first.instructions.isEmpty ? '' : ' · ${first.instructions}'}',
             style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
           ),
           SizedBox(height: 10.h),
@@ -554,10 +557,10 @@ class _GroupedReminderCard extends StatelessWidget {
                       ),
                       child: r.taken
                           ? Icon(
-                              Icons.check_rounded,
-                              size: 13.sp,
-                              color: Colors.white,
-                            )
+                        Icons.check_rounded,
+                        size: 13.sp,
+                        color: Colors.white,
+                      )
                           : null,
                     ),
                   ),
@@ -590,16 +593,168 @@ class _GroupedReminderCard extends StatelessWidget {
 }
 
 void _confirmDeleteGroupDialog(
-  BuildContext context,
-  ReminderProvider prov,
-  List<Reminder> group,
-) async {
+    BuildContext context,
+    ReminderProvider prov,
+    List<Reminder> group,
+    ) async {
   final confirmed = await AppDialog.confirm(
     context: context,
     title: 'Delete reminder?',
     message:
-        'Are you sure you want to delete all ${group.length} doses of '
+    'Are you sure you want to delete all ${group.length} doses of '
         '"${group.first.title}"? This cannot be undone.',
+    confirmText: 'Delete',
+    cancelText: 'Cancel',
+    destructive: true,
+    icon: Icons.delete_outline_rounded,
+  );
+
+  if (!confirmed) return;
+  for (final r in group) {
+    prov.remove(r);
+  }
+}
+
+/// A time-slot card: several *different* medicines all due at the exact
+/// same clock time, combined into one reminder instead of one card per
+/// medicine. Header shows the shared time; each row is one medicine.
+class _TimeGroupedReminderCard extends StatelessWidget {
+  const _TimeGroupedReminderCard({required this.reminders});
+
+  /// All reminders sharing one time-groupId — different medicines, same time.
+  final List<Reminder> reminders;
+
+  @override
+  Widget build(BuildContext context) {
+    final prov = context.read<ReminderProvider>();
+    final first = reminders.first;
+    final takenCount = reminders.where((r) => r.taken).length;
+
+    return MCard(
+      padding: EdgeInsets.all(14.r),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.access_time_rounded, size: 16.sp, color: AppColors.primary),
+              SizedBox(width: 6.w),
+              Expanded(
+                child: Row(
+                  children: [
+                    Text(
+                      first.time,
+                      style: TextStyle(
+                        fontSize: 14.5.sp,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(width: 6.w),
+                    Text(
+                      '· ${reminders.length} medicines',
+                      style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
+                    ),
+                    if (first.addedBy == 'MedAI') ...[
+                      SizedBox(width: 6.w),
+                      const MChip(
+                        'MedAI',
+                        icon: Icons.auto_awesome_rounded,
+                        background: AppColors.aiSoft,
+                        foreground: AppColors.ai,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Text(
+                '$takenCount/${reminders.length} today',
+                style: TextStyle(
+                  fontSize: 11.5.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
+                ),
+              ),
+              SizedBox(width: 6.w),
+              _QuickAction(
+                icon: Icons.delete_outline_rounded,
+                color: AppColors.danger,
+                onTap: () => _confirmDeleteTimeGroupDialog(context, prov, reminders),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          for (final r in reminders)
+            Padding(
+              padding: EdgeInsets.only(bottom: 8.h),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    onTap: () => r.taken ? prov.untake(r) : prov.take(r),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: EdgeInsets.only(top: 2.h),
+                      width: 22.r,
+                      height: 22.r,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: r.taken ? AppColors.success : Colors.white,
+                        border: Border.all(
+                          color: r.taken ? AppColors.success : AppColors.line,
+                          width: 2.w,
+                        ),
+                      ),
+                      child: r.taken
+                          ? Icon(Icons.check_rounded, size: 13.sp, color: Colors.white)
+                          : null,
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          r.title,
+                          style: TextStyle(
+                            fontSize: 13.5.sp,
+                            fontWeight: FontWeight.w700,
+                            decoration: r.taken ? TextDecoration.lineThrough : null,
+                            color: r.taken ? AppColors.muted : AppColors.ink,
+                          ),
+                        ),
+                        Text(
+                          '${r.dose}${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
+                          style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (r.status == DoseStatus.snoozed)
+                    Text(
+                      'Snoozed',
+                      style: TextStyle(fontSize: 11.sp, color: AppColors.warning),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+void _confirmDeleteTimeGroupDialog(
+    BuildContext context,
+    ReminderProvider prov,
+    List<Reminder> group,
+    ) async {
+  final confirmed = await AppDialog.confirm(
+    context: context,
+    title: 'Delete reminder?',
+    message:
+    'Are you sure you want to delete all ${group.length} medicines '
+        'scheduled at ${group.first.time}? This cannot be undone.',
     confirmText: 'Delete',
     cancelText: 'Cancel',
     destructive: true,
@@ -905,7 +1060,7 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                           }
 
                           times.sort(
-                            (a, b) => minutesOf(a).compareTo(minutesOf(b)),
+                                (a, b) => minutesOf(a).compareTo(minutesOf(b)),
                           );
                         });
                       }

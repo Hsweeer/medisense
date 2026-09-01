@@ -277,6 +277,7 @@ class Reminder {
     this.streakDays = 0,
     this.enabled = true,
     this.groupId,
+    this.groupType = 'medicine',
     this.createdByUid,
     DateTime? lastStatusDate,
   }) : lastStatusDate = lastStatusDate ?? DateTime.now();
@@ -293,6 +294,14 @@ class Reminder {
   int streakDays;
   bool enabled;
   final String? groupId;
+
+  /// How reminders sharing [groupId] should be rendered together:
+  /// 'medicine' — same medicine, several dose times a day (the classic
+  /// "3x daily" card, header = medicine name, rows = times).
+  /// 'time' — different medicines that happen to fall due at the exact
+  /// same clock time (e.g. two prescriptions both at 8:00 AM), grouped so
+  /// the user gets one reminder card instead of one per medicine.
+  final String groupType;
 
   /// UID of the caregiver who created this reminder for someone else.
   /// Null when the reminder was self-created. Used by the Caregiver
@@ -328,6 +337,7 @@ class Reminder {
       streakDays: map['streakDays'] ?? 0,
       enabled: map['enabled'] ?? true,
       groupId: map['groupId'],
+      groupType: map['groupType'] ?? 'medicine',
       createdByUid: map['createdByUid'],
       lastStatusDate: map['lastStatusDateMs'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['lastStatusDateMs'])
@@ -346,6 +356,7 @@ class Reminder {
     'streakDays': streakDays,
     'enabled': enabled,
     'groupId': groupId,
+    'groupType': groupType,
     'createdByUid': createdByUid,
     'lastStatusDateMs': lastStatusDate.millisecondsSinceEpoch,
   };

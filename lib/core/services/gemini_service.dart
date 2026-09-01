@@ -25,11 +25,17 @@ class GeminiService {
           {
             "parts": [
               {
-                "text": "SYSTEM: You are a literal transcriber. "
-                    "TASK: Transcribe exactly what is written on this prescription image. "
+                "text": "SYSTEM: You are a literal transcriber fluent in English, Urdu (اردو script), "
+                    "and Roman Urdu. "
+                    "TASK: Transcribe exactly what is written on this prescription image, in "
+                    "whatever language/script it is written in — English, Urdu script, or Roman "
+                    "Urdu. Prescriptions in Pakistan are frequently a mix of English medicine "
+                    "names with Urdu instructions (e.g. \"دن میں دو بار کھانے کے بعد\"), so preserve "
+                    "each part in its original script; do NOT translate anything in this pass. "
                     "Do NOT interpret medicine names, do NOT guess, and do NOT structure it. "
                     "If a word is genuinely illegible, mark it as [illegible]. "
-                    "OUTPUT: Provide a plain text transcription of every word seen."
+                    "OUTPUT: Provide a plain text transcription of every word seen, in its "
+                    "original script."
               },
               {
                 "inlineData": {
@@ -147,15 +153,28 @@ class GeminiService {
           {
             "parts": [
               {
-                "text": "SYSTEM: You are an expert pharmacist specialized in reading messy handwriting. "
+                "text": "SYSTEM: You are an expert pharmacist specialized in reading messy handwriting, "
+                    "fully fluent in English, Urdu (اردو script), and Roman Urdu. Pakistani "
+                    "prescriptions are frequently bilingual: English medicine/brand names with "
+                    "Urdu dosage instructions, either in Urdu script or Roman Urdu. "
                     "INPUT: You are provided with an image of a prescription and a literal transcription of it: \"$rawTranscription\". "
-                    "TASK: Extract EVERY medicine mentioned. Use the transcription and image together to verify names. "
+                    "TASK: Extract EVERY medicine mentioned, in whichever language(s) it was written. Use the transcription and image together to verify names. "
                     "RULES: "
                     "1. Never invent a value that isn't supported by the image or transcription. "
                     "2. Leave dose, frequency, or instructions blank rather than guessing. "
                     "3. For every item, set \"confidence\" to \"low\" if the handwriting is ambiguous or the name is a best guess. "
-                    "4. Common shorthand: 1+0+1, OD, BD, TDS, QID. "
-                    "5. Also extract the course duration in days if written (e.g. \"5 days\", \"x 7/7\", \"1 week\" = 7). "
+                    "4. Recognize frequency shorthand in ALL of these forms and convert to a numeric timesPerDay: "
+                    "English/Latin (1+0+1, OD, BD/BID, TDS/TID, QID, \"once a day\", \"twice daily\", \"three times a day\"); "
+                    "Urdu script (روزانہ ایک بار = once daily, دن میں دو بار = twice a day, دن میں تین بار = three times a day, "
+                    "صبح و شام = morning & evening = 2, صبح، دوپہر، شام = morning/noon/evening = 3); "
+                    "Roman Urdu (din mein aik bar, din mein 2 bar / do bar, din mein 3 bar / teen bar, subah shaam). "
+                    "5. Write the \"instructions\" field in the SAME language the prescription used for that "
+                    "instruction (don't force-translate to English) — e.g. keep \"کھانے کے بعد\" or \"khanay ke baad\" "
+                    "as written if that's how it appears, since the patient will read it back in that language. "
+                    "Common instruction meanings to recognize regardless of script: کھانے سے پہلے/khane se pehle = before food, "
+                    "کھانے کے بعد/khane ke baad = after food, خالی پیٹ/khali pait = empty stomach, سونے سے پہلے/sone se pehle = before bed. "
+                    "6. Also extract the course duration in days if written in any language (e.g. \"5 days\", \"x 7/7\", "
+                    "\"1 week\" = 7, \"5 دن\", \"5 din\", \"ایک ہفتہ\" = 7). "
                     "Set \"durationDays\" to that number, or null if no duration is written — never guess a duration that isn't stated. "
                     "OUTPUT: Return ONLY a valid JSON object: "
                     "{\"transcription\": \"$rawTranscription\", \"medications\": "

@@ -7,11 +7,12 @@ import 'package:flutter/foundation.dart';
 import '../core/services/caregiver_service.dart';
 import '../data/models/caregiver_models.dart';
 import '../data/models/models.dart';
+import 'caregiver_watcher_state_store.dart';
 import 'notification_service.dart';
 import 'reminder_firestore_service.dart';
 
 /// Watches Firestore in real time — while some instance of this app is
-/// running, foreground or backgrounded — and turns three kinds of
+/// running, foreground or backgrounded — and turns four kinds of
 /// caregiver-relationship events into local notifications, saved into the
 /// same on-device JSON history that medicine reminders already use (see
 /// [NotificationService.logGenericAlert] / NotificationStorageHelper):
@@ -30,6 +31,16 @@ import 'reminder_firestore_service.dart';
 /// this app's notification history — it only fires while this instance of
 /// the app is alive; it will not wake a fully-terminated app the way a
 /// real push notification would.
+///
+/// IMPORTANT: dedupe state (which ids have already been notified about)
+/// is persisted to disk per uid via [CaregiverWatcherStateStore]. Without
+/// that, every cold start would treat whatever Firestore currently looks
+/// like as "already known" and silently swallow anything that happened
+/// while the app was closed — which is exactly the "sometimes I get a
+/// notification, sometimes I don't" symptom this fixes. Only a device's
+/// very first-ever attach for an account (no persisted file yet) baselines
+/// silently, so a fresh install doesn't replay old history as a flood of
+/// notifications.
 class CaregiverAlertWatcher {
   CaregiverAlertWatcher._();
 
@@ -45,25 +56,25 @@ class CaregiverAlertWatcher {
 
   bool _started = false;
 
-  // Currently-attached account's uid — used only to distinguish
-  // caregiver-created reminders from self-created ones (see _onMyReminders).
+  // Currently-attached account's uid.
   String? _uid;
 
   // ── Per-account dedupe state ────────────────────────────────────────
-  // Every "seen"/"primed" flag below is reset on every account switch (see
-  // _attach) so notification state never leaks between two users signed
-  // in on the same device, and a fresh app install never replays years of
-  // history as a flood of notifications the moment the watcher attaches.
+  // Reset (then reloaded from disk) on every _attach() call so state
+  // never leaks between two users signed in on the same device.
 
-  bool _incomingPrimed = false;
+  bool _incomingReady = false;
   final Set<String> _seenIncomingIds = {};
 
-  bool _sentPrimed = false;
+  bool _sentReady = false;
   final Map<String, CaregiverLinkStatus> _lastSentStatus = {};
 
-  bool _sosPrimed = false;
+  bool _sosReady = false;
   final Set<String> _seenActiveSosIds = {};
   final Map<String, String> _lastSosStatus = {};
+
+  bool _remindersReady = false;
+  final Set<String> _seenReminderIds = {};
 
   // patientUid → display name, refreshed whenever "people I manage"
   // changes, so SOS alerts can name the patient instead of showing a uid.
@@ -73,9 +84,6 @@ class CaregiverAlertWatcher {
   // to me, refreshed whenever that list changes, so a "new reminder"
   // alert can name who added it instead of showing a uid.
   Map<String, String> _caregiverNames = {};
-
-  bool _remindersPrimed = false;
-  final Set<String> _seenReminderIds = {};
 
   /// Call once (e.g. from main.dart's bootstrap, after NotificationService
   /// is initialized). Safe to call multiple times — subsequent calls are
@@ -91,20 +99,50 @@ class CaregiverAlertWatcher {
     if (current != null) _attach(current.uid);
   }
 
-  void _attach(String uid) {
+  Future<void> _attach(String uid) async {
     debugPrint('[CaregiverAlertWatcher] attaching for uid=$uid');
     _uid = uid;
-    _incomingPrimed = false;
-    _seenIncomingIds.clear();
-    _sentPrimed = false;
-    _lastSentStatus.clear();
-    _sosPrimed = false;
-    _seenActiveSosIds.clear();
-    _lastSosStatus.clear();
+
+    // Load whatever was persisted from a previous run of this account. A
+    // null result means "never attached on this device before" — the
+    // very first snapshot of each stream should then baseline silently.
+    // A non-null result (even with empty sets) means we've attached
+    // before, so every stream should immediately treat its persisted
+    // state as ground truth and notify about anything not in it.
+    final persisted = await CaregiverWatcherStateStore.load(uid);
+    if (_uid != uid) return; // account switched again while we were loading
+
+    _incomingReady = persisted != null;
+    _seenIncomingIds
+      ..clear()
+      ..addAll(persisted?.seenIncomingIds ?? {});
+
+    _sentReady = persisted != null;
+    _lastSentStatus
+      ..clear()
+      ..addEntries((persisted?.lastSentStatus ?? {}).entries.map(
+            (e) => MapEntry(e.key, _parseStatus(e.value)),
+      ));
+
+    _sosReady = persisted != null;
+    _seenActiveSosIds
+      ..clear()
+      ..addAll(persisted?.seenActiveSosIds ?? {});
+    _lastSosStatus
+      ..clear()
+      ..addAll(persisted?.lastSosStatus ?? {});
+
+    _remindersReady = persisted != null;
+    _seenReminderIds
+      ..clear()
+      ..addAll(persisted?.seenReminderIds ?? {});
+
     _patientNames = {};
     _caregiverNames = {};
-    _remindersPrimed = false;
-    _seenReminderIds.clear();
+
+    debugPrint(persisted == null
+        ? '[CaregiverAlertWatcher] no prior state — this attach will baseline silently'
+        : '[CaregiverAlertWatcher] resuming from persisted state (incoming=${_seenIncomingIds.length}, sent=${_lastSentStatus.length}, sos=${_lastSosStatus.length}, reminders=${_seenReminderIds.length})');
 
     _incomingSub =
         CaregiverService.instance.incomingRequests().listen(_onIncoming);
@@ -119,6 +157,13 @@ class CaregiverAlertWatcher {
     _myRemindersSub = ReminderFirestoreService.instance
         .remindersStream()
         .listen(_onMyReminders);
+  }
+
+  static CaregiverLinkStatus _parseStatus(String value) {
+    return CaregiverLinkStatus.values.firstWhere(
+          (s) => s.name == value,
+      orElse: () => CaregiverLinkStatus.pending,
+    );
   }
 
   void _teardownFirestoreListeners() {
@@ -136,23 +181,43 @@ class CaregiverAlertWatcher {
     _myRemindersSub = null;
   }
 
+  // Persists the current dedupe state for the currently-attached uid.
+  // Fire-and-forget — a failed save just means the next cold start might
+  // re-derive from a slightly stale baseline, never a crash.
+  void _persist() {
+    final uid = _uid;
+    if (uid == null) return;
+    CaregiverWatcherStateStore.save(
+      uid,
+      CaregiverWatcherState(
+        seenIncomingIds: Set.of(_seenIncomingIds),
+        lastSentStatus:
+        _lastSentStatus.map((k, v) => MapEntry(k, v.name)),
+        seenActiveSosIds: Set.of(_seenActiveSosIds),
+        lastSosStatus: Map.of(_lastSosStatus),
+        seenReminderIds: Set.of(_seenReminderIds),
+      ),
+    );
+  }
+
   // ── 1. Incoming caregiver requests (I'm the recipient) ──────────────
 
   void _onIncoming(List<CaregiverLink> links) {
-    if (!_incomingPrimed) {
-      // First snapshot = baseline. Requests that were already pending
-      // before the watcher attached (e.g. app was closed when they
-      // arrived) are surfaced by the existing "Pending requests" list on
-      // CaregiverRequestsScreen already — we only want to *notify* about
-      // ones that appear from here on.
-      _incomingPrimed = true;
+    if (!_incomingReady) {
+      // First-ever attach for this account on this device: baseline
+      // silently so an install doesn't replay old pending requests as a
+      // flood of notifications.
+      _incomingReady = true;
       _seenIncomingIds.addAll(links.map((l) => l.id));
       debugPrint(
-          '[CaregiverAlertWatcher] incoming primed with ${links.length} existing request(s)');
+          '[CaregiverAlertWatcher] incoming baselined with ${links.length} existing request(s)');
+      _persist();
       return;
     }
+    var changed = false;
     for (final link in links) {
       if (_seenIncomingIds.add(link.id)) {
+        changed = true;
         debugPrint(
             '[CaregiverAlertWatcher] new incoming request from ${link.senderName}');
         NotificationService.instance.logGenericAlert(
@@ -161,25 +226,41 @@ class CaregiverAlertWatcher {
         );
       }
     }
+    if (changed) _persist();
   }
 
   // ── 2. My sent requests being accepted / declined ────────────────────
 
   void _onSentUpdate(List<CaregiverLink> links) {
-    if (!_sentPrimed) {
-      _sentPrimed = true;
+    if (!_sentReady) {
+      _sentReady = true;
       for (final link in links) {
         _lastSentStatus[link.id] = link.status;
       }
       debugPrint(
-          '[CaregiverAlertWatcher] sent-requests primed with ${links.length} link(s)');
+          '[CaregiverAlertWatcher] sent-requests baselined with ${links.length} link(s)');
+      _persist();
       return;
     }
+    var changed = false;
     for (final link in links) {
       final previous = _lastSentStatus[link.id];
       _lastSentStatus[link.id] = link.status;
-      if (previous == null || previous == link.status) continue;
 
+      // A link we've never recorded before (e.g. it was created AND
+      // responded to entirely while this device was offline) still
+      // deserves a notification if it already landed on a final status —
+      // there's just no "previous" to compare against, so treat "no
+      // record yet + already decided" as itself a change worth reporting.
+      final isNewlyDiscovered = previous == null;
+      if (!isNewlyDiscovered && previous == link.status) continue;
+      if (isNewlyDiscovered && link.status == CaregiverLinkStatus.pending) {
+        // Nothing to tell the sender yet — still pending.
+        changed = true;
+        continue;
+      }
+
+      changed = true;
       if (link.status == CaregiverLinkStatus.accepted) {
         debugPrint(
             '[CaregiverAlertWatcher] ${link.recipientName} accepted my request');
@@ -196,6 +277,7 @@ class CaregiverAlertWatcher {
         );
       }
     }
+    if (changed) _persist();
   }
 
   // ── 3. SOS activity for patients I'm an accepted caregiver for ──────
@@ -228,27 +310,30 @@ class CaregiverAlertWatcher {
   }
 
   void _onSosSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
-    if (!_sosPrimed) {
-      // Baseline pass: remember where every currently-visible session
-      // stands (including any already-active one) without notifying, so
-      // a fresh attach never fires a stale alert for something already
-      // in progress before this watcher existed.
-      _sosPrimed = true;
+    if (!_sosReady) {
+      // Baseline pass on this device's first-ever attach: remember where
+      // every currently-visible session stands (including any
+      // already-active one) without notifying, so a fresh install never
+      // fires a stale alert for something already in progress.
+      _sosReady = true;
       for (final doc in snapshot.docs) {
         final status = (doc.data()['status'] ?? '').toString();
         _lastSosStatus[doc.id] = status;
         if (status == 'active') _seenActiveSosIds.add(doc.id);
       }
       debugPrint(
-          '[CaregiverAlertWatcher] SOS primed with ${snapshot.docs.length} session(s)');
+          '[CaregiverAlertWatcher] SOS baselined with ${snapshot.docs.length} session(s)');
+      _persist();
       return;
     }
 
+    var changed = false;
     for (final doc in snapshot.docs) {
       final data = doc.data();
       final status = (data['status'] ?? '').toString();
       final previousStatus = _lastSosStatus[doc.id];
       _lastSosStatus[doc.id] = status;
+      changed = true;
 
       final patientUid = (data['userId'] ?? '').toString();
       final patientName = _patientNames[patientUid] ?? 'A patient you manage';
@@ -276,6 +361,7 @@ class CaregiverAlertWatcher {
         );
       }
     }
+    if (changed) _persist();
   }
 
   // ── 4. A caregiver of mine creates a new reminder for me ────────────
@@ -285,22 +371,25 @@ class CaregiverAlertWatcher {
   }
 
   void _onMyReminders(List<Reminder> reminders) {
-    if (!_remindersPrimed) {
-      // Baseline pass — every reminder that already exists (self-created
-      // or caregiver-created, from before this watcher attached) is
-      // already visible on the Reminders screen; we only want to notify
-      // about ones that show up from here on.
-      _remindersPrimed = true;
+    if (!_remindersReady) {
+      // Baseline pass on this device's first-ever attach — every reminder
+      // that already exists (self- or caregiver-created) is already
+      // visible on the Reminders screen; we only want to notify about
+      // ones that show up from here on.
+      _remindersReady = true;
       _seenReminderIds
           .addAll(reminders.where((r) => r.id != null).map((r) => r.id!));
       debugPrint(
-          '[CaregiverAlertWatcher] reminders primed with ${reminders.length} existing reminder(s)');
+          '[CaregiverAlertWatcher] reminders baselined with ${reminders.length} existing reminder(s)');
+      _persist();
       return;
     }
 
+    var changed = false;
     for (final reminder in reminders) {
       final id = reminder.id;
       if (id == null || !_seenReminderIds.add(id)) continue;
+      changed = true;
 
       final createdByUid = reminder.createdByUid;
       // Self-created reminders (createdByUid null, or — defensively —
@@ -318,6 +407,7 @@ class CaregiverAlertWatcher {
             : '$caregiverName added a reminder: ${reminder.title} · ${reminder.dose} at ${reminder.time}.',
       );
     }
+    if (changed) _persist();
   }
 
   /// Fully stops all listeners — not normally needed since the auth

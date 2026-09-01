@@ -15,7 +15,9 @@ import '../sos/sos_screen.dart';
 
 /// Bottom-tab scaffold: home · remind · [SOS] · nearby · profile.
 class PatientShell extends StatefulWidget {
-  const PatientShell({super.key});
+  const PatientShell({super.key, this.initialIndex = 0});
+
+  final int initialIndex;
 
   @override
   State<PatientShell> createState() => _PatientShellState();
@@ -23,7 +25,7 @@ class PatientShell extends StatefulWidget {
 
 class _PatientShellState extends State<PatientShell>
     with WidgetsBindingObserver {
-  int index = 0;
+  late int index = widget.initialIndex;
 
   static const _tabs = [
     HomeScreen(),
