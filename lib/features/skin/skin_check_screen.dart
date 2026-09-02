@@ -242,18 +242,23 @@ class _IntroView extends StatelessWidget {
             SizedBox(height: 26.h),
             MCard(
               color: AppColors.soft,
-              border: Border.all(color: AppColors.primary.withValues(alpha: .18)),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: .18),
+              ),
               padding: EdgeInsets.all(14.r),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.lightbulb_outline_rounded,
-                      color: AppColors.primaryDark, size: 20.sp),
+                  Icon(
+                    Icons.lightbulb_outline_rounded,
+                    color: AppColors.primaryDark,
+                    size: 20.sp,
+                  ),
                   SizedBox(width: 10.w),
                   Expanded(
                     child: Text(
                       'Good, even lighting and a bare face (no makeup or '
-                          'filters) help MedAI read your skin more accurately.',
+                      'filters) help MedAI read your skin more accurately.',
                       style: TextStyle(
                         fontSize: 12.sp,
                         height: 1.4,
@@ -347,19 +352,27 @@ class _ResultView extends StatelessWidget {
         if (imagePath != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(14.r),
-            child: Image.file(File(imagePath!),
-                height: 170.h, width: double.infinity, fit: BoxFit.cover),
+            child: Image.file(
+              File(imagePath!),
+              height: 170.h,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
           ),
         SizedBox(height: 16.h),
         MCard(
-          border: Border.all(color: AppColors.ai.withValues(alpha: .45), width: 1.w),
+          border: Border.all(
+            color: AppColors.ai.withValues(alpha: .45),
+            width: 1.w,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ReportCardHeader(
                 icon: Icons.face_retouching_natural_rounded,
                 title: 'Skin analysis',
-                trailing: '${metrics.length} metric${metrics.length == 1 ? '' : 's'}',
+                trailing:
+                    '${metrics.length} metric${metrics.length == 1 ? '' : 's'}',
               ),
               SizedBox(height: 14.h),
               for (final m in metrics)
@@ -367,7 +380,7 @@ class _ResultView extends StatelessWidget {
               Divider(height: 18.h),
               Text(
                 'Cosmetic visual estimate — not a medical diagnosis. If '
-                    'anything looks concerning, please see a dermatologist.',
+                'anything looks concerning, please see a dermatologist.',
                 style: TextStyle(
                   fontSize: 11.5.sp,
                   fontStyle: FontStyle.italic,
