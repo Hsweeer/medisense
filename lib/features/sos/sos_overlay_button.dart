@@ -16,9 +16,6 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
   double _progress = 0.0;
   Timer? _timer;
 
-  // This channel communicates directly with Kotlin from the overlay
-  static const _channel = MethodChannel('medisense_native_channel');
-
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -39,7 +36,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
                 opacity: opacity,
                 child: AnimatedScale(
                   duration: const Duration(milliseconds: 200),
-                  scale: 1.0, 
+                  scale: 1.0,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -50,8 +47,12 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
                         child: CircularProgressIndicator(
                           value: _progress,
                           strokeWidth: 4.0,
-                          backgroundColor: AppColors.danger.withValues(alpha: 0.15),
-                          valueColor: const AlwaysStoppedAnimation(AppColors.danger),
+                          backgroundColor: AppColors.danger.withValues(
+                            alpha: 0.15,
+                          ),
+                          valueColor: const AlwaysStoppedAnimation(
+                            AppColors.danger,
+                          ),
                         ),
                       ),
                       // The Button itself
@@ -90,7 +91,7 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
     _timer?.cancel();
     _progress = 0.0;
     HapticFeedback.mediumImpact();
-    
+
     const duration = Duration(milliseconds: 30);
     _timer = Timer.periodic(duration, (t) {
       setState(() {
@@ -120,11 +121,12 @@ class _SosOverlayButtonState extends State<SosOverlayButton> {
 
     HapticFeedback.vibrate();
     debugPrint('SOS_DEBUG: Triggering SOS via Native Broadcast (Approach B)');
-    
+
     try {
       const intent = AndroidIntent(
         action: 'com.medisense.medisense_app.ACTION_SOS_TRIGGER',
-        package: 'com.medisense.medisense_app', // Explicit target to bypass Android 8+ restrictions
+        package:
+            'com.medisense.medisense_app', // Explicit target to bypass Android 8+ restrictions
       );
       await intent.sendBroadcast();
       debugPrint('SOS_DEBUG: Explicit broadcast intent sent successfully');

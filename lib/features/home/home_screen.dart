@@ -1,3 +1,4 @@
+// PATH: lib/features/home/home_screen.dart
 // lib/features/home/home_screen.dart
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_loading.dart';
+import '../../core/widgets/guest_gate.dart';
 import '../../core/widgets/shared_widgets.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/profile_provider.dart';
@@ -61,10 +64,11 @@ class HomeScreen extends StatelessWidget {
               ),
               const _NotificationBell(),
               SizedBox(width: 10.w),
-              InitialsAvatar(displayName, imageUrl: profile.imageUrl),
+              const _DrawerButton(),
             ],
           ),
           SizedBox(height: 16.h),
+          if (context.watch<AuthProvider>().isGuest) const GuestModeBanner(),
           // Universal search → nearby care
           TextField(
             readOnly: true,
@@ -168,11 +172,6 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           SizedBox(height: 16.h),
-          // Quick actions — a 2-2-2 grid. IntrinsicHeight + stretch makes
-          // both cards in each row match the height of whichever one has
-          // more content (e.g. a longer subtitle), instead of each card
-          // hugging its own text and ending up a different size than its
-          // neighbor.
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -269,20 +268,26 @@ class HomeScreen extends StatelessWidget {
                     sub: 'Manage access',
                     color: AppColors.primary,
                     soft: AppColors.soft,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CaregiverRequestsScreen(),
-                      ),
-                    ),
+                    onTap: () async {
+                      if (!await requireLogin(
+                        context,
+                        feature: 'manage caregivers',
+                      )) {
+                        return;
+                      }
+                      if (!context.mounted) return;
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CaregiverRequestsScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
             ),
           ),
           SizedBox(height: 20.h),
-          // Real AI-personalized advice — generated from the user's
-          // health profile + what MedAI has learned from chat, cached
-          // and periodically refreshed (see ProfileProvider.forYouTip).
           _ForYouSection(profile: profileProvider),
         ],
       ),
@@ -290,14 +295,10 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-/// Launches the vitals (heart-rate) scan, shows the reading it produces
-/// (the scan screen itself already displays the result before returning
-/// it here), then explicitly asks before saving it to history — unlike
-/// the chat flow, which auto-saves every reading.
 Future<void> _startHeartScan(BuildContext context) async {
-  final bpm = await Navigator.of(context).push<double>(
-    MaterialPageRoute(builder: (_) => const VitalsScanScreen()),
-  );
+  final bpm = await Navigator.of(
+    context,
+  ).push<double>(MaterialPageRoute(builder: (_) => const VitalsScanScreen()));
   if (bpm == null || !context.mounted) return;
 
   final shouldSave = await AppDialog.confirm(
@@ -310,6 +311,10 @@ Future<void> _startHeartScan(BuildContext context) async {
   );
 
   if (shouldSave != true) return;
+  if (!await requireLogin(context, feature: 'save your heart-rate history')) {
+    return;
+  }
+  if (!context.mounted) return;
 
   await VitalsFirestoreService.instance.saveScan(bpm);
   if (!context.mounted) return;
@@ -317,16 +322,11 @@ Future<void> _startHeartScan(BuildContext context) async {
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(content: Text('Saved to your heart-rate history')),
   );
-  Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const VitalsHistoryScreen()),
-  );
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const VitalsHistoryScreen()));
 }
 
-/// Shows on the home screen. Uses the profile provider's cached, real
-/// AI-generated tip (see `ForYouService` + `ProfileProvider.forYouTip`).
-/// Falls back to a friendly "add info to unlock this" state until there's
-/// enough profile/chat context to personalize on — never shows a fake or
-/// generic tip pretending to be personalized.
 class _ForYouSection extends StatelessWidget {
   const _ForYouSection({required this.profile});
 
@@ -355,10 +355,10 @@ class _ForYouSection extends StatelessWidget {
                 child: loading
                     ? AppSpinner.inline(size: 15.sp, color: AppColors.primary)
                     : Icon(
-                  Icons.refresh_rounded,
-                  size: 18.sp,
-                  color: AppColors.muted,
-                ),
+                        Icons.refresh_rounded,
+                        size: 18.sp,
+                        color: AppColors.muted,
+                      ),
               ),
             ),
           ],
@@ -387,38 +387,38 @@ class _ForYouSection extends StatelessWidget {
               Expanded(
                 child: tip == null
                     ? Text(
-                  loading
-                      ? 'Personalizing advice for you…'
-                      : 'Fill in your health profile or chat with '
-                      'MedAI, and personalized advice for your '
-                      'situation will show up here.',
-                  style: TextStyle(
-                    fontSize: 12.5.sp,
-                    height: 1.4,
-                    color: AppColors.inkSoft,
-                  ),
-                )
+                        loading
+                            ? 'Personalizing advice for you…'
+                            : 'Fill in your health profile or chat with '
+                                  'MedAI, and personalized advice for your '
+                                  'situation will show up here.',
+                        style: TextStyle(
+                          fontSize: 12.5.sp,
+                          height: 1.4,
+                          color: AppColors.inkSoft,
+                        ),
+                      )
                     : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tip.title,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w700,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tip.title,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 3.h),
+                          Text(
+                            tip.body,
+                            style: TextStyle(
+                              fontSize: 12.5.sp,
+                              height: 1.4,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    SizedBox(height: 3.h),
-                    Text(
-                      tip.body,
-                      style: TextStyle(
-                        fontSize: 12.5.sp,
-                        height: 1.4,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ],
           ),
@@ -428,8 +428,6 @@ class _ForYouSection extends StatelessWidget {
   }
 }
 
-/// Shows the user's real location once granted; while off, doubles as the
-/// control to (re)request it — no separate settings screen needed.
 class _LocationLabel extends StatelessWidget {
   const _LocationLabel();
 
@@ -442,14 +440,14 @@ class _LocationLabel extends StatelessWidget {
       onTap: loc.isLoading
           ? null
           : () {
-        if (loc.access == LocationAccess.granted) return;
-        if (loc.access == LocationAccess.deniedForever ||
-            loc.access == LocationAccess.serviceDisabled) {
-          loc.openSettings();
-        } else {
-          loc.requestAccess();
-        }
-      },
+              if (loc.access == LocationAccess.granted) return;
+              if (loc.access == LocationAccess.deniedForever ||
+                  loc.access == LocationAccess.serviceDisabled) {
+                loc.openSettings();
+              } else {
+                loc.requestAccess();
+              }
+            },
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -469,8 +467,6 @@ class _LocationLabel extends StatelessWidget {
   }
 }
 
-/// Bell icon with an unread-count badge, matching the app's rounded
-/// icon-badge language used elsewhere (see _QuickTile below).
 class _NotificationBell extends StatelessWidget {
   const _NotificationBell();
 
@@ -479,9 +475,13 @@ class _NotificationBell extends StatelessWidget {
     final unread = context.watch<NotificationProvider>().unreadCount;
 
     return GestureDetector(
-      onTap: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+      onTap: () async {
+        if (!await requireLogin(context, feature: 'view notifications')) return;
+        if (!context.mounted) return;
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+      },
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -522,6 +522,31 @@ class _NotificationBell extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _DrawerButton extends StatelessWidget {
+  const _DrawerButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Scaffold.of(context).openDrawer(),
+      child: Container(
+        width: 46.r,
+        height: 46.r,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: AppColors.gradient,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Icon(Icons.menu_rounded, color: Colors.white, size: 22.sp),
       ),
     );
   }

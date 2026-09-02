@@ -1,8 +1,10 @@
+// PATH: lib/features/shell/patient_shell.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/guest_gate.dart';
 import '../../providers/location_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/sos_provider.dart';
@@ -12,6 +14,7 @@ import '../nearby/nearby_screen.dart';
 import '../profile/profile_screen.dart';
 import '../reminders/reminders_screen.dart';
 import '../sos/sos_screen.dart';
+import 'app_drawer.dart';
 
 /// Bottom-tab scaffold: home · remind · [SOS] · nearby · profile.
 class PatientShell extends StatefulWidget {
@@ -64,24 +67,22 @@ class _PatientShellState extends State<PatientShell>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: index,
-        children: _tabs,
-      ),
+      drawer: const AppDrawer(),
+      body: IndexedStack(index: index, children: _tabs),
       floatingActionButton: index == 0
           ? FloatingActionButton.extended(
-        heroTag: 'med-ai',
-        backgroundColor: AppColors.ai,
-        foregroundColor: Colors.white,
-        onPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const AiChatScreen())),
-        icon: const Icon(Icons.psychology_alt_rounded),
-        label: const Text(
-          'MedAI',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-      )
+              heroTag: 'med-ai',
+              backgroundColor: AppColors.ai,
+              foregroundColor: Colors.white,
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const AiChatScreen())),
+              icon: const Icon(Icons.psychology_alt_rounded),
+              label: const Text(
+                'MedAI',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            )
           : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -103,7 +104,10 @@ class _PatientShellState extends State<PatientShell>
                 _navItem(1, Icons.alarm_rounded, 'Remind'),
                 _sosItem(), // Always visible now
                 _navItem(2, Icons.map_rounded, 'Nearby'),
-                _navItem(3, Icons.person_rounded, 'Profile'),
+                // Profile holds the Medical ID (allergies, conditions,
+                // blood type, emergency contacts) — always gated for
+                // guests, not just the edit actions inside it.
+                _navItem(3, Icons.person_rounded, 'Profile', gated: true),
               ],
             ),
           ),
@@ -112,12 +116,18 @@ class _PatientShellState extends State<PatientShell>
     );
   }
 
-  Widget _navItem(int i, IconData icon, String label) {
+  Widget _navItem(int i, IconData icon, String label, {bool gated = false}) {
     final selected = index == i;
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => index = i),
+        onTap: () async {
+          if (gated &&
+              !await requireLogin(context, feature: 'view your profile')) {
+            return;
+          }
+          if (mounted) setState(() => index = i);
+        },
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -152,13 +162,18 @@ class _PatientShellState extends State<PatientShell>
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        // Intentionally NOT gated behind requireLogin(): SOS is a
+        // life-safety feature and must stay reachable for guests too.
+        // A guest simply has no saved emergency contacts yet, so
+        // SosScreen naturally falls back to "call local emergency
+        // number" only — it never blocks or delays that fallback.
         onTap: () {
           final loc = context.read<LocationProvider>().position;
           final contacts = context.read<ProfileProvider>().contacts;
           context.read<SosProvider>().triggerImmediate(loc, contacts);
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const SosScreen()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const SosScreen()));
         },
         child: Column(
           mainAxisSize: MainAxisSize.min,

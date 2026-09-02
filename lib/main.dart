@@ -1,3 +1,4 @@
+// PATH: lib/main.dart
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_core/firebase_core.dart';
@@ -219,7 +220,16 @@ class _AuthWrapperState extends State<AuthWrapper> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SplashScreen();
         }
-        return snapshot.hasData ? const PatientShell() : const LoginScreen();
+        if (snapshot.hasData) return const PatientShell();
+
+        // No real account signed in — either show the login screen, or,
+        // if the person tapped "Continue as Guest" there, drop them into
+        // the shell in guest mode. PatientShell and every screen under it
+        // read AuthProvider.isGuest directly via Provider, so no extra
+        // constructor plumbing is needed here. isGuest resets to false
+        // automatically the moment a real sign-in succeeds.
+        final isGuest = context.watch<AuthProvider>().isGuest;
+        return isGuest ? const PatientShell() : const LoginScreen();
       },
     );
   }

@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_loading.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../../../data/models/food_models.dart';
+import 'barcode_scan_screen.dart';
 import 'food_review_screen.dart';
 import 'food_scan_camera_screen.dart';
 
@@ -85,6 +86,135 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
     }
   }
 
+  Future<void> _scanBarcode() async {
+    if (_processing) return;
+    final code = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute(builder: (_) => const BarcodeScanScreen()));
+    if (code == null || !mounted) return;
+
+    setState(() => _processing = true);
+    try {
+      final product = await OpenFoodFactsService.instance.lookupByBarcode(
+        code,
+      );
+      if (!mounted) return;
+      setState(() => _processing = false);
+
+      if (product == null) {
+        _showBarcodeNotFound();
+        return;
+      }
+
+      _announceDietaryStatus(product.nutrition.dietaryStatus);
+
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FoodReviewScreen(
+            foodName: product.name,
+            portionLabel: product.nutrition.portionLabel,
+            nutrition: product.nutrition,
+          ),
+        ),
+      );
+    } on NutritionLookupException catch (error) {
+      if (!mounted) return;
+      setState(() => _processing = false);
+      _showBarcodeError(error.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _processing = false);
+      _showBarcodeError('Could not look up this barcode. Please try again.');
+    }
+  }
+
+  /// Shows an immediate halal/haram/unverified banner right after a
+  /// barcode is scanned, before the full review screen opens.
+  void _announceDietaryStatus(DietaryStatus status) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+
+    late final IconData icon;
+    late final String label;
+    late final Color color;
+    switch (status) {
+      case DietaryStatus.halal:
+        icon = Icons.check_circle_rounded;
+        label = 'This product looks Halal';
+        color = AppColors.success;
+        break;
+      case DietaryStatus.haram:
+        icon = Icons.cancel_rounded;
+        label = 'This product is Not halal';
+        color = AppColors.danger;
+        break;
+      case DietaryStatus.unknown:
+        icon = Icons.help_rounded;
+        label = 'Halal status could not be verified';
+        color = AppColors.muted;
+        break;
+    }
+
+    messenger.showSnackBar(
+      SnackBar(
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showBarcodeNotFound() async {
+    final shouldRetry = await AppDialog.confirm(
+      context: context,
+      title: 'Product not found',
+      message:
+          "This barcode isn't in the nutrition database yet. You can try "
+          'scanning again or log the food with a photo instead.',
+      confirmText: 'Scan again',
+      cancelText: 'Use photo instead',
+      icon: Icons.qr_code_scanner_rounded,
+      accentColor: AppColors.warning,
+    );
+    if (!mounted) return;
+    if (shouldRetry) {
+      _scanBarcode();
+    } else {
+      _capture(ImageSource.camera);
+    }
+  }
+
+  Future<void> _showBarcodeError(String message) async {
+    final shouldRetry = await AppDialog.confirm(
+      context: context,
+      title: 'Barcode scan unsuccessful',
+      message: message,
+      confirmText: 'Try again',
+      cancelText: 'Cancel',
+      icon: Icons.qr_code_scanner_rounded,
+      accentColor: AppColors.warning,
+    );
+    if (!mounted) return;
+    if (shouldRetry) _scanBarcode();
+  }
+
   FoodNutrition _forDetectedPortion(
     FoodNutrition nutrition,
     FoodIdentification food,
@@ -156,9 +286,9 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Snap a photo or pick one from your gallery and '
-                          'MedAI will estimate calories, macros, and '
-                          'dietary status in seconds.',
+                          'Snap a photo, pick one from your gallery, or '
+                          'scan a barcode and MedAI will estimate calories, '
+                          'macros, and dietary status in seconds.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 13.5,
@@ -188,6 +318,12 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
                           label: 'Choose from gallery',
                           icon: Icons.photo_library_rounded,
                           onPressed: () => _capture(ImageSource.gallery),
+                        ),
+                        const SizedBox(height: 12),
+                        SecondaryButton(
+                          label: 'Scan barcode',
+                          icon: Icons.qr_code_scanner_rounded,
+                          onPressed: _scanBarcode,
                         ),
                         const SizedBox(height: 26),
                         MCard(
@@ -230,9 +366,9 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
   }
 }
 
-/// Full-screen "analyzing" state shown while the captured photo is being
-/// identified and looked up — a calmer, branded alternative to a bare
-/// spinner + caption.
+/// Full-screen "analyzing" state shown while the captured photo or
+/// scanned barcode is being identified/looked up — a calmer, branded
+/// alternative to a bare spinner + caption.
 class _AnalyzingState extends StatelessWidget {
   const _AnalyzingState();
 

@@ -1,3 +1,4 @@
+// PATH: lib/features/auth/login_screen.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -28,22 +29,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   static const _slides = [
     (
-    Icons.psychology_alt_rounded,
-    'Meet MedAI',
-    'A personal health assistant that reads your labs, photos, and voice '
-        'notes — and learns your health story over time.',
+      Icons.psychology_alt_rounded,
+      'Meet MedAI',
+      'A personal health assistant that reads your labs, photos, and voice '
+          'notes — and learns your health story over time.',
     ),
     (
-    Icons.map_rounded,
-    'Care, mapped around you',
-    'Find nearby hospitals and pharmacies on a live map with one-tap '
-        'directions when minutes matter.',
+      Icons.map_rounded,
+      'Care, mapped around you',
+      'Find nearby hospitals and pharmacies on a live map with one-tap '
+          'directions when minutes matter.',
     ),
     (
-    Icons.sos_rounded,
-    'Emergency SOS built in',
-    'One tap calls emergency services and alerts your emergency contacts '
-        'with your location and medical profile.',
+      Icons.sos_rounded,
+      'Emergency SOS built in',
+      'One tap calls emergency services and alerts your emergency contacts '
+          'with your location and medical profile.',
     ),
   ];
 
@@ -75,11 +76,19 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _password.text;
 
     if (!email.contains('@') || !email.contains('.')) {
-      showToast(context, 'Enter a valid email address', color: AppColors.danger);
+      showToast(
+        context,
+        'Enter a valid email address',
+        color: AppColors.danger,
+      );
       return;
     }
     if (password.length < 6) {
-      showToast(context, 'Password must be at least 6 characters', color: AppColors.danger);
+      showToast(
+        context,
+        'Password must be at least 6 characters',
+        color: AppColors.danger,
+      );
       return;
     }
 
@@ -107,6 +116,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       showToast(context, error.toString(), color: AppColors.danger);
     }
+  }
+
+  void _continueAsGuest() {
+    context.read<AuthProvider>().continueAsGuest();
   }
 
   @override
@@ -159,7 +172,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(height: 8.h),
                     Text(
                       'AI guidance, nearby care, and emergency help — in one app.',
-                      style: TextStyle(fontSize: 14.5.sp, color: AppColors.muted),
+                      style: TextStyle(
+                        fontSize: 14.5.sp,
+                        color: AppColors.muted,
+                      ),
                     ),
                     SizedBox(height: 22.h),
                     // Rotating value-prop hero.
@@ -179,7 +195,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: i == 2
-                                    ? [const Color(0xFF8A2F28), AppColors.danger]
+                                    ? [
+                                        const Color(0xFF8A2F28),
+                                        AppColors.danger,
+                                      ]
                                     : i == 1
                                     ? AppColors.gradient
                                     : AppColors.aiGradient,
@@ -195,13 +214,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: Colors.white.withValues(alpha: .18),
                                     borderRadius: BorderRadius.circular(16.r),
                                   ),
-                                  child: Icon(s.$1, color: Colors.white, size: 28.sp),
+                                  child: Icon(
+                                    s.$1,
+                                    color: Colors.white,
+                                    size: 28.sp,
+                                  ),
                                 ),
                                 SizedBox(width: 14.w),
                                 Expanded(
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         s.$2,
@@ -275,12 +299,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(height: 22.h),
                     Text(
                       'Sign in with your email',
-                      style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     SizedBox(height: 4.h),
                     Text(
                       'Enter the email and password for your existing account.',
-                      style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+                      style: TextStyle(
+                        fontSize: 11.5.sp,
+                        color: AppColors.muted,
+                      ),
                     ),
                     SizedBox(height: 10.h),
                     TextField(
@@ -353,8 +383,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       iconWidget: Image.network(
                         'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_"G"_logo.svg/1200px-Google_"G"_logo.svg.png',
                         fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => Text('G',
-                            style: GoogleFonts.sora(fontWeight: FontWeight.w900, color: Colors.blue)),
+                        errorBuilder: (_, _, _) => Text(
+                          'G',
+                          style: GoogleFonts.sora(
+                            fontWeight: FontWeight.w900,
+                            color: Colors.blue,
+                          ),
+                        ),
                       ),
                       onPressed: _continueWithGoogle,
                     ),
@@ -364,11 +399,33 @@ class _LoginScreenState extends State<LoginScreen> {
                       iconWidget: Image.network(
                         'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/1667px-Apple_logo_black.svg.png',
                         fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => const Icon(Icons.phone_iphone_rounded, color: Colors.black),
+                        errorBuilder: (_, _, _) => const Icon(
+                          Icons.phone_iphone_rounded,
+                          color: Colors.black,
+                        ),
                       ),
                       onPressed: _continueWithApple,
                     ),
-                    SizedBox(height: 24.h),
+                    SizedBox(height: 16.h),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: _continueAsGuest,
+                        icon: Icon(
+                          Icons.visibility_outlined,
+                          size: 18.sp,
+                          color: AppColors.muted,
+                        ),
+                        label: Text(
+                          'Continue as Guest',
+                          style: TextStyle(
+                            fontSize: 13.5.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
                     Center(
                       child: GestureDetector(
                         onTap: () => Navigator.of(context).push(
@@ -438,8 +495,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-        if (isLoading)
-          const AppLoadingOverlay(),
+        if (isLoading) const AppLoadingOverlay(),
       ],
     );
   }

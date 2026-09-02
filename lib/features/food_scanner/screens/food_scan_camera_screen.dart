@@ -10,10 +10,16 @@ class FoodScanCameraScreen extends StatefulWidget {
   State<FoodScanCameraScreen> createState() => _FoodScanCameraScreenState();
 }
 
-class _FoodScanCameraScreenState extends State<FoodScanCameraScreen> {
+class _FoodScanCameraScreenState extends State<FoodScanCameraScreen>
+    with SingleTickerProviderStateMixin {
   CameraController? _controller;
   String? _error;
   bool _capturing = false;
+
+  late final AnimationController _lineController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..repeat(reverse: true);
 
   @override
   void initState() {
@@ -23,6 +29,7 @@ class _FoodScanCameraScreenState extends State<FoodScanCameraScreen> {
 
   @override
   void dispose() {
+    _lineController.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -92,6 +99,19 @@ class _FoodScanCameraScreenState extends State<FoodScanCameraScreen> {
               ),
             if (ready)
               IgnorePointer(child: CustomPaint(painter: _FoodFramePainter())),
+            if (ready)
+              AnimatedBuilder(
+                animation: _lineController,
+                builder: (context, _) {
+                  return IgnorePointer(
+                    child: CustomPaint(
+                      painter: _ScanLinePainter(
+                        progress: _lineController.value,
+                      ),
+                    ),
+                  );
+                },
+              ),
             Positioned(
               top: 8,
               left: 8,
@@ -169,22 +189,63 @@ class _FoodScanCameraScreenState extends State<FoodScanCameraScreen> {
 class _FoodFramePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final frame = Rect.fromLTWH(
-      24,
-      size.height * .23,
-      size.width - 48,
-      size.height * .42,
-    );
     final paint = Paint()
       ..color = Colors.white.withValues(alpha: .9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(frame, const Radius.circular(20)),
+      RRect.fromRectAndRadius(_frameRect(size), const Radius.circular(20)),
       paint,
     );
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+Rect _frameRect(Size size) =>
+    Rect.fromLTWH(24, size.height * .23, size.width - 48, size.height * .42);
+
+/// Draws the teal scan line moving from the top of the food frame to the
+/// bottom and back, giving the same live-scanning feel as the barcode
+/// scanner.
+class _ScanLinePainter extends CustomPainter {
+  _ScanLinePainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final frame = _frameRect(size);
+    final y = frame.top + frame.height * progress;
+
+    final linePaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          AppColors.primary.withValues(alpha: 0),
+          AppColors.primary,
+          AppColors.primary.withValues(alpha: 0),
+        ],
+      ).createShader(Rect.fromLTWH(frame.left, y - 1, frame.width, 2))
+      ..strokeWidth = 2.5;
+
+    canvas.drawLine(
+      Offset(frame.left + 6, y),
+      Offset(frame.right - 6, y),
+      linePaint,
+    );
+
+    final glowPaint = Paint()
+      ..color = AppColors.primary.withValues(alpha: .25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawLine(
+      Offset(frame.left + 6, y),
+      Offset(frame.right - 6, y),
+      glowPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanLinePainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
