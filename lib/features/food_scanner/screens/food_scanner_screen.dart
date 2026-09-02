@@ -88,16 +88,14 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
 
   Future<void> _scanBarcode() async {
     if (_processing) return;
-    final code = await Navigator.of(
-      context,
-    ).push<String>(MaterialPageRoute(builder: (_) => const BarcodeScanScreen()));
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const BarcodeScanScreen()),
+    );
     if (code == null || !mounted) return;
 
     setState(() => _processing = true);
     try {
-      final product = await OpenFoodFactsService.instance.lookupByBarcode(
-        code,
-      );
+      final product = await OpenFoodFactsService.instance.lookupByBarcode(code);
       if (!mounted) return;
       setState(() => _processing = false);
 
@@ -298,7 +296,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
                         ),
                         const SizedBox(height: 30),
                         PrimaryButton(
-                          label: 'Take a photo',
+                          label: 'Scan',
                           icon: Icons.camera_alt_rounded,
                           onPressed: () async {
                             final photo = await Navigator.of(context)
