@@ -146,7 +146,7 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.success,
+              backgroundColor: AppColors.primary,
               elevation: 0,
             ),
             onPressed: () => Navigator.of(context).push(

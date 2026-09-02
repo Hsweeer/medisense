@@ -236,7 +236,7 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.success,
+              backgroundColor: AppColors.primary,
               elevation: 0,
             ),
             onPressed: () => Navigator.of(context).push(
