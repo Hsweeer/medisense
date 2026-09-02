@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_loading.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../../../data/models/food_models.dart';
+import '../../profile/nutrition_history_screen.dart';
 import 'barcode_scan_screen.dart';
 import 'food_review_screen.dart';
 import 'food_scan_camera_screen.dart';
@@ -245,7 +246,18 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan food')),
+      appBar: AppBar(
+        title: const Text('Scan food'),
+        actions: [
+          IconButton(
+            tooltip: 'History',
+            icon: Icon(Icons.history_rounded, color: AppColors.success),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),

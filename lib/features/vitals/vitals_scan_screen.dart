@@ -7,6 +7,7 @@ import '../../core/services/rppg_frame_processor.dart';
 import '../../core/services/rppg_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
+import 'vitals_history_screen.dart';
 
 /// "Vitals scan" — user holds their face steady in frame for ~20s, the app
 /// estimates heart rate on-device from subtle color changes in the skin
@@ -230,7 +231,18 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Vitals scan')),
+      appBar: AppBar(
+        title: const Text('Vitals scan'),
+        actions: [
+          IconButton(
+            tooltip: 'History',
+            icon: Icon(Icons.history_rounded, color: AppColors.success),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const VitalsHistoryScreen()),
+            ),
+          ),
+        ],
+      ),
       body: switch (_state) {
         _ScanState.idle => _IntroView(onStart: _start),
         _ScanState.initializing => const Center(
