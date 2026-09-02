@@ -17,6 +17,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/prescription_models.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/profile_provider.dart';
 import '../chat/prescription_review_screen.dart';
 
 /// Home-screen entry point for scanning a prescription directly — same
@@ -312,27 +314,8 @@ class _ResultView extends StatefulWidget {
 }
 
 class _ResultViewState extends State<_ResultView> {
-  bool _showFullText = false;
-
-  /// Simple case-insensitive substring match against the user's listed
-  /// allergies — a heuristic hint only, always re-verified in the full
-  /// review screen. Never blocks anything on its own.
-  String? _matchingAllergy(String medName, List<String> allergies) {
-    final name = medName.trim().toLowerCase();
-    if (name.isEmpty) return null;
-    for (final allergy in allergies) {
-      final a = allergy.trim().toLowerCase();
-      if (a.isEmpty) continue;
-      if (name.contains(a) || a.contains(name)) return allergy;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final valid =
-    widget.meds.where((m) => m.name.trim().isNotEmpty).toList();
-    final allergies = context.watch<ProfileProvider>().profile.allergies;
 
     return ListView(
       padding: EdgeInsets.symmetric(vertical: 16.h),
