@@ -296,7 +296,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
                         ),
                         const SizedBox(height: 30),
                         PrimaryButton(
-                          label: 'Scan',
+                          label: 'Start scan',
                           icon: Icons.camera_alt_rounded,
                           onPressed: () async {
                             final photo = await Navigator.of(context)

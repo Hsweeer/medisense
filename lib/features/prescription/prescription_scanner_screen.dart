@@ -229,7 +229,7 @@ class _IntroView extends StatelessWidget {
             ],
             SizedBox(height: 26.h),
             PrimaryButton(
-              label: 'Scan',
+              label: 'Start scan',
               icon: Icons.camera_alt_rounded,
               onPressed: () => onCapture(ImageSource.camera),
             ),
