@@ -6,6 +6,13 @@ import '../../../core/theme/app_colors.dart';
 /// Live barcode/QR scanner with a top-to-bottom animated scan line,
 /// matching the look of most retail scanning apps. Pops with the
 /// scanned code's raw value once a barcode is detected.
+///
+/// A single misread frame (motion blur, glare, a partially-covered
+/// barcode) can hand back a garbage value, so this doesn't confirm on the
+/// first detection — it requires the SAME value to be read
+/// [_requiredMatches] times, spaced at least [_sampleInterval] apart, so
+/// the user is effectively holding the barcode steady for just over a
+/// second before it's accepted.
 class BarcodeScanScreen extends StatefulWidget {
   const BarcodeScanScreen({super.key});
 
@@ -31,8 +38,21 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen>
     duration: const Duration(milliseconds: 1600),
   )..repeat(reverse: true);
 
+  /// How many consecutive reads of the same value are required before the
+  /// scan is accepted as confirmed.
+  static const int _requiredMatches = 4;
+
+  /// Minimum gap between two reads that are allowed to count toward the
+  /// match streak — stops a handful of near-identical frames captured in
+  /// under 100ms from counting as 4 separate confirmations.
+  static const Duration _sampleInterval = Duration(milliseconds: 350);
+
   bool _handled = false;
   bool _torchOn = false;
+
+  String? _lastValue;
+  int _matchCount = 0;
+  DateTime? _lastSampleAt;
 
   @override
   void dispose() {
@@ -46,8 +66,34 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen>
     final barcode = capture.barcodes.firstOrNull;
     final value = barcode?.rawValue;
     if (value == null || value.isEmpty) return;
-    _handled = true;
-    Navigator.of(context).pop(value);
+
+    final now = DateTime.now();
+    if (_lastSampleAt != null &&
+        now.difference(_lastSampleAt!) < _sampleInterval) {
+      // Too soon after the last counted read — throttle so a burst of
+      // frames from the same fraction of a second doesn't fast-forward
+      // the match streak.
+      return;
+    }
+    _lastSampleAt = now;
+
+    if (value == _lastValue) {
+      _matchCount++;
+    } else {
+      // A different value showed up — the previous streak wasn't a real
+      // steady read, so start over on this new value instead.
+      _lastValue = value;
+      _matchCount = 1;
+    }
+
+    if (_matchCount >= _requiredMatches) {
+      _handled = true;
+      Navigator.of(context).pop(value);
+      return;
+    }
+
+    // Update the on-screen "confirming" progress dots.
+    if (mounted) setState(() {});
   }
 
   @override
@@ -116,12 +162,24 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen>
                 ).textTheme.titleMedium?.copyWith(color: Colors.white),
               ),
             ),
+            if (_matchCount > 0)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 88,
+                child: _ConfirmingIndicator(
+                  matched: _matchCount,
+                  required: _requiredMatches,
+                ),
+              ),
             Positioned(
               left: 20,
               right: 20,
               bottom: 34,
               child: Text(
-                'Scanning happens automatically — hold steady',
+                _matchCount > 0
+                    ? 'Hold steady — confirming your barcode…'
+                    : 'Scanning happens automatically — hold steady',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: .8),
@@ -138,6 +196,39 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen>
 
 extension<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+/// Small row of dots below the frame showing how many of the required
+/// consecutive reads have matched so far — gives the user feedback that
+/// something is happening during the brief "hold steady" confirmation
+/// window instead of the scan just silently taking a beat longer.
+class _ConfirmingIndicator extends StatelessWidget {
+  const _ConfirmingIndicator({required this.matched, required this.required});
+
+  final int matched;
+  final int required;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(required, (i) {
+        final filled = i < matched;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: filled ? 10 : 8,
+          height: filled ? 10 : 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled
+                ? AppColors.primary
+                : Colors.white.withValues(alpha: .35),
+          ),
+        );
+      }),
+    );
+  }
 }
 
 /// Rounded frame outlining the scan window, same style as the food
