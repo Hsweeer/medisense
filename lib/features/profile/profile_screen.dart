@@ -18,6 +18,8 @@ import 'nutrition_history_screen.dart';
 import 'prescription_history_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../settings/alarm_sound_screen.dart';
+import '../skin/skin_history_screen.dart';
+import '../vitals/vitals_history_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -359,6 +361,26 @@ class ProfileScreen extends StatelessWidget {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const PrescriptionHistoryScreen(),
+                    ),
+                  ),
+                ),
+                Divider(height: 1.h, indent: 56.w),
+                _SettingTile(
+                  icon: Icons.face_retouching_natural_rounded,
+                  label: 'Skin check history',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SkinHistoryScreen(),
+                    ),
+                  ),
+                ),
+                Divider(height: 1.h, indent: 56.w),
+                _SettingTile(
+                  icon: Icons.favorite_border_rounded,
+                  label: 'Heart rate history',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const VitalsHistoryScreen(),
                     ),
                   ),
                 ),

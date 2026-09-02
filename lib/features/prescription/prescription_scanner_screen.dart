@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -16,7 +17,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/prescription_models.dart';
-import '../../providers/auth_provider.dart';
 import '../chat/prescription_review_screen.dart';
 
 /// Home-screen entry point for scanning a prescription directly — same
@@ -42,11 +42,32 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
 
   Future<void> _capture(ImageSource source) async {
     if (_processing) return;
-    final picked = await ImagePicker().pickImage(
-      source: source,
-      imageQuality: 90,
-    );
-    if (picked == null) return;
+
+    String? imagePath;
+    if (source == ImageSource.camera) {
+      // Same live document scanner used for "Scan prescription" inside
+      // MedAI chat — auto edge-detection, crop, and a proper scanning UI,
+      // instead of the phone's plain default camera.
+      try {
+        final pictures = await CunningDocumentScanner.getPictures();
+        if (pictures != null && pictures.isNotEmpty) {
+          imagePath = pictures.first;
+        }
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _error = "Could not open the document scanner. Please try again.";
+        });
+        return;
+      }
+    } else {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+      );
+      imagePath = picked?.path;
+    }
+    if (imagePath == null || !mounted) return;
 
     setState(() {
       _processing = true;
@@ -54,7 +75,8 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
     });
 
     try {
-      final cleanedPath = await ImageCleanerService.cleanForVision(picked.path);
+      final cleanedPath =
+      await ImageCleanerService.cleanForVision(picked.path);
       final processPath = cleanedPath ?? picked.path;
 
       final jsonOutput = await GeminiService.readPrescription(processPath);
@@ -212,10 +234,35 @@ class _IntroView extends StatelessWidget {
               onPressed: () => onCapture(ImageSource.camera),
             ),
             SizedBox(height: 10.h),
-            OutlinedButton.icon(
+            SecondaryButton(
+              label: 'Choose from gallery',
+              icon: Icons.photo_library_rounded,
               onPressed: () => onCapture(ImageSource.gallery),
-              icon: const Icon(Icons.photo_library_outlined),
-              label: const Text('Choose from gallery'),
+            ),
+            SizedBox(height: 26.h),
+            MCard(
+              color: AppColors.soft,
+              border: Border.all(color: AppColors.primary.withValues(alpha: .18)),
+              padding: EdgeInsets.all(14.r),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_outline_rounded,
+                      color: AppColors.primaryDark, size: 20.sp),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      'Lay the prescription flat on a well-lit surface and '
+                          'fit the whole page in frame for the clearest read.',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        height: 1.4,
+                        color: AppColors.onSoft,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -245,7 +292,7 @@ class _AnalyzingState extends StatelessWidget {
   }
 }
 
-class _ResultView extends StatelessWidget {
+class _ResultView extends StatefulWidget {
   const _ResultView({
     required this.summary,
     required this.meds,
@@ -261,41 +308,55 @@ class _ResultView extends StatelessWidget {
   final VoidCallback onRescan;
 
   @override
+  State<_ResultView> createState() => _ResultViewState();
+}
+
+class _ResultViewState extends State<_ResultView> {
+  bool _showFullText = false;
+
+  /// Simple case-insensitive substring match against the user's listed
+  /// allergies — a heuristic hint only, always re-verified in the full
+  /// review screen. Never blocks anything on its own.
+  String? _matchingAllergy(String medName, List<String> allergies) {
+    final name = medName.trim().toLowerCase();
+    if (name.isEmpty) return null;
+    for (final allergy in allergies) {
+      final a = allergy.trim().toLowerCase();
+      if (a.isEmpty) continue;
+      if (name.contains(a) || a.contains(name)) return allergy;
+    }
+    return null;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final valid =
+    widget.meds.where((m) => m.name.trim().isNotEmpty).toList();
+    final allergies = context.watch<ProfileProvider>().profile.allergies;
+
     return ListView(
       padding: EdgeInsets.symmetric(vertical: 16.h),
       children: [
-        if (imagePath != null)
+        if (widget.imagePath != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(14.r),
-            child: Image.file(
-              File(imagePath!),
-              height: 140.h,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
+            child: Image.file(File(imagePath!), height: 140.h, width: double.infinity, fit: BoxFit.cover),
           ),
         SizedBox(height: 14.h),
         Row(
           children: [
             Expanded(
-              child: Text(
-                'Prescription summary',
-                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800),
-              ),
+              child: Text('Prescription summary',
+                  style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800)),
             ),
             IconButton(
               tooltip: 'Copy summary',
-              icon: Icon(
-                Icons.copy_rounded,
-                size: 18.sp,
-                color: AppColors.muted,
-              ),
+              icon: Icon(Icons.copy_rounded, size: 18.sp, color: AppColors.muted),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: summary));
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Summary copied')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Summary copied')),
+                );
               },
             ),
           ],
@@ -304,12 +365,7 @@ class _ResultView extends StatelessWidget {
           color: AppColors.paper,
           child: SelectableText(
             summary,
-            style: TextStyle(
-              fontSize: 12.5.sp,
-              color: AppColors.inkSoft,
-              height: 1.55,
-              fontFamily: 'monospace',
-            ),
+            style: TextStyle(fontSize: 12.5.sp, color: AppColors.inkSoft, height: 1.55, fontFamily: 'monospace'),
           ),
         ),
         SizedBox(height: 18.h),
@@ -325,10 +381,10 @@ class _ResultView extends StatelessWidget {
               ),
             ),
           ),
-        ),
-        SizedBox(height: 10.h),
+        ],
+        SizedBox(height: 18.h),
         OutlinedButton.icon(
-          onPressed: onRescan,
+          onPressed: widget.onRescan,
           icon: const Icon(Icons.replay_rounded),
           label: const Text('Scan another'),
         ),
