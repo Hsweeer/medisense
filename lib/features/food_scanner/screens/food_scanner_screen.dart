@@ -249,20 +249,14 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
       appBar: AppBar(
         title: const Text('Scan food'),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              elevation: 0,
+          IconButton(
+            tooltip: 'History',
+            icon: const Icon(
+              Icons.history_rounded,
+              color: AppColors.primary,
             ),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
-            ),
-            child: Text(
-              'History',
-              style: GoogleFonts.manrope(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
             ),
           ),
         ],

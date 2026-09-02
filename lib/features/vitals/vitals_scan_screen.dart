@@ -222,20 +222,14 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
       appBar: AppBar(
         title: const Text('Vitals scan'),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              elevation: 0,
+          IconButton(
+            tooltip: 'History',
+            icon: const Icon(
+              Icons.history_rounded,
+              color: AppColors.primary,
             ),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const VitalsHistoryScreen()),
-            ),
-            child: Text(
-              'History',
-              style: GoogleFonts.manrope(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
             ),
           ),
         ],
