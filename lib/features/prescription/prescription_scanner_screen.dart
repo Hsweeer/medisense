@@ -76,8 +76,8 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
 
     try {
       final cleanedPath =
-      await ImageCleanerService.cleanForVision(picked.path);
-      final processPath = cleanedPath ?? picked.path;
+      await ImageCleanerService.cleanForVision(imagePath);
+      final processPath = cleanedPath ?? imagePath;
 
       final jsonOutput = await GeminiService.readPrescription(processPath);
       final meds = getMedsFromOcr(jsonOutput);
@@ -340,7 +340,7 @@ class _ResultViewState extends State<_ResultView> {
         if (widget.imagePath != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(14.r),
-            child: Image.file(File(imagePath!), height: 140.h, width: double.infinity, fit: BoxFit.cover),
+            child: Image.file(File(widget.imagePath!), height: 140.h, width: double.infinity, fit: BoxFit.cover),
           ),
         SizedBox(height: 14.h),
         Row(
@@ -353,7 +353,7 @@ class _ResultViewState extends State<_ResultView> {
               tooltip: 'Copy summary',
               icon: Icon(Icons.copy_rounded, size: 18.sp, color: AppColors.muted),
               onPressed: () {
-                Clipboard.setData(ClipboardData(text: summary));
+                Clipboard.setData(ClipboardData(text: widget.summary));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Summary copied')),
                 );
@@ -364,7 +364,7 @@ class _ResultViewState extends State<_ResultView> {
         MCard(
           color: AppColors.paper,
           child: SelectableText(
-            summary,
+            widget.summary,
             style: TextStyle(fontSize: 12.5.sp, color: AppColors.inkSoft, height: 1.55, fontFamily: 'monospace'),
           ),
         ),
@@ -375,9 +375,9 @@ class _ResultViewState extends State<_ResultView> {
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => PrescriptionReviewScreen(
-                ocrText: ocrJson,
-                initialMeds: meds,
-                imagePath: imagePath,
+                ocrText: widget.ocrJson,
+                initialMeds: widget.meds,
+                imagePath: widget.imagePath,
               ),
             ),
           ),
