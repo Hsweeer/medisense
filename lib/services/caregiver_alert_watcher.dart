@@ -262,29 +262,45 @@ class CaregiverAlertWatcher {
   // ── 1. Incoming caregiver requests (I'm the recipient) ──────────────
 
   void _onIncoming(List<CaregiverLink> links) {
+    final currentIds = links.map((l) => l.id).toSet();
+
     if (!_incomingReady) {
       // First-ever attach for this account on this device: baseline
       // silently so an install doesn't replay old pending requests as a
       // flood of notifications.
       _incomingReady = true;
-      _seenIncomingIds.addAll(links.map((l) => l.id));
+      _seenIncomingIds
+        ..clear()
+        ..addAll(currentIds);
       debugPrint(
           '[CaregiverAlertWatcher] incoming baselined with ${links.length} existing request(s)');
       _persist();
       return;
     }
-    var changed = false;
+
+    // Anything pending now that WASN'T pending on the previous snapshot is
+    // worth notifying about — including a request that was previously
+    // declined/restricted and has since been resent. Caregiver request
+    // ids are deterministic per (sender, recipient) pair and get REUSED
+    // rather than recreated on a resend, so a plain "have I ever seen
+    // this id" set would permanently suppress that resend after the
+    // first time. Comparing against "what was pending last snapshot"
+    // instead correctly catches it.
+    final newlyPending = currentIds.difference(_seenIncomingIds);
     for (final link in links) {
-      if (_seenIncomingIds.add(link.id)) {
-        changed = true;
-        debugPrint(
-            '[CaregiverAlertWatcher] new incoming request from ${link.senderName}');
-        NotificationService.instance.logGenericAlert(
-          title: 'New caregiver request',
-          message: '${link.senderName} wants to manage your reminders.',
-        );
-      }
+      if (!newlyPending.contains(link.id)) continue;
+      debugPrint(
+          '[CaregiverAlertWatcher] new incoming request from ${link.senderName}');
+      NotificationService.instance.logGenericAlert(
+        title: 'New caregiver request',
+        message: '${link.senderName} wants to manage your reminders.',
+      );
     }
+
+    final changed = !setEquals(_seenIncomingIds, currentIds);
+    _seenIncomingIds
+      ..clear()
+      ..addAll(currentIds);
     if (changed) _persist();
   }
 
