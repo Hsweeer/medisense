@@ -143,11 +143,20 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
         surfaceTintColor: AppColors.paper,
         title: const Text('Skin check'),
         actions: [
-          IconButton(
-            tooltip: 'History',
-            icon: const Icon(Icons.history_rounded),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.paper,
+              elevation: 0,
+            ),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const SkinHistoryScreen()),
+            ),
+            child: Text(
+              'History',
+              style: GoogleFonts.manrope(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
