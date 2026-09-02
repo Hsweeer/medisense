@@ -8,6 +8,7 @@ import '../../../core/services/food_log_service.dart';
 import '../../../core/services/nutrition_history_preferences.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_loading.dart';
+import '../../../core/widgets/guest_gate.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../../../data/models/food_models.dart';
 import '../../../data/models/models.dart';
@@ -92,6 +93,14 @@ class _FoodReviewScreenState extends State<FoodReviewScreen> {
   }
 
   Future<void> _confirm() async {
+    if (await NutritionHistoryPreferences.instance.isEnabled() &&
+        !await requireLogin(
+          context,
+          feature: 'save this to your nutrition history',
+        )) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _saving = true);
 
     if (await NutritionHistoryPreferences.instance.isEnabled()) {

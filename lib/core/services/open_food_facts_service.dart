@@ -127,6 +127,13 @@ class OpenFoodFactsService {
         'Nutrition database is unavailable.',
       );
     }
+
+    // Open Food Facts' v2 product endpoint responds with HTTP 404 (not
+    // 200 + empty body) when a barcode simply isn't in the database —
+    // that's a normal "not found" outcome, not a service error, so it
+    // must be handled before the generic status-code check below.
+    if (response.statusCode == 404) return null;
+
     if (response.statusCode != 200) {
       throw NutritionLookupException(
         'Nutrition database returned status ${response.statusCode}.',

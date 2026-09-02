@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/services/gemini_service.dart';
 import '../../core/services/image_cleaner_service.dart';
@@ -15,6 +16,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/prescription_models.dart';
+import '../../providers/auth_provider.dart';
 import '../chat/prescription_review_screen.dart';
 
 /// Home-screen entry point for scanning a prescription directly — same
@@ -28,8 +30,7 @@ class PrescriptionScannerScreen extends StatefulWidget {
       _PrescriptionScannerScreenState();
 }
 
-class _PrescriptionScannerScreenState
-    extends State<PrescriptionScannerScreen> {
+class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
   bool _processing = false;
   String? _error;
 
@@ -53,8 +54,7 @@ class _PrescriptionScannerScreenState
     });
 
     try {
-      final cleanedPath =
-      await ImageCleanerService.cleanForVision(picked.path);
+      final cleanedPath = await ImageCleanerService.cleanForVision(picked.path);
       final processPath = cleanedPath ?? picked.path;
 
       final jsonOutput = await GeminiService.readPrescription(processPath);
@@ -62,7 +62,14 @@ class _PrescriptionScannerScreenState
       final summary = buildProfessionalSummary(meds);
 
       final validCount = meds.where((m) => m.name.trim().isNotEmpty).length;
+      // Guests can scan and read a prescription like anyone else, but
+      // there's no account to attach the Firestore history record to —
+      // skip the auto-save rather than let it fail silently, or worse,
+      // write under the wrong user if a real sign-in happens later in
+      // the same session.
+      final isGuest = mounted && context.read<AuthProvider>().isGuest;
       if (validCount > 0 &&
+          !isGuest &&
           await PrescriptionHistoryPreferences.instance.isEnabled()) {
         try {
           await PrescriptionLogService.instance.save(
@@ -89,7 +96,8 @@ class _PrescriptionScannerScreenState
       if (!mounted) return;
       setState(() {
         _processing = false;
-        _error = "Scanning error. Please ensure the photo is clear and try again.";
+        _error =
+            "Scanning error. Please ensure the photo is clear and try again.";
       });
     }
   }
@@ -120,12 +128,12 @@ class _PrescriptionScannerScreenState
               ? const _AnalyzingState()
               : _summary != null
               ? _ResultView(
-            summary: _summary!,
-            meds: _meds!,
-            ocrJson: _ocrJson!,
-            imagePath: _imagePath,
-            onRescan: _rescan,
-          )
+                  summary: _summary!,
+                  meds: _meds!,
+                  ocrJson: _ocrJson!,
+                  imagePath: _imagePath,
+                  onRescan: _rescan,
+                )
               : _IntroView(error: _error, onCapture: _capture),
         ),
       ),
@@ -156,8 +164,11 @@ class _IntroView extends StatelessWidget {
                 ),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.receipt_long_rounded,
-                  color: Colors.white, size: 42.sp),
+              child: Icon(
+                Icons.receipt_long_rounded,
+                color: Colors.white,
+                size: 42.sp,
+              ),
             ),
             SizedBox(height: 22.h),
             Text(
@@ -171,10 +182,14 @@ class _IntroView extends StatelessWidget {
             SizedBox(height: 8.h),
             Text(
               'Snap a photo or pick one from your gallery and MedAI will '
-                  'read the medicines, doses, and instructions — in English, '
-                  'Urdu, or Roman Urdu.',
+              'read the medicines, doses, and instructions — in English, '
+              'Urdu, or Roman Urdu.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.5.sp, color: AppColors.muted, height: 1.45),
+              style: TextStyle(
+                fontSize: 13.5.sp,
+                color: AppColors.muted,
+                height: 1.45,
+              ),
             ),
             if (error != null) ...[
               SizedBox(height: 16.h),
@@ -184,8 +199,10 @@ class _IntroView extends StatelessWidget {
                   color: AppColors.dangerSoft,
                   borderRadius: BorderRadius.circular(12.r),
                 ),
-                child: Text(error!,
-                    style: TextStyle(fontSize: 12.5.sp, color: AppColors.danger)),
+                child: Text(
+                  error!,
+                  style: TextStyle(fontSize: 12.5.sp, color: AppColors.danger),
+                ),
               ),
             ],
             SizedBox(height: 26.h),
@@ -218,8 +235,10 @@ class _AnalyzingState extends StatelessWidget {
         children: [
           const AppSpinner(),
           SizedBox(height: 16.h),
-          Text('Reading your prescription…',
-              style: TextStyle(fontSize: 14.sp, color: AppColors.muted)),
+          Text(
+            'Reading your prescription…',
+            style: TextStyle(fontSize: 14.sp, color: AppColors.muted),
+          ),
         ],
       ),
     );
@@ -249,23 +268,34 @@ class _ResultView extends StatelessWidget {
         if (imagePath != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(14.r),
-            child: Image.file(File(imagePath!), height: 140.h, width: double.infinity, fit: BoxFit.cover),
+            child: Image.file(
+              File(imagePath!),
+              height: 140.h,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
           ),
         SizedBox(height: 14.h),
         Row(
           children: [
             Expanded(
-              child: Text('Prescription summary',
-                  style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800)),
+              child: Text(
+                'Prescription summary',
+                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800),
+              ),
             ),
             IconButton(
               tooltip: 'Copy summary',
-              icon: Icon(Icons.copy_rounded, size: 18.sp, color: AppColors.muted),
+              icon: Icon(
+                Icons.copy_rounded,
+                size: 18.sp,
+                color: AppColors.muted,
+              ),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: summary));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Summary copied')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Summary copied')));
               },
             ),
           ],
@@ -274,7 +304,12 @@ class _ResultView extends StatelessWidget {
           color: AppColors.paper,
           child: SelectableText(
             summary,
-            style: TextStyle(fontSize: 12.5.sp, color: AppColors.inkSoft, height: 1.55, fontFamily: 'monospace'),
+            style: TextStyle(
+              fontSize: 12.5.sp,
+              color: AppColors.inkSoft,
+              height: 1.55,
+              fontFamily: 'monospace',
+            ),
           ),
         ),
         SizedBox(height: 18.h),
