@@ -7,12 +7,15 @@ import 'package:flutter/foundation.dart';
 import '../core/services/groq_service.dart';
 import '../core/services/image_cleaner_service.dart';
 import '../core/services/gemini_service.dart';
+import '../core/services/prescription_history_preferences.dart';
+import '../core/services/prescription_log_service.dart';
 import '../core/services/prescription_parser.dart';
 import '../core/services/skin_photo_quality_checker.dart';
 import '../core/services/skin_scan_service.dart';
 import '../core/services/connectivity_service.dart';
 import '../core/services/tts_service.dart';
 import '../data/models/models.dart';
+import '../data/models/prescription_models.dart';
 import '../services/ai_insights_firestore_service.dart';
 import '../services/chat_firestore_service.dart';
 import '../services/skin_scan_firestore_service.dart';
@@ -367,8 +370,10 @@ class ChatProvider extends ChangeNotifier {
       typing = false;
       final meds = getMedsFromOcr(jsonOutput);
 
-      final medList = meds.map((m) => "• ${m.name} (${m.dose})").join("\n");
-      final summary = "I identified ${meds.length} medications:\n\n$medList";
+      // Same professional Rx-style summary used in chat, on the review
+      // screen, and saved into the user's prescription history — all one
+      // source of truth so they always match.
+      final summary = buildProfessionalSummary(meds);
 
       await _reply(ChatMessage(
         role: ChatRole.ai,
@@ -378,6 +383,26 @@ class ChatProvider extends ChangeNotifier {
         imagePath: processPath,
         personalized: learnFromData,
       ));
+
+      // Auto-save to the user's prescription history (on by default, same
+      // as nutrition history) so it's there later even without re-opening
+      // this chat.
+      final validCount =
+          meds.where((m) => m.name.trim().isNotEmpty).length;
+      if (validCount > 0 &&
+          await PrescriptionHistoryPreferences.instance.isEnabled()) {
+        try {
+          await PrescriptionLogService.instance.save(
+            PrescriptionHistoryEntry(
+              summary: summary,
+              medicineCount: validCount,
+              scannedAt: DateTime.now(),
+            ),
+          );
+        } catch (e) {
+          debugPrint('[ChatProvider] Prescription history save failed: $e');
+        }
+      }
     } catch (e) {
       typing = false;
       await _reply(const ChatMessage(role: ChatRole.ai, text: "Scanning error. Please ensure the photo is clear."));

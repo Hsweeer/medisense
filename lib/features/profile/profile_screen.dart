@@ -15,6 +15,7 @@ import 'edit_health_profile_sheet.dart';
 import 'edit_profile_screen.dart';
 import 'emergency_contacts_screen.dart';
 import 'nutrition_history_screen.dart';
+import 'prescription_history_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../settings/alarm_sound_screen.dart';
 
@@ -353,6 +354,16 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 Divider(height: 1.h, indent: 56.w),
                 _SettingTile(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Prescription history',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PrescriptionHistoryScreen(),
+                    ),
+                  ),
+                ),
+                Divider(height: 1.h, indent: 56.w),
+                _SettingTile(
                   icon: Icons.lock_outline_rounded,
                   label: 'Privacy & data',
                   onTap: () => showToast(context, 'Privacy settings'),
@@ -373,7 +384,7 @@ class ProfileScreen extends StatelessWidget {
                       context: context,
                       title: 'Sign out?',
                       message:
-                          'You will be signed out of your account and need to sign in again to continue.',
+                      'You will be signed out of your account and need to sign in again to continue.',
                       confirmText: 'Sign out',
                       destructive: true,
                       icon: Icons.logout_rounded,
@@ -546,17 +557,17 @@ class _ChipRow extends StatelessWidget {
         Expanded(
           child: values.isEmpty
               ? Text(
-                  'Not set yet',
-                  style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
-                )
+            'Not set yet',
+            style: TextStyle(fontSize: 12.5.sp, color: AppColors.muted),
+          )
               : Wrap(
-                  spacing: 6.w,
-                  runSpacing: 6.h,
-                  children: [
-                    for (final v in values)
-                      MChip(v, background: background, foreground: foreground),
-                  ],
-                ),
+            spacing: 6.w,
+            runSpacing: 6.h,
+            children: [
+              for (final v in values)
+                MChip(v, background: background, foreground: foreground),
+            ],
+          ),
         ),
       ],
     );

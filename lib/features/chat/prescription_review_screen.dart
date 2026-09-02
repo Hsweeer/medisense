@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +11,18 @@ import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/reminder_provider.dart';
+import '../shell/patient_shell.dart';
+
+/// One (medicine, dose-time) pair used while grouping reminders during
+/// save — mutable groupId/groupType get filled in as the grouping pass
+/// runs, then are copied onto the final [Reminder] objects.
+class _MedTimeEntry {
+  _MedTimeEntry({required this.med, required this.time});
+  final ParsedMedicine med;
+  final TimeOfDay time;
+  String? groupId;
+  String groupType = 'medicine';
+}
 
 /// Where the user confirms what MedAI read off a scanned prescription —
 /// medicine name, dose, how many times a day, and the EXACT clock time for
@@ -98,32 +111,74 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
 
     setState(() => _saving = true);
 
-    final reminders = <Reminder>[];
-    for (final med in valid) {
-      final scheduleLabel = med.durationDays != null
-          ? 'Daily · ${med.durationDays} days'
-          : 'Daily';
-      // Multiple dose-times for the same medicine share a groupId, so the
-      // Reminders screen renders one grouped card ("3x daily") instead of
-      // three separate cards for what is really one prescription entry.
-      final groupId = med.times.length > 1
-          ? '${DateTime.now().microsecondsSinceEpoch}_${med.name.hashCode}'
-          : null;
-      for (final t in med.times) {
-        reminders.add(Reminder(
-          title: med.name.trim(),
-          dose: med.dose.trim(),
-          // One exact clock time per reminder — required for the alarm
-          // scheduler to actually pick it up (a combined "8 AM & 8 PM"
-          // string does not parse).
-          time: formatTimeOfDay(t),
-          schedule: scheduleLabel,
-          instructions: med.instructions,
-          addedBy: 'MedAI',
-          groupId: groupId,
-        ));
+    // Flatten every (medicine, dose-time) pair across ALL medicines first,
+    // so we can spot doses that land on the exact same clock time even
+    // when they belong to different medicines (e.g. two prescriptions
+    // both due at 8:00 AM) and combine those into one reminder card.
+    final entries = <_MedTimeEntry>[
+      for (final med in valid)
+        for (final t in med.times) _MedTimeEntry(med: med, time: t),
+    ];
+
+    // Bucket by formatted clock time.
+    final byTime = <String, List<_MedTimeEntry>>{};
+    for (final e in entries) {
+      byTime.putIfAbsent(formatTimeOfDay(e.time), () => []).add(e);
+    }
+
+    final now = DateTime.now().microsecondsSinceEpoch;
+    final unclaimed = <_MedTimeEntry>[]; // not part of a same-time group yet
+
+    for (final timeEntries in byTime.values) {
+      final distinctMeds = timeEntries.map((e) => e.med).toSet();
+      if (distinctMeds.length > 1) {
+        // Multiple different medicines share this exact time — one
+        // combined "time" card instead of separate reminders.
+        final t = timeEntries.first.time;
+        final timeGroupId = '${now}_time_${t.hour}${t.minute}';
+        for (final e in timeEntries) {
+          e.groupId = timeGroupId;
+          e.groupType = 'time';
+        }
+      } else {
+        unclaimed.addAll(timeEntries);
       }
     }
+
+    // Among the doses NOT absorbed into a same-time group above, group a
+    // medicine's remaining multiple times under one per-medicine card
+    // ("3x daily") as before.
+    final byMed = <ParsedMedicine, List<_MedTimeEntry>>{};
+    for (final e in unclaimed) {
+      byMed.putIfAbsent(e.med, () => []).add(e);
+    }
+    for (final medEntries in byMed.values) {
+      if (medEntries.length <= 1) continue;
+      final medGroupId = '${now}_med_${medEntries.first.med.name.hashCode}';
+      for (final e in medEntries) {
+        e.groupId = medGroupId;
+        e.groupType = 'medicine';
+      }
+    }
+
+    final reminders = entries.map((e) {
+      final med = e.med;
+      final scheduleLabel =
+      med.durationDays != null ? 'Daily · ${med.durationDays} days' : 'Daily';
+      return Reminder(
+        title: med.name.trim(),
+        dose: med.dose.trim(),
+        // One exact clock time per reminder — required for the alarm
+        // scheduler to actually pick it up (a combined "8 AM & 8 PM"
+        // string does not parse).
+        time: formatTimeOfDay(e.time),
+        schedule: scheduleLabel,
+        instructions: med.instructions,
+        addedBy: 'MedAI',
+        groupId: e.groupId,
+        groupType: e.groupType,
+      );
+    }).toList();
 
     int count = 0;
     try {
@@ -133,7 +188,18 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
     }
 
     if (!mounted) return;
-    Navigator.of(context).pop(count);
+
+    if (count > 0) {
+      // Take the user straight to the Reminders tab so the newly-added
+      // schedule is immediately visible, instead of dropping them back
+      // into the chat.
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const PatientShell(initialIndex: 1)),
+            (route) => false,
+      );
+    } else {
+      Navigator.of(context).pop(count);
+    }
   }
 
   @override
@@ -187,6 +253,13 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
                   ),
                 ),
               _AddMedicineButton(onTap: _addBlank),
+              if (_hasValidMeds) ...[
+                SizedBox(height: 22.h),
+                _SectionLabel('PRESCRIPTION SUMMARY'),
+                SizedBox(height: 10.h),
+                _SummaryPanel(
+                    meds: _meds.where((m) => m.name.trim().isNotEmpty).toList()),
+              ],
               if (widget.ocrText.trim().isNotEmpty) ...[
                 SizedBox(height: 22.h),
                 _RawTextPanel(text: widget.ocrText),
@@ -626,6 +699,48 @@ class _AddMedicineButton extends StatelessWidget {
                     fontSize: 13.sp, fontWeight: FontWeight.w700, color: AppColors.ink)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SummaryPanel extends StatelessWidget {
+  const _SummaryPanel({required this.meds});
+  final List<ParsedMedicine> meds;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = buildProfessionalSummary(meds);
+    return MCard(
+      color: AppColors.paper,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SelectableText(
+              summary,
+              style: TextStyle(
+                  fontSize: 12.5.sp,
+                  color: AppColors.inkSoft,
+                  height: 1.55,
+                  fontFamily: 'monospace'),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          InkWell(
+            borderRadius: BorderRadius.circular(8.r),
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: summary));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Summary copied')),
+              );
+            },
+            child: Padding(
+              padding: EdgeInsets.all(4.r),
+              child: Icon(Icons.copy_rounded, size: 17.sp, color: AppColors.muted),
+            ),
+          ),
+        ],
       ),
     );
   }

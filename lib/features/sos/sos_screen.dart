@@ -84,6 +84,68 @@ class _EmergencyServiceButtons extends StatelessWidget {
 /// (white surface, tinted icon badge) instead of a solid saturated block,
 /// so Police/Medical/Fire sit visually inside the app rather than looking
 /// like a separate, mismatched screen.
+class _LivePulseDot extends StatefulWidget {
+  const _LivePulseDot({this.color = Colors.white, this.size = 7});
+
+  final Color color;
+  final double size;
+
+  @override
+  State<_LivePulseDot> createState() => _LivePulseDotState();
+}
+
+class _LivePulseDotState extends State<_LivePulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.size.sp * 2.4,
+      height: widget.size.sp * 2.4,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final t = _controller.value;
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Opacity(
+                opacity: (1 - t).clamp(0.0, 1.0),
+                child: Container(
+                  width: widget.size.sp * 2.4 * (0.4 + t * 1.6),
+                  height: widget.size.sp * 2.4 * (0.4 + t * 1.6),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: widget.color.withValues(alpha: .5),
+                  ),
+                ),
+              ),
+              Container(
+                width: widget.size.sp,
+                height: widget.size.sp,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: widget.color,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _ServiceTile extends StatelessWidget {
   const _ServiceTile({
     required this.icon,
@@ -105,29 +167,47 @@ class _ServiceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.card,
-      borderRadius: BorderRadius.circular(16.r),
+      borderRadius: BorderRadius.circular(18.r),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16.r),
+        borderRadius: BorderRadius.circular(18.r),
         onTap: onTap,
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 6.w),
+          padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 6.w),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16.r),
+            borderRadius: BorderRadius.circular(18.r),
             border: Border.all(color: AppColors.line, width: 1.w),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: .10),
+                blurRadius: 14.r,
+                offset: Offset(0, 6.h),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 38.r,
-                height: 38.r,
+                width: 42.r,
+                height: 42.r,
                 decoration: BoxDecoration(
-                  color: background,
+                  gradient: LinearGradient(
+                    colors: [background, background.withValues(alpha: .55)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: .18),
+                      blurRadius: 8.r,
+                      offset: Offset(0, 3.h),
+                    ),
+                  ],
                 ),
-                child: Icon(icon, color: color, size: 19.sp),
+                child: Icon(icon, color: color, size: 20.sp),
               ),
-              SizedBox(height: 8.h),
+              SizedBox(height: 9.h),
               Text(
                 label,
                 maxLines: 1,
@@ -136,6 +216,7 @@ class _ServiceTile extends StatelessWidget {
                   fontSize: 12.5.sp,
                   fontWeight: FontWeight.w700,
                   color: AppColors.ink,
+                  letterSpacing: .1,
                 ),
               ),
               SizedBox(height: 1.h),
@@ -279,7 +360,7 @@ class _CountdownView extends StatelessWidget {
   Widget build(BuildContext context) {
     final sos = context.watch<SosProvider>();
     return Scaffold(
-      backgroundColor: const Color(0xFF2A0F0D),
+      backgroundColor: AppColors.dangerDark,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
@@ -410,7 +491,39 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
     return Scaffold(
       backgroundColor: AppColors.paper,
       appBar: AppBar(
-        title: const Text('Emergency'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Emergency'),
+            SizedBox(width: 8.w),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+              decoration: BoxDecoration(
+                color: AppColors.dangerSoft,
+                borderRadius: BorderRadius.circular(99.r),
+                border: Border.all(
+                  color: AppColors.danger.withValues(alpha: .25),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _LivePulseDot(color: AppColors.danger, size: 6),
+                  SizedBox(width: 5.w),
+                  Text(
+                    'LIVE',
+                    style: TextStyle(
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .6,
+                      color: AppColors.danger,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.paper,
         foregroundColor: AppColors.ink,
         elevation: 0,
@@ -495,7 +608,7 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
                               height: 30.r,
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF2A6DF4),
+                                  color: AppColors.primary,
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: Colors.white,
@@ -561,80 +674,147 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
               ),
             ),
 
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.danger, Color(0xFFE0554B)],
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20.r),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 16.h),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: AppColors.dangerGradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.danger.withValues(alpha: .32),
+                    blurRadius: 20.r,
+                    offset: Offset(0, 10.h),
+                  ),
+                ],
               ),
-              borderRadius: BorderRadius.circular(18.r),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.danger.withValues(alpha: .28),
-                  blurRadius: 16.r,
-                  offset: Offset(0, 8.h),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 42.r,
-                  height: 42.r,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .2),
-                    shape: BoxShape.circle,
+              child: Stack(
+                children: [
+                  Positioned(
+                    right: -20.r,
+                    top: -30.r,
+                    child: Container(
+                      width: 110.r,
+                      height: 110.r,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: .06),
+                      ),
+                    ),
                   ),
-                  child: Icon(
-                    sos.userLocation != null
-                        ? Icons.crisis_alert_rounded
-                        : Icons.gps_off_rounded,
-                    color: Colors.white,
-                    size: 22.sp,
+                  Positioned(
+                    right: 40.r,
+                    bottom: -36.r,
+                    child: Container(
+                      width: 70.r,
+                      height: 70.r,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: .05),
+                      ),
+                    ),
                   ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        sos.userLocation != null ? 'SOS ACTIVE' : 'SOS ACTIVE',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: .85),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11.sp,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      SizedBox(height: 2.h),
-                      Text(
-                        sos.userLocation != null ? 'Tracking on' : 'Locating…',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16.sp,
-                        ),
-                      ),
-                      if (sos.selectedHospital != null &&
-                          sos.realEtaMinutes > 0)
-                        Text(
-                          'ETA to ER: ${sos.realEtaMinutes.toStringAsFixed(0)} min',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w600,
+                      Container(
+                        width: 46.r,
+                        height: 46.r,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .18),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .25),
+                            width: 1.2.w,
                           ),
                         ),
+                        child: Icon(
+                          sos.userLocation != null
+                              ? Icons.crisis_alert_rounded
+                              : Icons.gps_off_rounded,
+                          color: Colors.white,
+                          size: 23.sp,
+                        ),
+                      ),
+                      SizedBox(width: 14.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _LivePulseDot(color: Colors.white, size: 6),
+                                SizedBox(width: 6.w),
+                                Text(
+                                  'SOS ACTIVE',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: .9),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11.sp,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(
+                              sos.userLocation != null
+                                  ? 'Tracking on'
+                                  : 'Locating…',
+                              style: GoogleFonts.sora(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 17.sp,
+                              ),
+                            ),
+                            if (sos.selectedHospital != null &&
+                                sos.realEtaMinutes > 0) ...[
+                              SizedBox(height: 3.h),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 13.sp,
+                                    color: Colors.white.withValues(alpha: .85),
+                                  ),
+                                  SizedBox(width: 4.w),
+                                  Text(
+                                    'ETA to ER: ${sos.realEtaMinutes.toStringAsFixed(0)} min',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.9,
+                                      ),
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: EdgeInsets.all(6.r),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: .16),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white,
+                          size: 18.sp,
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.white.withValues(alpha: .8),
-                  size: 22.sp,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           SizedBox(height: 14.h),
@@ -653,14 +833,42 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
           ),
 
           SizedBox(height: 20.h),
-          Text(
-            'NEAREST HOSPITALS',
-            style: TextStyle(
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-              color: AppColors.muted,
-            ),
+          Row(
+            children: [
+              Icon(
+                Icons.local_hospital_rounded,
+                size: 15.sp,
+                color: AppColors.primaryDark,
+              ),
+              SizedBox(width: 6.w),
+              Text(
+                'NEAREST HOSPITALS',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: AppColors.inkSoft,
+                ),
+              ),
+              if (sos.nearbyHospitals.isNotEmpty) ...[
+                SizedBox(width: 8.w),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 7.w, vertical: 2.h),
+                  decoration: BoxDecoration(
+                    color: AppColors.soft,
+                    borderRadius: BorderRadius.circular(99.r),
+                  ),
+                  child: Text(
+                    '${sos.nearbyHospitals.length}',
+                    style: TextStyle(
+                      fontSize: 10.5.sp,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           SizedBox(height: 10.h),
           if (sos.isLoadingHospitals)
@@ -685,73 +893,139 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
           else
             for (final h in sos.nearbyHospitals)
               Padding(
-                padding: EdgeInsets.only(bottom: 9.h),
-                child: MCard(
-                  onTap: () => context.read<SosProvider>().selectHospital(h),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 14.w,
-                    vertical: 12.h,
+                padding: EdgeInsets.only(bottom: 10.h),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18.r),
+                    boxShadow: sos.selectedHospital == h
+                        ? [
+                            BoxShadow(
+                              color: AppColors.danger.withValues(alpha: .16),
+                              blurRadius: 16.r,
+                              offset: Offset(0, 6.h),
+                            ),
+                          ]
+                        : [],
                   ),
-                  border: sos.selectedHospital == h
-                      ? Border.all(color: AppColors.danger, width: 1.5.w)
-                      : null,
-                  child: Row(
-                    children: [
-                      Icon(
-                        sos.selectedHospital == h
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_off_rounded,
-                        color: sos.selectedHospital == h
-                            ? AppColors.danger
-                            : AppColors.line,
-                        size: 24.sp,
-                      ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              h.name,
-                              style: TextStyle(
-                                fontSize: 14.5.sp,
-                                fontWeight: FontWeight.w700,
+                  child: MCard(
+                    onTap: () => context.read<SosProvider>().selectHospital(h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 13.h,
+                    ),
+                    border: sos.selectedHospital == h
+                        ? Border.all(color: AppColors.danger, width: 1.6.w)
+                        : null,
+                    child: Row(
+                      children: [
+                        Icon(
+                          sos.selectedHospital == h
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_off_rounded,
+                          color: sos.selectedHospital == h
+                              ? AppColors.danger
+                              : AppColors.line,
+                          size: 24.sp,
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                h.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 14.5.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                              SizedBox(height: 3.h),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 6.w,
+                                      vertical: 1.h,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.soft,
+                                      borderRadius: BorderRadius.circular(99.r),
+                                    ),
+                                    child: Text(
+                                      '${h.distanceMiles.toStringAsFixed(1)} mi',
+                                      style: TextStyle(
+                                        fontSize: 10.5.sp,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.primaryDark,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 6.w),
+                                  Expanded(
+                                    child: Text(
+                                      h.openLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        color: AppColors.muted,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Material(
+                          color: AppColors.soft,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _openDirections(h),
+                            child: Padding(
+                              padding: EdgeInsets.all(9.r),
+                              child: Icon(
+                                Icons.directions_rounded,
+                                color: AppColors.primaryDark,
+                                size: 19.sp,
                               ),
                             ),
-                            Text(
-                              '${h.distanceMiles.toStringAsFixed(1)} mi · ${h.openLabel}',
-                              style: TextStyle(
-                                fontSize: 12.sp,
-                                color: AppColors.muted,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.directions_rounded,
-                          color: AppColors.primary,
-                        ),
-                        onPressed: () => _openDirections(h),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
 
           SizedBox(height: 14.h),
           MCard(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
             child: Row(
               children: [
-                Icon(
-                  sos.contactsNotified
-                      ? Icons.check_circle_rounded
-                      : Icons.sync_rounded,
-                  color: sos.contactsNotified
-                      ? AppColors.success
-                      : AppColors.muted,
+                Container(
+                  width: 38.r,
+                  height: 38.r,
+                  decoration: BoxDecoration(
+                    color: sos.contactsNotified
+                        ? AppColors.successSoft
+                        : AppColors.paper,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    sos.contactsNotified
+                        ? Icons.check_circle_rounded
+                        : Icons.sync_rounded,
+                    color: sos.contactsNotified
+                        ? AppColors.success
+                        : AppColors.muted,
+                    size: 19.sp,
+                  ),
                 ),
                 SizedBox(width: 12.w),
                 Expanded(
@@ -767,6 +1041,7 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
                         style: TextStyle(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
                         ),
                       ),
                       Text(

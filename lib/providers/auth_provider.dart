@@ -1,3 +1,4 @@
+// PATH: lib/providers/auth_provider.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -15,14 +16,44 @@ class AuthProvider extends ChangeNotifier {
   String phone = '';
   bool isLoading = false;
 
+  // Guest mode: lets someone browse read-only/non-personal screens without
+  // a Firebase account. Purely a local UI flag — never touches Firebase
+  // Auth or Firestore, so it can't leak data across accounts. It's cleared
+  // automatically the moment a real sign-in succeeds (see signIn/signUp/
+  // signInWithGoogle/signInWithApple) or on logout().
+  bool _isGuest = false;
+  bool get isGuest => _isGuest;
+
   User? get currentUser => _auth.currentUser;
   bool get loggedIn => _auth.currentUser != null;
+  // True whenever there's no real, signed-in user — covers both the
+  // "on the login screen" state and "browsing as guest" state. Screens
+  // that need to gate an action should check `isGuest`, not this.
+  bool get isAuthenticated => loggedIn;
   String get currentEmail => _auth.currentUser?.email ?? '';
 
   AuthProvider() {
     _auth.authStateChanges().listen((user) {
+      // A real account taking over always wins over guest browsing.
+      if (user != null) _isGuest = false;
       notifyListeners();
     });
+  }
+
+  /// Enter guest mode from the login screen. No network/Firebase call —
+  /// just flips the local flag so AuthWrapper routes into PatientShell
+  /// with `isGuestMode: true`.
+  void continueAsGuest() {
+    _isGuest = true;
+    notifyListeners();
+  }
+
+  /// Leave guest mode and go back to the login screen (e.g. user taps
+  /// "Login" from a guarded screen, or from a "Log in" button shown
+  /// while browsing as guest).
+  void exitGuestMode() {
+    _isGuest = false;
+    notifyListeners();
   }
 
   void setPhone(String value) {
@@ -62,7 +93,17 @@ class AuthProvider extends ChangeNotifier {
       final user = credential.user;
       if (user != null) {
         await user.updateDisplayName(name.trim());
-        await _ensureUserDoc(user, fallbackPhone: phone);
+        // Pass the name the user just typed directly, instead of relying
+        // on `user.displayName` here — the local `user` object is a
+        // snapshot from before updateDisplayName() took effect, so its
+        // displayName is still null at this point (that was the bug:
+        // every new account ended up saved as literally "User" in
+        // Firestore, no matter what name was entered at signup).
+        await _ensureUserDoc(
+          user,
+          fallbackPhone: phone,
+          fallbackName: name.trim(),
+        );
       }
     } on FirebaseAuthException catch (error) {
       throw _friendlyAuthError(error);
@@ -87,13 +128,16 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
       await _ensureUserDoc(userCredential.user);
 
       isLoading = false;
@@ -108,8 +152,10 @@ class AuthProvider extends ChangeNotifier {
       final errStr = error.toString().toLowerCase();
       if (errStr.contains('network')) {
         message = 'Internet connection error. Check your WiFi/Data.';
-      } else if (errStr.contains('12500') || errStr.contains('developer_error')) {
-        message = 'Firebase Config Error: Missing SHA-1 key in Firebase Console.';
+      } else if (errStr.contains('12500') ||
+          errStr.contains('developer_error')) {
+        message =
+            'Firebase Config Error: Missing SHA-1 key in Firebase Console.';
       } else if (errStr.contains('7')) {
         message = 'Google Play Services is not working correctly.';
       }
@@ -132,52 +178,55 @@ class AuthProvider extends ChangeNotifier {
         nonce: _sha256Nonce(rawNonce),
       );
 
-      final AuthCredential credential = OAuthProvider('apple.com').credential(
-        idToken: appleCredential.identityToken,
-        rawNonce: rawNonce,
+      final AuthCredential credential = OAuthProvider(
+        'apple.com',
+      ).credential(idToken: appleCredential.identityToken, rawNonce: rawNonce);
+
+      final UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
       );
 
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
-
-      if (appleCredential.givenName != null && userCredential.user?.displayName == null) {
-        await userCredential.user?.updateDisplayName(
-          '${appleCredential.givenName} ${appleCredential.familyName}'.trim(),
-        );
+      String? appleFullName;
+      if (appleCredential.givenName != null &&
+          userCredential.user?.displayName == null) {
+        appleFullName =
+            '${appleCredential.givenName} ${appleCredential.familyName}'.trim();
+        await userCredential.user?.updateDisplayName(appleFullName);
       }
 
-      await _ensureUserDoc(userCredential.user);
+      // Same reasoning as signUp(): the local user object's displayName
+      // may still be stale immediately after updateDisplayName() above,
+      // so pass whatever name Apple actually gave us directly.
+      await _ensureUserDoc(userCredential.user, fallbackName: appleFullName);
       isLoading = false;
       notifyListeners();
       return true;
     } catch (error) {
       isLoading = false;
       notifyListeners();
-      if (error.toString().contains('canceled') || error.toString().contains('1001')) {
+      if (error.toString().contains('canceled') ||
+          error.toString().contains('1001')) {
         return false;
       }
       throw 'Apple Sign-In failed.';
     }
   }
 
-  Future<void> _ensureUserDoc(User? user, {String fallbackPhone = ''}) async {
+  Future<void> _ensureUserDoc(
+    User? user, {
+    String fallbackPhone = '',
+    String? fallbackName,
+  }) async {
     if (user == null) return;
     final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
     final doc = await ref.get();
 
-    // NOTE: don't gate this whole write on `!doc.exists`. ProfileProvider
-    // also listens to authStateChanges() and, on first sign-in, may race
-    // ahead and create this same document with only health-profile fields
-    // (no email/phone/searchIndex). If we only wrote here when the doc was
-    // completely missing, that race would permanently skip writing the
-    // search-critical fields whenever ProfileProvider won the race — which
-    // is exactly what caused accounts to be unfindable in caregiver search.
-    // Using a merge-set makes this idempotent and self-healing: it fills in
-    // whichever auth fields are missing without touching profile data that
-    // may already be there.
     final existingName = doc.data()?['name'] as String?;
-    final name = (existingName != null && existingName.trim().isNotEmpty)
-        ? existingName
-        : (user.displayName ?? 'User');
+    final name = (fallbackName != null && fallbackName.trim().isNotEmpty)
+        ? fallbackName.trim()
+        : ((existingName != null && existingName.trim().isNotEmpty)
+              ? existingName
+              : (user.displayName ?? 'User'));
     final email = user.email ?? '';
     final phoneNumber = user.phoneNumber ?? fallbackPhone;
 
@@ -185,15 +234,23 @@ class AuthProvider extends ChangeNotifier {
       'name': name,
       'email': email,
       'phone': phoneNumber,
-      'searchIndex': UserSearchIndex.build(name: name, phone: phoneNumber, email: email),
+      'searchIndex': UserSearchIndex.build(
+        name: name,
+        phone: phoneNumber,
+        email: email,
+      ),
       if (!doc.exists) 'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
   String _generateNonce([int length = 32]) {
-    const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    const charset =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     final random = Random();
-    return List.generate(length, (index) => charset[random.nextInt(charset.length)]).join();
+    return List.generate(
+      length,
+      (index) => charset[random.nextInt(charset.length)],
+    ).join();
   }
 
   String _sha256Nonce(String input) {
@@ -222,6 +279,7 @@ class AuthProvider extends ChangeNotifier {
     await _auth.signOut();
     await GoogleSignIn().signOut().catchError((_) => null);
     phone = '';
+    _isGuest = false;
     notifyListeners();
   }
 }

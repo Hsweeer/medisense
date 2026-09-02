@@ -1,0 +1,310 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../core/services/gemini_service.dart';
+import '../../core/services/image_cleaner_service.dart';
+import '../../core/services/prescription_history_preferences.dart';
+import '../../core/services/prescription_log_service.dart';
+import '../../core/services/prescription_parser.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_loading.dart';
+import '../../core/widgets/shared_widgets.dart';
+import '../../data/models/prescription_models.dart';
+import '../chat/prescription_review_screen.dart';
+
+/// Home-screen entry point for scanning a prescription directly — same
+/// Gemini read + parsing + professional summary used in chat, just without
+/// needing to go through a chat conversation first.
+class PrescriptionScannerScreen extends StatefulWidget {
+  const PrescriptionScannerScreen({super.key});
+
+  @override
+  State<PrescriptionScannerScreen> createState() =>
+      _PrescriptionScannerScreenState();
+}
+
+class _PrescriptionScannerScreenState
+    extends State<PrescriptionScannerScreen> {
+  bool _processing = false;
+  String? _error;
+
+  // Result state, once a scan succeeds.
+  String? _summary;
+  List<ParsedMedicine>? _meds;
+  String? _ocrJson;
+  String? _imagePath;
+
+  Future<void> _capture(ImageSource source) async {
+    if (_processing) return;
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 90,
+    );
+    if (picked == null) return;
+
+    setState(() {
+      _processing = true;
+      _error = null;
+    });
+
+    try {
+      final cleanedPath =
+      await ImageCleanerService.cleanForVision(picked.path);
+      final processPath = cleanedPath ?? picked.path;
+
+      final jsonOutput = await GeminiService.readPrescription(processPath);
+      final meds = getMedsFromOcr(jsonOutput);
+      final summary = buildProfessionalSummary(meds);
+
+      final validCount = meds.where((m) => m.name.trim().isNotEmpty).length;
+      if (validCount > 0 &&
+          await PrescriptionHistoryPreferences.instance.isEnabled()) {
+        try {
+          await PrescriptionLogService.instance.save(
+            PrescriptionHistoryEntry(
+              summary: summary,
+              medicineCount: validCount,
+              scannedAt: DateTime.now(),
+            ),
+          );
+        } catch (_) {
+          // Non-fatal — result is still shown even if history save fails.
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _processing = false;
+        _meds = meds;
+        _summary = summary;
+        _ocrJson = jsonOutput;
+        _imagePath = processPath;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _processing = false;
+        _error = "Scanning error. Please ensure the photo is clear and try again.";
+      });
+    }
+  }
+
+  void _rescan() {
+    setState(() {
+      _summary = null;
+      _meds = null;
+      _ocrJson = null;
+      _imagePath = null;
+      _error = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.paper,
+      appBar: AppBar(
+        backgroundColor: AppColors.paper,
+        surfaceTintColor: AppColors.paper,
+        title: const Text('Scan prescription'),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20.w),
+          child: _processing
+              ? const _AnalyzingState()
+              : _summary != null
+              ? _ResultView(
+            summary: _summary!,
+            meds: _meds!,
+            ocrJson: _ocrJson!,
+            imagePath: _imagePath,
+            onRescan: _rescan,
+          )
+              : _IntroView(error: _error, onCapture: _capture),
+        ),
+      ),
+    );
+  }
+}
+
+class _IntroView extends StatelessWidget {
+  const _IntroView({required this.onCapture, this.error});
+  final void Function(ImageSource) onCapture;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96.r,
+              height: 96.r,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: AppColors.gradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.receipt_long_rounded,
+                  color: Colors.white, size: 42.sp),
+            ),
+            SizedBox(height: 22.h),
+            Text(
+              'Scan a prescription',
+              style: GoogleFonts.sora(
+                fontSize: 21.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'Snap a photo or pick one from your gallery and MedAI will '
+                  'read the medicines, doses, and instructions — in English, '
+                  'Urdu, or Roman Urdu.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13.5.sp, color: AppColors.muted, height: 1.45),
+            ),
+            if (error != null) ...[
+              SizedBox(height: 16.h),
+              Container(
+                padding: EdgeInsets.all(12.r),
+                decoration: BoxDecoration(
+                  color: AppColors.dangerSoft,
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Text(error!,
+                    style: TextStyle(fontSize: 12.5.sp, color: AppColors.danger)),
+              ),
+            ],
+            SizedBox(height: 26.h),
+            PrimaryButton(
+              label: 'Take a photo',
+              icon: Icons.camera_alt_rounded,
+              onPressed: () => onCapture(ImageSource.camera),
+            ),
+            SizedBox(height: 10.h),
+            OutlinedButton.icon(
+              onPressed: () => onCapture(ImageSource.gallery),
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('Choose from gallery'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalyzingState extends StatelessWidget {
+  const _AnalyzingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const AppSpinner(),
+          SizedBox(height: 16.h),
+          Text('Reading your prescription…',
+              style: TextStyle(fontSize: 14.sp, color: AppColors.muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultView extends StatelessWidget {
+  const _ResultView({
+    required this.summary,
+    required this.meds,
+    required this.ocrJson,
+    required this.imagePath,
+    required this.onRescan,
+  });
+
+  final String summary;
+  final List<ParsedMedicine> meds;
+  final String ocrJson;
+  final String? imagePath;
+  final VoidCallback onRescan;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: EdgeInsets.symmetric(vertical: 16.h),
+      children: [
+        if (imagePath != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14.r),
+            child: Image.file(File(imagePath!), height: 140.h, width: double.infinity, fit: BoxFit.cover),
+          ),
+        SizedBox(height: 14.h),
+        Row(
+          children: [
+            Expanded(
+              child: Text('Prescription summary',
+                  style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800)),
+            ),
+            IconButton(
+              tooltip: 'Copy summary',
+              icon: Icon(Icons.copy_rounded, size: 18.sp, color: AppColors.muted),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: summary));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Summary copied')),
+                );
+              },
+            ),
+          ],
+        ),
+        MCard(
+          color: AppColors.paper,
+          child: SelectableText(
+            summary,
+            style: TextStyle(fontSize: 12.5.sp, color: AppColors.inkSoft, height: 1.55, fontFamily: 'monospace'),
+          ),
+        ),
+        SizedBox(height: 18.h),
+        PrimaryButton(
+          label: 'Add reminders',
+          icon: Icons.alarm_add_rounded,
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => PrescriptionReviewScreen(
+                ocrText: ocrJson,
+                initialMeds: meds,
+                imagePath: imagePath,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 10.h),
+        OutlinedButton.icon(
+          onPressed: onRescan,
+          icon: const Icon(Icons.replay_rounded),
+          label: const Text('Scan another'),
+        ),
+        SizedBox(height: 8.h),
+        Center(
+          child: Text(
+            'Automatically saved to your prescription history.',
+            style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
+          ),
+        ),
+      ],
+    );
+  }
+}
