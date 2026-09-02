@@ -4,7 +4,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../../features/auth/login_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 
@@ -103,10 +102,14 @@ class _LoginRequiredSheet extends StatelessWidget {
                 onPressed: () {
                   Navigator.of(context).pop(false);
                   context.read<AuthProvider>().exitGuestMode();
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (route) => false,
-                  );
+                  // Just pop back to the root route — AuthWrapper (which
+                  // never left the tree) is watching isGuest and will
+                  // reactively swap itself to LoginScreen now that it's
+                  // false. Pushing a brand-new LoginScreen here instead
+                  // (the old bug) orphaned AuthWrapper's auth-state
+                  // listener, so a successful login/signup afterwards had
+                  // nothing left to notice it and navigate into the app.
+                  Navigator.of(context).popUntil((route) => route.isFirst);
                 },
                 child: Text(
                   'Login / Sign up',
@@ -150,10 +153,9 @@ class GuestModeBanner extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         context.read<AuthProvider>().exitGuestMode();
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-        );
+        // Same fix as _LoginRequiredSheet above — pop to root and let
+        // AuthWrapper reactively show LoginScreen, don't push a new one.
+        Navigator.of(context).popUntil((route) => route.isFirst);
       },
       child: Container(
         width: double.infinity,

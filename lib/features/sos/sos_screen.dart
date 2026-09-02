@@ -530,24 +530,45 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
         scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
         actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await context.read<SosProvider>().resolve();
-              if (context.mounted) {
-                Navigator.of(context).popUntil((r) => r.isFirst);
-              }
-            },
-            icon: Icon(
-              Icons.call_end_rounded,
-              size: 16.sp,
-              color: AppColors.danger,
-            ),
-            label: Text(
-              'RESOLVE',
-              style: TextStyle(
-                color: AppColors.danger,
-                fontWeight: FontWeight.bold,
-                fontSize: 13.sp,
+          Padding(
+            padding: EdgeInsets.only(right: 12.w),
+            child: Material(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(99.r),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(99.r),
+                onTap: () async {
+                  await context.read<SosProvider>().resolve();
+                  if (context.mounted) {
+                    Navigator.of(context).popUntil((r) => r.isFirst);
+                  }
+                },
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 9.h,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.call_end_rounded,
+                        size: 15.sp,
+                        color: Colors.white,
+                      ),
+                      SizedBox(width: 6.w),
+                      Text(
+                        'RESOLVE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5.sp,
+                          letterSpacing: .3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -680,14 +701,14 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
               padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 16.h),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: AppColors.dangerGradient,
+                  colors: AppColors.gradient,
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(20.r),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.danger.withValues(alpha: .32),
+                    color: AppColors.primary.withValues(alpha: .32),
                     blurRadius: 20.r,
                     offset: Offset(0, 10.h),
                   ),
@@ -824,7 +845,7 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
           PrimaryButton(
             label: 'OPEN MAPS',
             icon: Icons.directions_rounded,
-            color: AppColors.ink,
+            color: AppColors.primary,
             onPressed: () {
               if (sos.selectedHospital != null) {
                 _openDirections(sos.selectedHospital!);
