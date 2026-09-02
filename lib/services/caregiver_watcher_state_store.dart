@@ -21,17 +21,20 @@ class CaregiverWatcherState {
     Set<String>? seenActiveSosIds,
     Map<String, String>? lastSosStatus,
     Set<String>? seenReminderIds,
+    Set<String>? seenPatientUids,
   })  : seenIncomingIds = seenIncomingIds ?? {},
         lastSentStatus = lastSentStatus ?? {},
         seenActiveSosIds = seenActiveSosIds ?? {},
         lastSosStatus = lastSosStatus ?? {},
-        seenReminderIds = seenReminderIds ?? {};
+        seenReminderIds = seenReminderIds ?? {},
+        seenPatientUids = seenPatientUids ?? {};
 
   final Set<String> seenIncomingIds;
   final Map<String, String> lastSentStatus;
   final Set<String> seenActiveSosIds;
   final Map<String, String> lastSosStatus;
   final Set<String> seenReminderIds;
+  final Set<String> seenPatientUids;
 
   Map<String, dynamic> toMap() => {
     'seenIncomingIds': seenIncomingIds.toList(),
@@ -39,6 +42,7 @@ class CaregiverWatcherState {
     'seenActiveSosIds': seenActiveSosIds.toList(),
     'lastSosStatus': lastSosStatus,
     'seenReminderIds': seenReminderIds.toList(),
+    'seenPatientUids': seenPatientUids.toList(),
   };
 
   static CaregiverWatcherState fromMap(Map<String, dynamic> map) {
@@ -57,6 +61,8 @@ class CaregiverWatcherState {
       ),
       seenReminderIds:
       (map['seenReminderIds'] as List? ?? []).map((e) => '$e').toSet(),
+      seenPatientUids:
+      (map['seenPatientUids'] as List? ?? []).map((e) => '$e').toSet(),
     );
   }
 }

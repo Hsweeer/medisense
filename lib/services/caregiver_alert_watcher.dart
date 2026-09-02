@@ -76,6 +76,9 @@ class CaregiverAlertWatcher {
   bool _remindersReady = false;
   final Set<String> _seenReminderIds = {};
 
+  bool _patientsReady = false;
+  final Set<String> _seenPatientUids = {};
+
   // patientUid → display name, refreshed whenever "people I manage"
   // changes, so SOS alerts can name the patient instead of showing a uid.
   Map<String, String> _patientNames = {};
@@ -137,6 +140,11 @@ class CaregiverAlertWatcher {
       ..clear()
       ..addAll(persisted?.seenReminderIds ?? {});
 
+    _patientsReady = persisted != null;
+    _seenPatientUids
+      ..clear()
+      ..addAll(persisted?.seenPatientUids ?? {});
+
     _patientNames = {};
     _caregiverNames = {};
 
@@ -145,18 +153,68 @@ class CaregiverAlertWatcher {
         : '[CaregiverAlertWatcher] resuming from persisted state (incoming=${_seenIncomingIds.length}, sent=${_lastSentStatus.length}, sos=${_lastSosStatus.length}, reminders=${_seenReminderIds.length})');
 
     _incomingSub =
-        CaregiverService.instance.incomingRequests().listen(_onIncoming);
+        CaregiverService.instance.incomingRequests().listen(
+          _onIncoming,
+          onError: (Object e) => _onStreamError('incomingRequests', uid, e,
+                  () => _incomingSub = CaregiverService.instance
+                  .incomingRequests()
+                  .listen(_onIncoming)),
+        );
     _sentSub =
-        CaregiverService.instance.mySentRequests().listen(_onSentUpdate);
+        CaregiverService.instance.mySentRequests().listen(
+          _onSentUpdate,
+          onError: (Object e) => _onStreamError('mySentRequests', uid, e,
+                  () => _sentSub = CaregiverService.instance
+                  .mySentRequests()
+                  .listen(_onSentUpdate)),
+        );
     _myPatientsSub = CaregiverService.instance
         .myAcceptedRecipients()
-        .listen(_onPatientsChanged);
+        .listen(
+      _onPatientsChanged,
+      onError: (Object e) => _onStreamError('myAcceptedRecipients', uid, e,
+              () => _myPatientsSub = CaregiverService.instance
+              .myAcceptedRecipients()
+              .listen(_onPatientsChanged)),
+    );
     _myCaregiversSub = CaregiverService.instance
         .whoHasAccessToMe()
-        .listen(_onCaregiversChanged);
+        .listen(
+      _onCaregiversChanged,
+      onError: (Object e) => _onStreamError('whoHasAccessToMe', uid, e,
+              () => _myCaregiversSub = CaregiverService.instance
+              .whoHasAccessToMe()
+              .listen(_onCaregiversChanged)),
+    );
     _myRemindersSub = ReminderFirestoreService.instance
         .remindersStream()
-        .listen(_onMyReminders);
+        .listen(
+      _onMyReminders,
+      onError: (Object e) => _onStreamError('remindersStream', uid, e,
+              () => _myRemindersSub = ReminderFirestoreService.instance
+              .remindersStream()
+              .listen(_onMyReminders)),
+    );
+  }
+
+  /// A dropped Firestore stream (permission hiccup on token refresh, a
+  /// brief network blip, etc.) otherwise means that listener goes silent
+  /// for the rest of the app session — which looks exactly like "some
+  /// notifications never arrive" from the outside. Instead of leaving it
+  /// dead, log it and resubscribe after a short backoff, as long as we're
+  /// still attached to the same account.
+  void _onStreamError(
+      String streamName,
+      String uid,
+      Object error,
+      VoidCallback resubscribe,
+      ) {
+    debugPrint('[CaregiverAlertWatcher] $streamName stream error: $error — retrying in 5s');
+    Future.delayed(const Duration(seconds: 5), () {
+      if (_uid != uid) return; // account switched away in the meantime
+      debugPrint('[CaregiverAlertWatcher] resubscribing to $streamName');
+      resubscribe();
+    });
   }
 
   static CaregiverLinkStatus _parseStatus(String value) {
@@ -196,6 +254,7 @@ class CaregiverAlertWatcher {
         seenActiveSosIds: Set.of(_seenActiveSosIds),
         lastSosStatus: Map.of(_lastSosStatus),
         seenReminderIds: Set.of(_seenReminderIds),
+        seenPatientUids: Set.of(_seenPatientUids),
       ),
     );
   }
@@ -283,8 +342,42 @@ class CaregiverAlertWatcher {
   // ── 3. SOS activity for patients I'm an accepted caregiver for ──────
 
   void _onPatientsChanged(List<CaregiverLink> links) {
+    final previousNames = _patientNames;
     _patientNames = {for (final l in links) l.recipientUid: l.recipientName};
-    final patientUids = links.map((l) => l.recipientUid).toSet().toList();
+    final patientUids = links.map((l) => l.recipientUid).toSet();
+
+    if (!_patientsReady) {
+      // First-ever attach for this account on this device: baseline
+      // silently so an install doesn't treat existing recipients as
+      // newly-revoked.
+      _patientsReady = true;
+      _seenPatientUids
+        ..clear()
+        ..addAll(patientUids);
+      debugPrint(
+          '[CaregiverAlertWatcher] patients baselined with ${patientUids.length} recipient(s)');
+      _persist();
+    } else {
+      // Anyone who used to be an accepted recipient but has since
+      // disappeared (revoked access, or unlinked) — tell the caregiver,
+      // since otherwise they'd have no way of knowing except noticing
+      // the person quietly vanished from their list.
+      final revoked = _seenPatientUids.difference(patientUids);
+      if (revoked.isNotEmpty) {
+        for (final uid in revoked) {
+          final name = previousNames[uid] ?? _patientNames[uid] ?? 'A patient';
+          debugPrint('[CaregiverAlertWatcher] $name revoked your caregiver access');
+          NotificationService.instance.logGenericAlert(
+            title: 'Caregiver access removed',
+            message: '$name removed your access to their reminders and alerts.',
+          );
+        }
+      }
+      _seenPatientUids
+        ..clear()
+        ..addAll(patientUids);
+      if (revoked.isNotEmpty) _persist();
+    }
 
     _sosSub?.cancel();
     _sosSub = null;

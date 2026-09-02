@@ -24,6 +24,85 @@ class ParsedMedicine {
   List<TimeOfDay> times;
 }
 
+/// Best-effort extraction of a course duration (in days) from free text.
+/// Used as a safety net whenever a numeric duration wasn't already
+/// returned by the AI — e.g. Gemini's structured JSON came back without
+/// "durationDays", or the app fell back to the legacy heuristic parser.
+/// Understands English, Roman Urdu, and Urdu-script day/week/month
+/// phrasing, plus the "x/7" / "x/52" / "x/12" (days/weeks/months)
+/// shorthand doctors often use.
+int? extractDurationDays(String text) {
+  final t = text.trim();
+  if (t.isEmpty) return null;
+
+  // "x/7" = x days, "x/52" = x weeks, "x/12" = x months.
+  final shorthand = RegExp(r'\b(\d{1,3})\s*/\s*(7|12|52)\b').firstMatch(t);
+  if (shorthand != null) {
+    final n = int.parse(shorthand.group(1)!);
+    switch (shorthand.group(2)) {
+      case '7':
+        return n;
+      case '52':
+        return n * 7;
+      case '12':
+        return n * 30;
+    }
+  }
+
+  int? tryUnit({
+    required List<RegExp> numbered,
+    required List<RegExp> singular,
+    required int perUnit,
+  }) {
+    for (final re in numbered) {
+      final m = re.firstMatch(t);
+      if (m != null) {
+        final n = int.tryParse(m.group(1) ?? '');
+        if (n != null) return n * perUnit;
+      }
+    }
+    for (final re in singular) {
+      if (re.hasMatch(t)) return perUnit;
+    }
+    return null;
+  }
+
+  final months = tryUnit(
+    numbered: [
+      RegExp(r'(\d+)\s*(months?|mahin[ae]?s?|mah\b)', caseSensitive: false),
+      RegExp(r'(\d+)\s*(ماہ|مہینے|مہینہ)'),
+    ],
+    singular: [
+      RegExp(r'\b(a|one|ek|aik)\s+(month|mah)\b', caseSensitive: false),
+      RegExp(r'(ایک)\s*(ماہ|مہینہ)'),
+    ],
+    perUnit: 30,
+  );
+  if (months != null) return months;
+
+  final weeks = tryUnit(
+    numbered: [
+      RegExp(r'(\d+)\s*(weeks?|haft[ae]y?)\b', caseSensitive: false),
+      RegExp(r'(\d+)\s*(ہفتے|ہفتہ|ہفتوں)'),
+    ],
+    singular: [
+      RegExp(r'\b(a|one|ek|aik)\s+week\b', caseSensitive: false),
+      RegExp(r'(ایک)\s*(ہفتہ)'),
+    ],
+    perUnit: 7,
+  );
+  if (weeks != null) return weeks;
+
+  return tryUnit(
+    numbered: [
+      RegExp(r'(\d+)\s*(days?|din)\b', caseSensitive: false),
+      RegExp(r'(\d+)\s*دن'),
+    ],
+    singular: const [],
+    perUnit: 1,
+  );
+}
+
 /// Helper to get medicine list from a ChatMessage. Handles both new Gemini JSON
 /// and old raw text fallback formats.
 List<ParsedMedicine> getMedsFromOcr(String ocrText) {
@@ -38,9 +117,16 @@ List<ParsedMedicine> getMedsFromOcr(String ocrText) {
     return medsList.map((m) {
       final int tpd = int.tryParse(m['timesPerDay']?.toString() ?? '1') ?? 1;
       final durationRaw = m['durationDays'];
-      final int? duration = durationRaw == null
+      final int? aiDuration = durationRaw == null
           ? null
           : int.tryParse(durationRaw.toString());
+      // The AI sometimes leaves durationDays null even though the course
+      // length was written in plain text (e.g. "for 2 months") inside
+      // instructions or the dose line — catch that here instead of
+      // silently dropping it.
+      final int? duration = aiDuration ??
+          extractDurationDays(
+              '${m['instructions'] ?? ''} ${m['dose'] ?? ''} ${m['name'] ?? ''}');
       return ParsedMedicine(
         name: m['name']?.toString() ?? 'Unknown',
         dose: m['dose']?.toString() ?? '',
@@ -200,6 +286,7 @@ List<ParsedMedicine> parsePrescriptionText(String raw) {
       name: name,
       dose: dose,
       timesPerDay: timesPerDay,
+      durationDays: extractDurationDays(line),
       times: defaultTimesFor(timesPerDay),
       confidence: 'high', // Legacy always high
     ));
