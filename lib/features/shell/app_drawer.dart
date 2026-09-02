@@ -12,6 +12,8 @@ import '../profile/edit_profile_screen.dart';
 import '../profile/nutrition_history_screen.dart';
 import '../profile/prescription_history_screen.dart';
 import '../settings/alarm_sound_screen.dart';
+import '../skin/skin_history_screen.dart';
+import '../vitals/vitals_history_screen.dart';
 
 /// App-wide navigation drawer — opened from the menu icon on the Home
 /// screen. Holds everything that used to live under Profile → "Settings"
@@ -94,6 +96,30 @@ class AppDrawer extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const PrescriptionHistoryScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _DrawerTile(
+                    icon: Icons.face_retouching_natural_rounded,
+                    label: 'Skin check history',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SkinHistoryScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _DrawerTile(
+                    icon: Icons.favorite_border_rounded,
+                    label: 'Heart rate history',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const VitalsHistoryScreen(),
                         ),
                       );
                     },
