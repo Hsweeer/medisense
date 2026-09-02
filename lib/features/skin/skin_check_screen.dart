@@ -9,6 +9,7 @@ import '../../core/services/skin_photo_quality_checker.dart';
 import '../../core/services/skin_scan_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_loading.dart';
+import '../../core/widgets/guest_gate.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../services/skin_scan_firestore_service.dart';
 import 'skin_history_screen.dart';
@@ -75,7 +76,8 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
       if (result.metrics.isEmpty) {
         setState(() {
           _state = _State.error;
-          _error = "MedAI couldn't get a reading from that photo. Please "
+          _error =
+              "MedAI couldn't get a reading from that photo. Please "
               "try again with a clear, well-lit photo of your face.";
         });
         return;
@@ -90,7 +92,8 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
       if (!mounted) return;
       setState(() {
         _state = _State.error;
-        _error = "Couldn't complete the skin scan — the analysis server "
+        _error =
+            "Couldn't complete the skin scan — the analysis server "
             "might be waking up (this can take up to a minute on the "
             "first try). Please try again.";
       });
@@ -99,13 +102,22 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
 
   Future<void> _saveToHistory() async {
     if (_metrics == null || _saving) return;
+    if (!await requireLogin(
+      context,
+      feature: 'save this scan to your history',
+    )) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
-      await SkinScanFirestoreService.instance.saveScan(SkinScanRecord(
-        metrics: {for (final m in _metrics!) m.label: m.score},
-        imagePath: _imagePath,
-        date: DateTime.now(),
-      ));
+      await SkinScanFirestoreService.instance.saveScan(
+        SkinScanRecord(
+          metrics: {for (final m in _metrics!) m.label: m.score},
+          imagePath: _imagePath,
+          date: DateTime.now(),
+        ),
+      );
       if (mounted) setState(() => _saved = true);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -188,20 +200,32 @@ class _IntroView extends StatelessWidget {
                 ),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.face_retouching_natural_rounded,
-                  color: Colors.white, size: 42.sp),
+              child: Icon(
+                Icons.face_retouching_natural_rounded,
+                color: Colors.white,
+                size: 42.sp,
+              ),
             ),
             SizedBox(height: 22.h),
-            Text('Skin check',
-                style: GoogleFonts.sora(
-                    fontSize: 21.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
+            Text(
+              'Skin check',
+              style: GoogleFonts.sora(
+                fontSize: 21.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
             SizedBox(height: 8.h),
             Text(
               'Take a clear, well-lit photo of your face and MedAI will '
-                  'give you a general visual read on skin condition — not a '
-                  'diagnosis.',
+              'give you a general visual read on skin condition — not a '
+              'diagnosis.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.5.sp, color: AppColors.muted, height: 1.45),
+              style: TextStyle(
+                fontSize: 13.5.sp,
+                color: AppColors.muted,
+                height: 1.45,
+              ),
             ),
             SizedBox(height: 26.h),
             PrimaryButton(
@@ -218,18 +242,23 @@ class _IntroView extends StatelessWidget {
             SizedBox(height: 26.h),
             MCard(
               color: AppColors.soft,
-              border: Border.all(color: AppColors.primary.withValues(alpha: .18)),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: .18),
+              ),
               padding: EdgeInsets.all(14.r),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.lightbulb_outline_rounded,
-                      color: AppColors.primaryDark, size: 20.sp),
+                  Icon(
+                    Icons.lightbulb_outline_rounded,
+                    color: AppColors.primaryDark,
+                    size: 20.sp,
+                  ),
                   SizedBox(width: 10.w),
                   Expanded(
                     child: Text(
                       'Good, even lighting and a bare face (no makeup or '
-                          'filters) help MedAI read your skin more accurately.',
+                      'filters) help MedAI read your skin more accurately.',
                       style: TextStyle(
                         fontSize: 12.sp,
                         height: 1.4,
@@ -258,8 +287,10 @@ class _AnalyzingState extends StatelessWidget {
         children: [
           const AppSpinner(),
           SizedBox(height: 16.h),
-          Text('Analyzing your photo…',
-              style: TextStyle(fontSize: 14.sp, color: AppColors.muted)),
+          Text(
+            'Analyzing your photo…',
+            style: TextStyle(fontSize: 14.sp, color: AppColors.muted),
+          ),
         ],
       ),
     );
@@ -277,11 +308,17 @@ class _ErrorView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.error_outline_rounded, size: 40.sp, color: AppColors.danger),
+          Icon(
+            Icons.error_outline_rounded,
+            size: 40.sp,
+            color: AppColors.danger,
+          ),
           SizedBox(height: 12.h),
-          Text(message,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.5.sp, color: AppColors.inkSoft)),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13.5.sp, color: AppColors.inkSoft),
+          ),
           SizedBox(height: 20.h),
           PrimaryButton(label: 'Try again', onPressed: onRetry),
         ],
@@ -315,19 +352,27 @@ class _ResultView extends StatelessWidget {
         if (imagePath != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(14.r),
-            child: Image.file(File(imagePath!),
-                height: 170.h, width: double.infinity, fit: BoxFit.cover),
+            child: Image.file(
+              File(imagePath!),
+              height: 170.h,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
           ),
         SizedBox(height: 16.h),
         MCard(
-          border: Border.all(color: AppColors.ai.withValues(alpha: .45), width: 1.w),
+          border: Border.all(
+            color: AppColors.ai.withValues(alpha: .45),
+            width: 1.w,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ReportCardHeader(
                 icon: Icons.face_retouching_natural_rounded,
                 title: 'Skin analysis',
-                trailing: '${metrics.length} metric${metrics.length == 1 ? '' : 's'}',
+                trailing:
+                    '${metrics.length} metric${metrics.length == 1 ? '' : 's'}',
               ),
               SizedBox(height: 14.h),
               for (final m in metrics)
@@ -335,7 +380,7 @@ class _ResultView extends StatelessWidget {
               Divider(height: 18.h),
               Text(
                 'Cosmetic visual estimate — not a medical diagnosis. If '
-                    'anything looks concerning, please see a dermatologist.',
+                'anything looks concerning, please see a dermatologist.',
                 style: TextStyle(
                   fontSize: 11.5.sp,
                   fontStyle: FontStyle.italic,
@@ -355,9 +400,14 @@ class _ResultView extends StatelessWidget {
               borderRadius: BorderRadius.circular(12.r),
             ),
             child: Center(
-              child: Text('Saved to your skin history',
-                  style: TextStyle(
-                      fontSize: 13.sp, fontWeight: FontWeight.w700, color: AppColors.success)),
+              child: Text(
+                'Saved to your skin history',
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.success,
+                ),
+              ),
             ),
           )
         else

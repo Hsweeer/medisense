@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/guest_gate.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/reminder_provider.dart';
@@ -832,7 +833,11 @@ class _MiniAction extends StatelessWidget {
 /// Opens the category picker (Medications / Measurements / Activities),
 /// which then opens a full-screen, category-themed add-reminder form.
 /// Editing an existing card still uses the compact [_showEditSheet].
-void _openAddReminderFlow(BuildContext context) {
+/// Guests can browse the (empty) Reminders tab, but creating a reminder
+/// needs an account — it's written to Firestore and drives real alarms.
+void _openAddReminderFlow(BuildContext context) async {
+  if (!await requireLogin(context, feature: 'add a reminder')) return;
+  if (!context.mounted) return;
   Navigator.of(
     context,
   ).push(MaterialPageRoute(builder: (_) => const AddReminderCategoryScreen()));
