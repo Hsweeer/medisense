@@ -77,8 +77,7 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
     });
 
     try {
-      final cleanedPath =
-      await ImageCleanerService.cleanForVision(imagePath);
+      final cleanedPath = await ImageCleanerService.cleanForVision(imagePath);
       final processPath = cleanedPath ?? imagePath;
 
       final jsonOutput = await GeminiService.readPrescription(processPath);
@@ -244,18 +243,23 @@ class _IntroView extends StatelessWidget {
             SizedBox(height: 26.h),
             MCard(
               color: AppColors.soft,
-              border: Border.all(color: AppColors.primary.withValues(alpha: .18)),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: .18),
+              ),
               padding: EdgeInsets.all(14.r),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.lightbulb_outline_rounded,
-                      color: AppColors.primaryDark, size: 20.sp),
+                  Icon(
+                    Icons.lightbulb_outline_rounded,
+                    color: AppColors.primaryDark,
+                    size: 20.sp,
+                  ),
                   SizedBox(width: 10.w),
                   Expanded(
                     child: Text(
                       'Lay the prescription flat on a well-lit surface and '
-                          'fit the whole page in frame for the clearest read.',
+                      'fit the whole page in frame for the clearest read.',
                       style: TextStyle(
                         fontSize: 12.sp,
                         height: 1.4,
@@ -316,30 +320,40 @@ class _ResultView extends StatefulWidget {
 class _ResultViewState extends State<_ResultView> {
   @override
   Widget build(BuildContext context) {
-
     return ListView(
       padding: EdgeInsets.symmetric(vertical: 16.h),
       children: [
         if (widget.imagePath != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(14.r),
-            child: Image.file(File(widget.imagePath!), height: 140.h, width: double.infinity, fit: BoxFit.cover),
+            child: Image.file(
+              File(widget.imagePath!),
+              height: 140.h,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
           ),
         SizedBox(height: 14.h),
         Row(
           children: [
             Expanded(
-              child: Text('Prescription summary',
-                  style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800)),
+              child: Text(
+                'Prescription summary',
+                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800),
+              ),
             ),
             IconButton(
               tooltip: 'Copy summary',
-              icon: Icon(Icons.copy_rounded, size: 18.sp, color: AppColors.muted),
+              icon: Icon(
+                Icons.copy_rounded,
+                size: 18.sp,
+                color: AppColors.muted,
+              ),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: widget.summary));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Summary copied')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Summary copied')));
               },
             ),
           ],
@@ -348,7 +362,12 @@ class _ResultViewState extends State<_ResultView> {
           color: AppColors.paper,
           child: SelectableText(
             widget.summary,
-            style: TextStyle(fontSize: 12.5.sp, color: AppColors.inkSoft, height: 1.55, fontFamily: 'monospace'),
+            style: TextStyle(
+              fontSize: 12.5.sp,
+              color: AppColors.inkSoft,
+              height: 1.55,
+              fontFamily: 'monospace',
+            ),
           ),
         ),
         SizedBox(height: 18.h),
@@ -364,7 +383,7 @@ class _ResultViewState extends State<_ResultView> {
               ),
             ),
           ),
-        ],
+        ),
         SizedBox(height: 18.h),
         OutlinedButton.icon(
           onPressed: widget.onRescan,
