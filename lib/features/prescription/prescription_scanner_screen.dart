@@ -18,7 +18,6 @@ import '../../core/widgets/app_loading.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/prescription_models.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/profile_provider.dart';
 import '../chat/prescription_review_screen.dart';
 
 /// Home-screen entry point for scanning a prescription directly — same
