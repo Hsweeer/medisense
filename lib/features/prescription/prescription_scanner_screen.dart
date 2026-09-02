@@ -144,11 +144,22 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
         surfaceTintColor: AppColors.paper,
         title: const Text('Scan prescription'),
         actions: [
-          IconButton(
-            tooltip: 'History',
-            icon: Icon(Icons.history_rounded, color: AppColors.success),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+              elevation: 0,
+            ),
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PrescriptionHistoryScreen()),
+              MaterialPageRoute(
+                builder: (_) => const PrescriptionHistoryScreen(),
+              ),
+            ),
+            child: Text(
+              'History',
+              style: GoogleFonts.manrope(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

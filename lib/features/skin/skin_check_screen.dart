@@ -145,7 +145,7 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.paper,
+              backgroundColor: AppColors.success,
               elevation: 0,
             ),
             onPressed: () => Navigator.of(context).push(
