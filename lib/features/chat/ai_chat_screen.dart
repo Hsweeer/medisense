@@ -79,7 +79,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _ctrl.clear();
   }
 
-  /// Starts a real mic recording to a temp file on hold-down.
+  /// Starts a real mic recording to a temp file on a single tap
+  /// (WhatsApp-style tap-to-record — no need to hold the icon down).
   Future<void> _startVoiceRecording(ChatProvider chat) async {
     try {
       final hasPermission = await _recorder.hasPermission();
@@ -155,6 +156,25 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     await chat.stopRecording(
         seconds: max(secs, 1), filePath: finalPath);
+  }
+
+  /// Cancels an in-progress recording (tapped the trash icon instead of
+  /// send) — stops the recorder, discards the temp file, and sends nothing.
+  Future<void> _cancelVoiceRecording(ChatProvider chat) async {
+    if (!chat.recording) return;
+    try {
+      final path = await _recorder.stop();
+      final finalPath = path ?? _recordingPath;
+      if (finalPath != null) {
+        final file = File(finalPath);
+        if (await file.exists()) await file.delete();
+      }
+    } catch (e) {
+      debugPrint('[VoiceRecording] cancel FAILED: $e');
+    }
+    _recordingPath = null;
+    _recordStart = null;
+    await chat.stopRecording(seconds: 0, cancelled: true);
   }
 
   void _openAttachmentSheet() {
@@ -573,7 +593,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       return _MessageBubble(message: chat.messages[i]);
                     },
                   ),
-                  if (chat.recording) const _RecordingOverlay(),
                 ],
               ),
             ),
@@ -640,7 +659,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
             SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 12.h),
-                child: Row(
+                child: chat.recording
+                // WhatsApp-style recording bar: replaces the text field
+                // while recording. Tap the bin to discard, tap the red
+                // circle to finish and send — no holding required.
+                    ? _VoiceRecordingBar(
+                  onCancel: () => _cancelVoiceRecording(chat),
+                  onSend: () => _stopVoiceRecording(chat),
+                )
+                    : Row(
                   children: [
                     GestureDetector(
                       onTap: _openAttachmentSheet,
@@ -668,30 +695,21 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       ),
                     ),
                     SizedBox(width: 8.w),
-                    // Hold to record a voice note.
+                    // Tap once to start recording a voice note — tap
+                    // the recording bar's send button to finish, just
+                    // like sending a voice note on WhatsApp.
                     GestureDetector(
-                      onLongPressStart: (_) => _startVoiceRecording(chat),
-                      onLongPressEnd: (_) => _stopVoiceRecording(chat),
-                      onTap: () => showToast(
-                          context, 'Hold the mic to record a voice note'),
+                      onTap: () => _startVoiceRecording(chat),
                       child: Container(
                         width: 46.r,
                         height: 46.r,
                         decoration: BoxDecoration(
-                          color: chat.recording
-                              ? AppColors.danger
-                              : AppColors.card,
+                          color: AppColors.card,
                           shape: BoxShape.circle,
-                          border: Border.all(
-                              color: chat.recording
-                                  ? AppColors.danger
-                                  : AppColors.line),
+                          border: Border.all(color: AppColors.line),
                         ),
                         child: Icon(Icons.mic_rounded,
-                            size: 24.sp,
-                            color: chat.recording
-                                ? Colors.white
-                                : AppColors.inkSoft),
+                            size: 24.sp, color: AppColors.inkSoft),
                       ),
                     ),
                     SizedBox(width: 8.w),
@@ -1223,14 +1241,22 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
   }
 }
 
-class _RecordingOverlay extends StatefulWidget {
-  const _RecordingOverlay();
+/// WhatsApp-style voice note bar: swaps in for the text field while
+/// recording. A pulsing dot + live timer + soft waveform sit in the
+/// middle, a bin on the left discards the note, and a red circle on the
+/// right finishes and sends it — everything is a single tap, nothing
+/// needs to be held down.
+class _VoiceRecordingBar extends StatefulWidget {
+  const _VoiceRecordingBar({required this.onCancel, required this.onSend});
+
+  final VoidCallback onCancel;
+  final VoidCallback onSend;
 
   @override
-  State<_RecordingOverlay> createState() => _RecordingOverlayState();
+  State<_VoiceRecordingBar> createState() => _VoiceRecordingBarState();
 }
 
-class _RecordingOverlayState extends State<_RecordingOverlay>
+class _VoiceRecordingBarState extends State<_VoiceRecordingBar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _wave = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 900))
@@ -1253,57 +1279,105 @@ class _RecordingOverlayState extends State<_RecordingOverlay>
     super.dispose();
   }
 
+  String get _label {
+    final m = _seconds ~/ 60;
+    final s = _seconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black.withValues(alpha: .35),
-        alignment: Alignment.center,
-        child: Container(
-          padding: EdgeInsets.all(24.r),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24.r),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedBuilder(
-                animation: _wave,
-                builder: (_, child) {
-                  final rng = Random(_seconds);
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < 18; i++)
-                        Container(
-                          width: 3.4.w,
-                          height: (8 +
-                              rng.nextDouble() * 26 * (.4 + _wave.value * .6)).h,
-                          margin:
-                          EdgeInsets.symmetric(horizontal: 1.6.w),
-                          decoration: BoxDecoration(
-                            color: AppColors.danger,
-                            borderRadius: BorderRadius.circular(2.r),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-              SizedBox(height: 12.h),
-              Text(
-                  'Recording… 0:${_seconds.toString().padLeft(2, '0')}',
-                  style: TextStyle(
-                      fontSize: 14.sp, fontWeight: FontWeight.w700)),
-              SizedBox(height: 4.h),
-              Text('Release to send',
-                  style:
-                  TextStyle(fontSize: 12.sp, color: AppColors.muted)),
-            ],
+    return Row(
+      children: [
+        GestureDetector(
+          onTap: widget.onCancel,
+          child: Container(
+            width: 46.r,
+            height: 46.r,
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Icon(Icons.delete_outline_rounded,
+                size: 22.sp, color: AppColors.danger),
           ),
         ),
-      ),
+        SizedBox(width: 8.w),
+        Expanded(
+          child: Container(
+            height: 46.r,
+            padding: EdgeInsets.symmetric(horizontal: 14.w),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(23.r),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Row(
+              children: [
+                AnimatedBuilder(
+                  animation: _wave,
+                  builder: (_, __) => Container(
+                    width: 9.r,
+                    height: 9.r,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.danger
+                          .withValues(alpha: .5 + _wave.value * .5),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Text(_label,
+                    style: TextStyle(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink)),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: AnimatedBuilder(
+                    animation: _wave,
+                    builder: (_, __) {
+                      final rng = Random(_seconds);
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          for (var i = 0; i < 22; i++)
+                            Container(
+                              width: 2.6.w,
+                              height: (6 +
+                                  rng.nextDouble() *
+                                      16 *
+                                      (.4 + _wave.value * .6))
+                                  .h,
+                              decoration: BoxDecoration(
+                                color: AppColors.muted.withValues(alpha: .55),
+                                borderRadius: BorderRadius.circular(2.r),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SizedBox(width: 8.w),
+        GestureDetector(
+          onTap: widget.onSend,
+          child: Container(
+            width: 46.r,
+            height: 46.r,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: AppColors.aiGradient),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.send_rounded, color: Colors.white, size: 21.sp),
+          ),
+        ),
+      ],
     );
   }
 }

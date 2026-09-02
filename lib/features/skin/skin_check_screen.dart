@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/services/skin_photo_quality_checker.dart';
 import '../../core/services/skin_scan_service.dart';
@@ -38,7 +39,19 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
       MaterialPageRoute(builder: (_) => const SkinScanCameraScreen()),
     );
     if (path == null || !mounted) return;
+    await _analyze(path);
+  }
 
+  Future<void> _pickFromGallery() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (picked == null || !mounted) return;
+    await _analyze(picked.path);
+  }
+
+  Future<void> _analyze(String path) async {
     setState(() {
       _state = _State.analyzing;
       _error = null;
@@ -131,7 +144,10 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 20.w),
           child: switch (_state) {
-            _State.idle => _IntroView(onStart: _startScan),
+            _State.idle => _IntroView(
+              onStart: _startScan,
+              onGallery: _pickFromGallery,
+            ),
             _State.analyzing => const _AnalyzingState(),
             _State.error => _ErrorView(message: _error!, onRetry: _startScan),
             _State.done => _ResultView(
@@ -150,8 +166,9 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
 }
 
 class _IntroView extends StatelessWidget {
-  const _IntroView({required this.onStart});
+  const _IntroView({required this.onStart, required this.onGallery});
   final VoidCallback onStart;
+  final VoidCallback onGallery;
 
   @override
   Widget build(BuildContext context) {
@@ -191,6 +208,37 @@ class _IntroView extends StatelessWidget {
               label: 'Start scan',
               icon: Icons.camera_alt_rounded,
               onPressed: onStart,
+            ),
+            SizedBox(height: 10.h),
+            SecondaryButton(
+              label: 'Choose from gallery',
+              icon: Icons.photo_library_rounded,
+              onPressed: onGallery,
+            ),
+            SizedBox(height: 26.h),
+            MCard(
+              color: AppColors.soft,
+              border: Border.all(color: AppColors.primary.withValues(alpha: .18)),
+              padding: EdgeInsets.all(14.r),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_outline_rounded,
+                      color: AppColors.primaryDark, size: 20.sp),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      'Good, even lighting and a bare face (no makeup or '
+                          'filters) help MedAI read your skin more accurately.',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        height: 1.4,
+                        color: AppColors.onSoft,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -268,39 +316,35 @@ class _ResultView extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(14.r),
             child: Image.file(File(imagePath!),
-                height: 180.h, width: double.infinity, fit: BoxFit.cover),
+                height: 170.h, width: double.infinity, fit: BoxFit.cover),
           ),
         SizedBox(height: 16.h),
-        Text('Results',
-            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800)),
-        SizedBox(height: 10.h),
         MCard(
+          border: Border.all(color: AppColors.ai.withValues(alpha: .45), width: 1.w),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              ReportCardHeader(
+                icon: Icons.face_retouching_natural_rounded,
+                title: 'Skin analysis',
+                trailing: '${metrics.length} metric${metrics.length == 1 ? '' : 's'}',
+              ),
+              SizedBox(height: 14.h),
               for (final m in metrics)
-                Padding(
-                  padding: EdgeInsets.only(bottom: 10.h),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(m.label,
-                            style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600)),
-                      ),
-                      Text('${(m.score * 100).round()}%',
-                          style: TextStyle(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primary)),
-                    ],
-                  ),
+                SkinMetricRow(label: m.label, score: m.score),
+              Divider(height: 18.h),
+              Text(
+                'Cosmetic visual estimate — not a medical diagnosis. If '
+                    'anything looks concerning, please see a dermatologist.',
+                style: TextStyle(
+                  fontSize: 11.5.sp,
+                  fontStyle: FontStyle.italic,
+                  color: AppColors.muted,
+                  height: 1.4,
                 ),
+              ),
             ],
           ),
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          'This is a general visual estimate, not a diagnosis.',
-          style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
         ),
         SizedBox(height: 20.h),
         if (saved)

@@ -252,13 +252,13 @@ class MCard extends StatelessWidget {
 /// Small rounded status/label chip.
 class MChip extends StatelessWidget {
   const MChip(
-    this.label, {
-    super.key,
-    this.background = AppColors.paper,
-    this.foreground = AppColors.muted,
-    this.icon,
-    this.onTap,
-  });
+      this.label, {
+        super.key,
+        this.background = AppColors.paper,
+        this.foreground = AppColors.muted,
+        this.icon,
+        this.onTap,
+      });
 
   final String label;
   final Color background;
@@ -293,6 +293,195 @@ class MChip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Small round icon + title used at the top of an AI-report style card
+/// (prescription summary, skin analysis, etc.) — matches the header used
+/// for scan cards inside the MedAI chat, so a standalone scan screen and
+/// the same scan surfaced in chat look like one consistent product.
+class ReportCardHeader extends StatelessWidget {
+  const ReportCardHeader({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 34.r,
+          height: 34.r,
+          decoration: BoxDecoration(
+            color: AppColors.aiSoft,
+            borderRadius: BorderRadius.circular(10.r),
+          ),
+          child: Icon(icon, color: AppColors.ai, size: 19.sp),
+        ),
+        SizedBox(width: 10.w),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(fontSize: 14.5.sp, fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (trailing != null)
+          Text(
+            trailing!,
+            style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
+          ),
+      ],
+    );
+  }
+}
+
+/// One medicine line inside a professional prescription summary — name +
+/// dose, frequency/duration/instructions, and an optional allergy flag.
+/// Used both for the home-screen prescription scanner and the chat card so
+/// a scanned prescription reads the same way everywhere in the app.
+class MedicineRow extends StatelessWidget {
+  const MedicineRow({
+    super.key,
+    required this.name,
+    required this.detail,
+    this.flag,
+    this.index,
+  });
+
+  final String name;
+  final String detail;
+  final String? flag;
+  final int? index;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFlag = flag != null && flag!.trim().isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22.r,
+            height: 22.r,
+            margin: EdgeInsets.only(top: 1.h),
+            decoration: BoxDecoration(
+              color: hasFlag ? AppColors.warningSoft : AppColors.aiSoft,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: index != null
+                  ? Text(
+                '${index! + 1}',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w800,
+                  color: hasFlag ? AppColors.warning : AppColors.ai,
+                ),
+              )
+                  : Icon(
+                hasFlag
+                    ? Icons.warning_amber_rounded
+                    : Icons.medication_rounded,
+                size: 13.sp,
+                color: hasFlag ? AppColors.warning : AppColors.ai,
+              ),
+            ),
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(fontSize: 13.5.sp, fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  detail,
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.muted, height: 1.4),
+                ),
+                if (hasFlag) ...[
+                  SizedBox(height: 4.h),
+                  Text(
+                    flag!,
+                    style: TextStyle(
+                      fontSize: 11.5.sp,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One measured metric inside a skin-analysis report — label, percentage,
+/// and a slim progress bar. Used both for the home-screen skin check and
+/// the chat card so a scan reads the same way everywhere in the app.
+class SkinMetricRow extends StatelessWidget {
+  const SkinMetricRow({super.key, required this.label, required this.score});
+
+  final String label;
+  final double score;
+
+  Color get _barColor {
+    if (score >= .7) return AppColors.success;
+    if (score >= .4) return AppColors.warning;
+    return AppColors.danger;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text(
+                '${(score * 100).round()}%',
+                style: TextStyle(
+                  fontSize: 12.5.sp,
+                  fontWeight: FontWeight.w800,
+                  color: _barColor,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 5.h),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4.r),
+            child: LinearProgressIndicator(
+              value: score.clamp(0, 1),
+              minHeight: 7.h,
+              backgroundColor: AppColors.paper,
+              color: _barColor,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -337,12 +526,12 @@ class SectionHeader extends StatelessWidget {
 /// otherwise falls back to a gradient initials badge.
 class InitialsAvatar extends StatelessWidget {
   const InitialsAvatar(
-    this.name, {
-    super.key,
-    this.size = 46,
-    this.color,
-    this.imageUrl,
-  });
+      this.name, {
+        super.key,
+        this.size = 46,
+        this.color,
+        this.imageUrl,
+      });
 
   final String name;
   final double size;
@@ -756,10 +945,10 @@ class _AppLoadingOverlayState extends State<AppLoadingOverlay> {
 
 /// Standard toast helper.
 void showToast(
-  BuildContext context,
-  String message, {
-  Color color = AppColors.ink,
-}) {
+    BuildContext context,
+    String message, {
+      Color color = AppColors.ink,
+    }) {
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
     ..showSnackBar(

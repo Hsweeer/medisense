@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -15,6 +17,7 @@ class ReminderProvider extends ChangeNotifier {
       ReminderFirestoreService.instance;
   bool isLoading = false;
   bool _initialized = false;
+  StreamSubscription<List<Reminder>>? _remindersSub;
 
   ReminderProvider() {
     // Immediate check for current user on startup
@@ -33,6 +36,8 @@ class ReminderProvider extends ChangeNotifier {
         _initializeReminders();
       } else {
         debugPrint('[ReminderProvider] Auth change: User logged out, clearing data...');
+        _remindersSub?.cancel();
+        _remindersSub = null;
         reminders.clear();
         NotificationService.instance.cancelAll();
         _initialized = false;
@@ -78,6 +83,85 @@ class ReminderProvider extends ChangeNotifier {
     _initialized = true;
     isLoading = false;
     notifyListeners();
+
+    // From here on, stay live — this is what lets a reminder a caregiver
+    // adds for us (or edits/removes) take effect immediately, instead of
+    // only picking it up the next time the app is cold-started.
+    _subscribeToLiveUpdates();
+  }
+
+  /// Keeps [reminders] (and each one's scheduled native alarm) in sync
+  /// with Firestore in real time. Without this, anything written to our
+  /// reminders collection by someone else — a caregiver adding, editing,
+  /// or removing a reminder on our behalf — would sit unscheduled until
+  /// we happened to fully restart the app.
+  void _subscribeToLiveUpdates() {
+    _remindersSub?.cancel();
+    _remindersSub = _firestoreService.remindersStream().listen(
+      _onRemindersSnapshot,
+      onError: (Object e) {
+        debugPrint('[ReminderProvider] remindersStream error: $e');
+      },
+    );
+  }
+
+  void _onRemindersSnapshot(List<Reminder> incoming) {
+    final incomingById = {
+      for (final r in incoming)
+        if (r.id != null) r.id!: r,
+    };
+    var changed = false;
+
+    // Gone remotely — e.g. a caregiver (or another device) deleted it.
+    final removed = reminders
+        .where((r) => r.id != null && !incomingById.containsKey(r.id))
+        .toList();
+    for (final r in removed) {
+      reminders.remove(r);
+      NotificationService.instance.cancelForReminder(r);
+      changed = true;
+    }
+
+    for (final fresh in incoming) {
+      if (fresh.id == null) continue;
+      final idx = reminders.indexWhere((r) => r.id == fresh.id);
+
+      if (idx == -1) {
+        // Brand new to this device — most commonly a caregiver just added
+        // it for us. Schedule its alarm right away instead of waiting for
+        // the next app restart.
+        reminders.insert(0, fresh);
+        if (fresh.enabled) {
+          NotificationService.instance.scheduleReminder(fresh);
+        }
+        changed = true;
+        continue;
+      }
+
+      final existing = reminders[idx];
+      final scheduleRelevantChange = existing.time != fresh.time ||
+          existing.schedule != fresh.schedule ||
+          existing.enabled != fresh.enabled ||
+          existing.dose != fresh.dose;
+      final anyChange = scheduleRelevantChange ||
+          existing.status != fresh.status ||
+          existing.snoozeLabel != fresh.snoozeLabel ||
+          existing.instructions != fresh.instructions;
+
+      if (anyChange) {
+        reminders[idx] = fresh;
+        changed = true;
+      }
+      if (scheduleRelevantChange) {
+        if (fresh.enabled) {
+          NotificationService.instance.scheduleReminder(fresh);
+        } else {
+          NotificationService.instance.cancelForReminder(fresh);
+        }
+      }
+    }
+
+    if (changed) notifyListeners();
   }
 
   /// Force a refresh from Firestore (useful after auth state changes).
@@ -282,5 +366,11 @@ class ReminderProvider extends ChangeNotifier {
     if (r.id != null) {
       _firestoreService.updateReminder(r);
     }
+  }
+
+  @override
+  void dispose() {
+    _remindersSub?.cancel();
+    super.dispose();
   }
 }
