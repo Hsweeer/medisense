@@ -42,18 +42,6 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
   double? _resultAutocorrScore;
   String? _debugLog;
 
-  // Debug overlay values
-  final int _acceptedFrames = 0;
-  final int _rejectedFrames = 0;
-  final String _lastRejection = '';
-  final String _lastFrameDebug = '';
-  Rect? _lastFaceBox;
-  Rect? _lastTransformedFace;
-  Rect? _lastRoi;
-  double? _lastBrightness;
-  double? _lastDarkPct;
-  double? _lastSatPct;
-
   @override
   void dispose() {
     _controller?.dispose();
@@ -159,28 +147,28 @@ class _VitalsScanScreenState extends State<VitalsScanScreen> {
     final res = RppgService.estimateWithDebug(_samples);
     // Print a short debug summary to console for developers/testers
     try {
-      print(
+      debugPrint(
         '[RPPG] bpm=${res.bpm} confidence=${res.confidence.toStringAsFixed(2)} samples=${res.resampled.length} fs=${res.fs}',
       );
       // Print top 5 resampled values and top 5 powers to help tuning
-      print(
+      debugPrint(
         '[RPPG] resampled(sample0..4) = ${res.resampled.take(5).map((v) => v.toStringAsFixed(3)).toList()}',
       );
       final topPowers = res.powers.asMap().entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
-      print(
+      debugPrint(
         '[RPPG] top peaks (bpm,power) = ${topPowers.take(3).map((e) => [(42 + e.key * 0.5).toStringAsFixed(1), e.value.toStringAsFixed(4)])}',
       );
 
       // Additional diagnostics
-      print(
+      debugPrint(
         '[RPPG] diagnosticReason=${res.diagnosticReason} fullPeak=${res.fullWindowPeak} fullMedian=${res.fullWindowMedian} windowsStdDev=${res.windowsStdDev} acceptedWindows=${res.acceptedWindowCount}',
       );
-      print(
+      debugPrint(
         '[RPPG] windowCandidates=${res.windowCandidates} windowRatios=${res.windowRatios} windowAutocorrs=${res.windowAutocorrs}',
       );
       if (_processor != null) {
-        print(
+        debugPrint(
           '[RPPG] processor accepted=${_processor!.acceptedFrames} rejected=${_processor!.rejectedFrames} rejectionCounts=${_processor!.rejectionCounts} lastFrame=${_processor!.lastFrameDebug} lastReject=${_processor!.lastRejectionReason}',
         );
       }
@@ -577,6 +565,4 @@ class _ResultView extends StatelessWidget {
       ),
     );
   }
-
-  static String _fmt(double v) => v.isFinite ? v.toStringAsFixed(2) : 'N/A';
 }
