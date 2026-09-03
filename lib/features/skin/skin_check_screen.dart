@@ -145,10 +145,7 @@ class _SkinCheckScreenState extends State<SkinCheckScreen> {
         actions: [
           IconButton(
             tooltip: 'History',
-            icon: const Icon(
-              Icons.history_rounded,
-              color: AppColors.primary,
-            ),
+            icon: const Icon(Icons.history_rounded, color: AppColors.primary),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const SkinHistoryScreen()),
             ),

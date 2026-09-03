@@ -74,14 +74,14 @@ class ChatAttachment {
 
   factory ChatAttachment.fromMap(Map<String, dynamic> map) => ChatAttachment(
     type: AttachmentType.values.firstWhere(
-          (e) => e.name == map['type'],
+      (e) => e.name == map['type'],
       orElse: () => AttachmentType.image,
     ),
     name: map['name'] ?? '',
     detail: map['detail'] ?? '',
     durationSeconds: map['durationSeconds'] ?? 0,
     intent: AttachmentIntent.values.firstWhere(
-          (e) => e.name == map['intent'],
+      (e) => e.name == map['intent'],
       orElse: () => AttachmentIntent.general,
     ),
     filePath: map['filePath'],
@@ -153,18 +153,18 @@ class ChatMessage {
     return ChatMessage(
       id: id,
       role: ChatRole.values.firstWhere(
-            (e) => e.name == map['role'],
+        (e) => e.name == map['role'],
         orElse: () => ChatRole.ai,
       ),
       text: map['text'] ?? '',
       card: ChatCardType.values.firstWhere(
-            (e) => e.name == map['card'],
+        (e) => e.name == map['card'],
         orElse: () => ChatCardType.none,
       ),
       attachments: ((map['attachments'] as List?) ?? [])
           .map(
             (a) => ChatAttachment.fromMap(Map<String, dynamic>.from(a as Map)),
-      )
+          )
           .toList(),
       personalized: map['personalized'] ?? false,
       ocrText: map['ocrText'],
@@ -241,9 +241,7 @@ class Facility {
   // and skip the bad entry rather than showing a pharmacy as a hospital.
   factory Facility.fromMap(Map<String, dynamic> map) => Facility(
     name: map['name'] ?? '',
-    type: FacilityType.values.firstWhere(
-          (e) => e.name == map['type'],
-    ),
+    type: FacilityType.values.firstWhere((e) => e.name == map['type']),
     address: map['address'] ?? '',
     position: LatLng(
       (map['lat'] as num).toDouble(),
@@ -279,6 +277,8 @@ class Reminder {
     this.groupId,
     this.groupType = 'medicine',
     this.createdByUid,
+    this.location = '',
+    this.provider = '',
     DateTime? lastStatusDate,
   }) : lastStatusDate = lastStatusDate ?? DateTime.now();
 
@@ -301,6 +301,9 @@ class Reminder {
   /// 'time' — different medicines that happen to fall due at the exact
   /// same clock time (e.g. two prescriptions both at 8:00 AM), grouped so
   /// the user gets one reminder card instead of one per medicine.
+  /// 'checkup' — a doctor visit / appointment reminder, rendered with its
+  /// own card style (location + provider rows instead of a dose/take
+  /// action) — see [location] and [provider] below.
   final String groupType;
 
   /// UID of the caregiver who created this reminder for someone else.
@@ -309,9 +312,23 @@ class Reminder {
   /// original sender, and to find/cancel their reminders on revoke.
   final String? createdByUid;
 
+  /// Clinic / hospital / facility name for a check-up reminder
+  /// (groupType == 'checkup'). Empty for medication/measurement/activity
+  /// reminders.
+  final String location;
+
+  /// Doctor or provider name for a check-up reminder
+  /// (groupType == 'checkup'). Empty for medication/measurement/activity
+  /// reminders.
+  final String provider;
+
   DateTime lastStatusDate;
 
   bool get taken => status == DoseStatus.taken;
+
+  /// True for a doctor-visit / appointment reminder, as opposed to a
+  /// medication, measurement, or activity reminder.
+  bool get isCheckup => groupType == 'checkup';
 
   bool get isStatusStale {
     final now = DateTime.now();
@@ -330,7 +347,7 @@ class Reminder {
       instructions: map['instructions'] ?? '',
       addedBy: map['addedBy'] ?? 'you',
       status: DoseStatus.values.firstWhere(
-            (e) => e.toString() == 'DoseStatus.${map['status'] ?? 'pending'}',
+        (e) => e.toString() == 'DoseStatus.${map['status'] ?? 'pending'}',
         orElse: () => DoseStatus.pending,
       ),
       snoozeLabel: map['snoozeLabel'],
@@ -339,6 +356,8 @@ class Reminder {
       groupId: map['groupId'],
       groupType: map['groupType'] ?? 'medicine',
       createdByUid: map['createdByUid'],
+      location: map['location'] ?? '',
+      provider: map['provider'] ?? '',
       lastStatusDate: map['lastStatusDateMs'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['lastStatusDateMs'])
           : DateTime.now(),
@@ -358,6 +377,8 @@ class Reminder {
     'groupId': groupId,
     'groupType': groupType,
     'createdByUid': createdByUid,
+    'location': location,
+    'provider': provider,
     'lastStatusDateMs': lastStatusDate.millisecondsSinceEpoch,
   };
 }
@@ -385,7 +406,7 @@ class AiInsight {
     return AiInsight(
       id: id,
       type: AiInsightType.values.firstWhere(
-            (e) => e.name == map['type'],
+        (e) => e.name == map['type'],
         orElse: () => AiInsightType.note,
       ),
       text: map['text'] ?? '',

@@ -73,8 +73,7 @@ bool? _isOpenNow(String? openingHours, {DateTime? now}) {
       if (match == null) continue;
       final startMin =
           int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
-      var endMin =
-          int.parse(match.group(3)!) * 60 + int.parse(match.group(4)!);
+      var endMin = int.parse(match.group(3)!) * 60 + int.parse(match.group(4)!);
       if (endMin <= startMin) endMin += 24 * 60; // overnight range
       if (nowMinutes >= startMin && nowMinutes < endMin) {
         openNow = true;
@@ -156,24 +155,31 @@ class OverpassService {
     required double longitude,
     required LatLng userPosition,
     double radiusMeters = 5000,
+    // Which facility types to actually query for. Defaults to both, same
+    // as before (Nearby screen's existing calls are unaffected). SOS
+    // passes {FacilityType.hospital} here — it only ever uses hospital
+    // results, so fetching and parsing pharmacy elements too was pure
+    // wasted time on every SOS trigger for no benefit.
+    Set<FacilityType> types = const {
+      FacilityType.hospital,
+      FacilityType.pharmacy,
+    },
   }) async {
     final query = _buildQuery(
       radiusMeters: radiusMeters,
       latitude: latitude,
       longitude: longitude,
+      types: types,
     );
 
     for (final endpoint in _endpoints) {
       try {
         final response = await http
             .post(
-          Uri.parse(endpoint),
-          headers: {
-            'User-Agent': _userAgent,
-            'Accept': 'application/json',
-          },
-          body: {'data': query},
-        )
+              Uri.parse(endpoint),
+              headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
+              body: {'data': query},
+            )
             .timeout(_requestTimeout);
 
         if (response.statusCode == 200) {
@@ -184,8 +190,9 @@ class OverpassService {
         // "why did every endpoint fail" impossible to diagnose from the
         // caller side.
         debugPrint(
-            '[OverpassService] $endpoint returned ${response.statusCode}: '
-                '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}');
+          '[OverpassService] $endpoint returned ${response.statusCode}: '
+          '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
+        );
       } catch (e) {
         debugPrint('[OverpassService] $endpoint threw: $e');
         continue;
@@ -199,6 +206,7 @@ class OverpassService {
     required double radiusMeters,
     required double latitude,
     required double longitude,
+    required Set<FacilityType> types,
   }) {
     // Hospitals are reliably tagged amenity=hospital, but "pharmacy" is
     // split across multiple OSM tagging schemes in practice — especially
@@ -213,20 +221,32 @@ class OverpassService {
     // being reliably lowercase (usually from standardized/NGO imports)
     // is exactly why hospitals matched fine while pharmacies silently
     // returned zero results.
-    return '''
-[out:json][timeout:25];
-(
-  node["amenity"~"^(hospital|pharmacy)\$",i](around:$radiusMeters,$latitude,$longitude);
-  way["amenity"~"^(hospital|pharmacy)\$",i](around:$radiusMeters,$latitude,$longitude);
-  relation["amenity"~"^(hospital|pharmacy)\$",i](around:$radiusMeters,$latitude,$longitude);
-  node["shop"~"^(chemist|pharmacy|drugstore)\$",i](around:$radiusMeters,$latitude,$longitude);
-  way["shop"~"^(chemist|pharmacy|drugstore)\$",i](around:$radiusMeters,$latitude,$longitude);
-  relation["shop"~"^(chemist|pharmacy|drugstore)\$",i](around:$radiusMeters,$latitude,$longitude);
-  node["healthcare"~"^pharmacy\$",i](around:$radiusMeters,$latitude,$longitude);
-  way["healthcare"~"^pharmacy\$",i](around:$radiusMeters,$latitude,$longitude);
-);
-out center;
-''';
+    final around = '(around:$radiusMeters,$latitude,$longitude)';
+    final clauses = StringBuffer();
+
+    if (types.contains(FacilityType.hospital)) {
+      clauses.writeln('  node["amenity"~"^(hospital)\$",i]$around;');
+      clauses.writeln('  way["amenity"~"^(hospital)\$",i]$around;');
+      clauses.writeln('  relation["amenity"~"^(hospital)\$",i]$around;');
+    }
+    if (types.contains(FacilityType.pharmacy)) {
+      clauses.writeln('  node["amenity"~"^(pharmacy)\$",i]$around;');
+      clauses.writeln('  way["amenity"~"^(pharmacy)\$",i]$around;');
+      clauses.writeln('  relation["amenity"~"^(pharmacy)\$",i]$around;');
+      clauses.writeln(
+        '  node["shop"~"^(chemist|pharmacy|drugstore)\$",i]$around;',
+      );
+      clauses.writeln(
+        '  way["shop"~"^(chemist|pharmacy|drugstore)\$",i]$around;',
+      );
+      clauses.writeln(
+        '  relation["shop"~"^(chemist|pharmacy|drugstore)\$",i]$around;',
+      );
+      clauses.writeln('  node["healthcare"~"^pharmacy\$",i]$around;');
+      clauses.writeln('  way["healthcare"~"^pharmacy\$",i]$around;');
+    }
+
+    return '[out:json][timeout:25];\n(\n$clauses);\nout center;\n';
   }
 
   List<Facility> _parseResponse(String body, LatLng userPosition) {
@@ -242,22 +262,24 @@ out center;
       if (facility != null) facilities.add(facility);
     }
 
-    final hospitalCount =
-        facilities.where((f) => f.type == FacilityType.hospital).length;
-    final pharmacyCount =
-        facilities.where((f) => f.type == FacilityType.pharmacy).length;
+    final hospitalCount = facilities
+        .where((f) => f.type == FacilityType.hospital)
+        .length;
+    final pharmacyCount = facilities
+        .where((f) => f.type == FacilityType.pharmacy)
+        .length;
     debugPrint(
       '[OverpassService] raw elements: ${elements.length} | '
-          'parsed hospitals: $hospitalCount | parsed pharmacies: $pharmacyCount',
+      'parsed hospitals: $hospitalCount | parsed pharmacies: $pharmacyCount',
     );
 
     return facilities;
   }
 
   Facility? _fromOverpassElement(
-      Map<String, dynamic> element,
-      LatLng userPosition,
-      ) {
+    Map<String, dynamic> element,
+    LatLng userPosition,
+  ) {
     final tags = (element['tags'] as Map?)?.cast<String, dynamic>() ?? const {};
 
     // Lowercase before comparing — the Overpass query now matches tag
@@ -284,10 +306,10 @@ out center;
 
     final double? lat =
         (element['lat'] as num?)?.toDouble() ??
-            ((element['center'] as Map?)?['lat'] as num?)?.toDouble();
+        ((element['center'] as Map?)?['lat'] as num?)?.toDouble();
     final double? lon =
         (element['lon'] as num?)?.toDouble() ??
-            ((element['center'] as Map?)?['lon'] as num?)?.toDouble();
+        ((element['center'] as Map?)?['lon'] as num?)?.toDouble();
     if (lat == null || lon == null) return null;
 
     final position = LatLng(lat, lon);
@@ -341,7 +363,7 @@ out center;
           position.latitude,
           position.longitude,
         ) /
-            1609.344;
+        1609.344;
 
     return Facility(
       name: name,

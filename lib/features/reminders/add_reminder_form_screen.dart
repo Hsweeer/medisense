@@ -26,6 +26,7 @@ class AddReminderFormScreen extends StatefulWidget {
 class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
   final TextEditingController _name = TextEditingController();
   final TextEditingController _value = TextEditingController();
+  final TextEditingController _provider = TextEditingController();
   final TextEditingController _instructions = TextEditingController();
 
   final List<String> _times = [];
@@ -33,7 +34,12 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
   Set<int> _selectedDays = {};
   bool _saving = false;
 
-  static const _scheduleOptions = ['Daily', 'Weekdays', 'Mon · Wed · Fri', 'Custom'];
+  static const _scheduleOptions = [
+    'Daily',
+    'Weekdays',
+    'Mon · Wed · Fri',
+    'Custom',
+  ];
 
   ReminderCategory get category => widget.category;
 
@@ -41,6 +47,7 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
   void dispose() {
     _name.dispose();
     _value.dispose();
+    _provider.dispose();
     _instructions.dispose();
     super.dispose();
   }
@@ -64,13 +71,22 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
     final joinedTimes = _times.isEmpty ? '9:00 AM' : _times.join(', ');
 
     final prov = context.read<ReminderProvider>();
-    await prov.add(Reminder(
-      title: name,
-      dose: _value.text.trim().isEmpty ? category.defaultValue : _value.text.trim(),
-      time: joinedTimes,
-      schedule: finalSchedule,
-      instructions: _instructions.text.trim(),
-    ));
+    await prov.add(
+      Reminder(
+        title: name,
+        dose: category.hasProviderField
+            ? category.defaultValue
+            : (_value.text.trim().isEmpty
+                  ? category.defaultValue
+                  : _value.text.trim()),
+        time: joinedTimes,
+        schedule: finalSchedule,
+        instructions: _instructions.text.trim(),
+        groupType: category.hasProviderField ? 'checkup' : 'medicine',
+        location: category.hasProviderField ? _value.text.trim() : '',
+        provider: category.hasProviderField ? _provider.text.trim() : '',
+      ),
+    );
 
     if (!mounted) return;
     setState(() => _saving = false);
@@ -90,9 +106,14 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.paper,
         elevation: 0,
-        title: Text('Add ${category.singularLabel}',
-            style: GoogleFonts.sora(
-                fontSize: 17.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
+        title: Text(
+          'Add ${category.singularLabel}',
+          style: GoogleFonts.sora(
+            fontSize: 17.sp,
+            fontWeight: FontWeight.w800,
+            color: AppColors.ink,
+          ),
+        ),
       ),
       body: SafeArea(
         child: ListView(
@@ -116,8 +137,10 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
               ],
             ),
             SizedBox(height: 6.h),
-            Text('Tap a suggestion or type your own below.',
-                style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
+            Text(
+              'Tap a suggestion or type your own below.',
+              style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+            ),
             SizedBox(height: 12.h),
             TextField(
               controller: _name,
@@ -134,9 +157,25 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
               style: TextStyle(fontSize: 15.sp),
               decoration: InputDecoration(
                 hintText: category.valueFieldHint,
-                prefixIcon: Icon(Icons.fitness_center_rounded, size: 22.sp),
+                prefixIcon: Icon(
+                  category.hasProviderField
+                      ? Icons.location_on_rounded
+                      : Icons.fitness_center_rounded,
+                  size: 22.sp,
+                ),
               ),
             ),
+            if (category.hasProviderField) ...[
+              SizedBox(height: 12.h),
+              TextField(
+                controller: _provider,
+                style: TextStyle(fontSize: 15.sp),
+                decoration: InputDecoration(
+                  hintText: category.providerFieldHint,
+                  prefixIcon: Icon(Icons.badge_rounded, size: 22.sp),
+                ),
+              ),
+            ],
             SizedBox(height: 26.h),
             _SectionLabel('WHEN'),
             SizedBox(height: 10.h),
@@ -146,7 +185,10 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
               children: [
                 for (final t in _times)
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.w,
+                      vertical: 9.h,
+                    ),
                     decoration: BoxDecoration(
                       color: accent.withValues(alpha: .10),
                       borderRadius: BorderRadius.circular(12.r),
@@ -155,13 +197,20 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.access_time_filled_rounded, color: accent, size: 16.sp),
+                        Icon(
+                          Icons.access_time_filled_rounded,
+                          color: accent,
+                          size: 16.sp,
+                        ),
                         SizedBox(width: 6.w),
-                        Text(t,
-                            style: TextStyle(
-                                fontSize: 14.sp,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.ink)),
+                        Text(
+                          t,
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.ink,
+                          ),
+                        ),
                         SizedBox(width: 4.w),
                         GestureDetector(
                           onTap: () {
@@ -169,7 +218,11 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                               setState(() => _times.remove(t));
                             }
                           },
-                          child: Icon(Icons.close_rounded, size: 16.sp, color: AppColors.muted),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 16.sp,
+                            color: AppColors.muted,
+                          ),
                         ),
                       ],
                     ),
@@ -186,12 +239,18 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                           final t = parseTimeLabel(s) ?? TimeOfDay.now();
                           return t.hour * 60 + t.minute;
                         }
-                        _times.sort((a, b) => minutesOf(a).compareTo(minutesOf(b)));
+
+                        _times.sort(
+                          (a, b) => minutesOf(a).compareTo(minutesOf(b)),
+                        );
                       });
                     }
                   },
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 9.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 9.h,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.card,
                       borderRadius: BorderRadius.circular(12.r),
@@ -202,9 +261,14 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                       children: [
                         Icon(Icons.add_rounded, size: 16.sp, color: accent),
                         SizedBox(width: 4.w),
-                        Text('Add time',
-                            style: TextStyle(
-                                fontSize: 13.sp, fontWeight: FontWeight.w700, color: accent)),
+                        Text(
+                          'Add time',
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w700,
+                            color: accent,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -212,8 +276,10 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
               ],
             ),
             SizedBox(height: 6.h),
-            Text('Add every time this is due — one reminder handles all of them.',
-                style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
+            Text(
+              'Add every time this is due — one reminder handles all of them.',
+              style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+            ),
             SizedBox(height: 26.h),
             _SectionLabel('SCHEDULE'),
             SizedBox(height: 12.h),
@@ -233,17 +299,27 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 10.h,
+                      ),
                       decoration: BoxDecoration(
                         color: s == _schedule ? accent : AppColors.card,
                         borderRadius: BorderRadius.circular(12.r),
-                        border: Border.all(color: s == _schedule ? accent : AppColors.line),
+                        border: Border.all(
+                          color: s == _schedule ? accent : AppColors.line,
+                        ),
                       ),
-                      child: Text(s,
-                          style: TextStyle(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w700,
-                              color: s == _schedule ? Colors.white : AppColors.muted)),
+                      child: Text(
+                        s,
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w700,
+                          color: s == _schedule
+                              ? Colors.white
+                              : AppColors.muted,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -253,7 +329,9 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
               Container(
                 padding: EdgeInsets.all(12.r),
                 decoration: BoxDecoration(
-                    color: category.softColor, borderRadius: BorderRadius.circular(16.r)),
+                  color: category.softColor,
+                  borderRadius: BorderRadius.circular(16.r),
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -265,7 +343,9 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                         onTap: () {
                           setState(() {
                             if (_selectedDays.contains(i)) {
-                              if (_selectedDays.length > 1) _selectedDays.remove(i);
+                              if (_selectedDays.length > 1) {
+                                _selectedDays.remove(i);
+                              }
                             } else {
                               _selectedDays.add(i);
                             }
@@ -330,12 +410,15 @@ class _CategoryBanner extends StatelessWidget {
           ),
           SizedBox(width: 12.w),
           Expanded(
-            child: Text(category.description,
-                style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: category.color,
-                    height: 1.4)),
+            child: Text(
+              category.description,
+              style: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: category.color,
+                height: 1.4,
+              ),
+            ),
           ),
         ],
       ),
@@ -350,12 +433,15 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text,
-        style: TextStyle(
-            fontSize: 11.sp,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: AppColors.muted));
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 11.sp,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.2,
+        color: AppColors.muted,
+      ),
+    );
   }
 }
 
@@ -384,11 +470,14 @@ class _SuggestionChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(99.r),
           border: Border.all(color: selected ? color : AppColors.line),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12.5.sp,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.inkSoft)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5.sp,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : AppColors.inkSoft,
+          ),
+        ),
       ),
     );
   }
