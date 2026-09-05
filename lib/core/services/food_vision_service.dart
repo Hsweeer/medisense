@@ -1,3 +1,5 @@
+// lib/core/services/food_vision_service.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -102,7 +104,10 @@ class FoodVisionService {
     }
     return FoodIdentification(
       foodName: foodName,
-      estimatedPortion: parsed['estimatedPortion']?.toString() ?? '1 serving',
+      estimatedPortion:
+          parsed['estimatedPortion']?.toString().trim().isNotEmpty == true
+          ? parsed['estimatedPortion'].toString().trim()
+          : '1 serving',
       estimatedWeightGrams: _number(parsed['estimatedWeightGrams']),
       confidence: confidence,
       isFood: isFood,
@@ -114,46 +119,71 @@ class FoodVisionService {
       {
         'type': 'text',
         'text':
-            'Estimate typical nutrition for ${food.foodName}, portion ${food.estimatedPortion}, '
-            'weight ${food.estimatedWeightGrams ?? 'unknown'} grams. Return ONLY JSON with '
-            'calories, proteinG, carbsG, fatG. Use reasonable typical values and no markdown.',
+            'Estimate nutrition for "${food.foodName}", portion: ${food.estimatedPortion}'
+            '${food.estimatedWeightGrams != null ? ' (~${food.estimatedWeightGrams!.round()}g)' : ''}. '
+            'Return ONLY JSON with calories (number), carbsG (number), fatG (number), '
+            'proteinG (number), dietaryStatus ("halal", "haram", or "unknown"), and '
+            'portionLabel (string). Do not use markdown.',
       },
     ]);
     final parsed = _parseObject(content);
     final calories = _number(parsed['calories']);
-    final protein = _number(parsed['proteinG'] ?? parsed['protein']);
-    final carbs = _number(parsed['carbsG'] ?? parsed['carbohydrates']);
-    final fat = _number(parsed['fatG'] ?? parsed['fat']);
-    if (calories == null || protein == null || carbs == null || fat == null) {
+    if (calories == null) {
       throw const FoodScanException(
         FoodScanErrorType.invalidResponse,
-        'Nutrition estimate was incomplete.',
+        'Could not estimate nutrition for this food.',
       );
     }
     return FoodNutrition(
       calories: calories,
-      proteinG: protein,
-      carbsG: carbs,
-      fatG: fat,
-      dietaryStatus: DietaryStatus.unknown,
-      portionLabel: food.estimatedPortion,
-      isEstimated: true,
+      carbsG: _number(parsed['carbsG']) ?? 0,
+      fatG: _number(parsed['fatG']) ?? 0,
+      proteinG: _number(parsed['proteinG']) ?? 0,
+      dietaryStatus: _dietaryStatusFrom(parsed['dietaryStatus']?.toString()),
+      portionLabel: parsed['portionLabel']?.toString().trim().isNotEmpty == true
+          ? parsed['portionLabel'].toString().trim()
+          : food.estimatedPortion,
       portionWeightGrams: food.estimatedWeightGrams,
     );
   }
 
-  _PreparedImage _prepareImage(List<int> bytes) {
-    if (bytes.isEmpty) {
-      throw const FoodScanException(
-        FoodScanErrorType.invalidImage,
-        'The photo is empty.',
-      );
+  DietaryStatus _dietaryStatusFrom(String? value) {
+    switch (value?.toLowerCase().trim()) {
+      case 'halal':
+        return DietaryStatus.halal;
+      case 'haram':
+        return DietaryStatus.haram;
+      default:
+        return DietaryStatus.unknown;
     }
-    final decoded = image_lib.decodeImage(Uint8List.fromList(bytes));
+  }
+
+  double? _number(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  bool _boolValue(dynamic value, bool fallback) {
+    if (value == null) return fallback;
+    if (value is bool) return value;
+    final s = value.toString().toLowerCase().trim();
+    if (s == 'true') return true;
+    if (s == 'false') return false;
+    return fallback;
+  }
+
+  _PreparedImage _prepareImage(List<int> bytes) {
+    image_lib.Image? decoded;
+    try {
+      decoded = image_lib.decodeImage(Uint8List.fromList(bytes));
+    } catch (_) {
+      decoded = null;
+    }
     if (decoded == null) {
       throw const FoodScanException(
         FoodScanErrorType.invalidImage,
-        'The photo could not be read.',
+        'This photo could not be read. Please try another one.',
       );
     }
     final resized = decoded.width > 1600
@@ -175,93 +205,147 @@ class FoodVisionService {
         'Food analysis is not configured.',
       );
     }
-    try {
-      final response = await http
-          .post(
-            Uri.parse(_endpoint),
-            headers: {
-              'Authorization': 'Bearer $apiKey',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'model': _model,
-              'response_format': {'type': 'json_object'},
-              'messages': [
-                {'role': 'user', 'content': content},
-              ],
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        throw const FoodScanException(
-          FoodScanErrorType.authentication,
-          'Food analysis authentication failed.',
-        );
-      }
-      if (response.statusCode == 429) {
-        throw const FoodScanException(
-          FoodScanErrorType.rateLimited,
-          'Food analysis is temporarily busy.',
-        );
-      }
-      if (response.statusCode == 404) {
-        debugPrint('[FoodVisionService] configured vision model was not found');
-        throw const FoodScanException(
-          FoodScanErrorType.api,
-          'Food analysis model is unavailable. Please restart the app and try again.',
-        );
-      }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        debugPrint(
-          '[FoodVisionService] API request failed with status ${response.statusCode}',
-        );
-        throw const FoodScanException(
-          FoodScanErrorType.api,
-          'Food analysis is temporarily unavailable.',
-        );
-      }
-      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-      final choices = decoded['choices'];
-      String? text;
-      if (choices is List && choices.isNotEmpty) {
-        final firstChoice = choices.first;
-        if (firstChoice is Map) {
-          final message = firstChoice['message'];
-          if (message is Map && message['content'] != null) {
-            text = message['content'].toString();
+
+    // qwen/qwen3.6-27b is currently served by Groq as a "preview" model
+    // (their only vision-capable option after retiring the Llama vision
+    // preview models), which carries much tighter rate limits than their
+    // production models. A 429 here is frequently transient — a couple of
+    // short, backed-off retries clears most of them without the user ever
+    // seeing an error.
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse(_endpoint),
+              headers: {
+                'Authorization': 'Bearer $apiKey',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'model': _model,
+                'response_format': {'type': 'json_object'},
+                'messages': [
+                  {'role': 'user', 'content': content},
+                ],
+              }),
+            )
+            .timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          throw const FoodScanException(
+            FoodScanErrorType.authentication,
+            'Food analysis authentication failed.',
+          );
+        }
+        if (response.statusCode == 429) {
+          if (attempt < maxAttempts) {
+            // Prefer the server's own Retry-After hint when present;
+            // otherwise back off a little longer on each retry.
+            final retryAfterHeader = response.headers['retry-after'];
+            final retryAfterSeconds = int.tryParse(retryAfterHeader ?? '');
+            final wait = retryAfterSeconds != null
+                ? Duration(seconds: retryAfterSeconds.clamp(1, 5))
+                : Duration(milliseconds: 700 * attempt);
+            debugPrint(
+              '[FoodVisionService] rate limited (attempt $attempt/$maxAttempts) '
+              '— retrying in ${wait.inMilliseconds}ms',
+            );
+            await Future.delayed(wait);
+            continue;
+          }
+          throw const FoodScanException(
+            FoodScanErrorType.rateLimited,
+            'Food analysis is temporarily busy. Please try again in a moment.',
+          );
+        }
+        if (response.statusCode == 404) {
+          debugPrint(
+            '[FoodVisionService] configured vision model was not found',
+          );
+          throw const FoodScanException(
+            FoodScanErrorType.api,
+            'Food analysis model is unavailable. Please restart the app and try again.',
+          );
+        }
+        // 5xx errors are also worth a short retry — the same transient,
+        // provider-side congestion that causes 429s often surfaces as a
+        // 503 instead.
+        if (response.statusCode >= 500 && response.statusCode < 600) {
+          if (attempt < maxAttempts) {
+            debugPrint(
+              '[FoodVisionService] server error ${response.statusCode} '
+              '(attempt $attempt/$maxAttempts) — retrying',
+            );
+            await Future.delayed(Duration(milliseconds: 700 * attempt));
+            continue;
+          }
+          throw const FoodScanException(
+            FoodScanErrorType.api,
+            'Food analysis is temporarily unavailable.',
+          );
+        }
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          debugPrint(
+            '[FoodVisionService] API request failed with status ${response.statusCode}',
+          );
+          throw const FoodScanException(
+            FoodScanErrorType.api,
+            'Food analysis is temporarily unavailable.',
+          );
+        }
+
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        final choices = decoded['choices'];
+        String? text;
+        if (choices is List && choices.isNotEmpty) {
+          final firstChoice = choices.first;
+          if (firstChoice is Map) {
+            final message = firstChoice['message'];
+            if (message is Map && message['content'] != null) {
+              text = message['content'].toString();
+            }
           }
         }
-      }
-      if (text == null || text.trim().isEmpty) {
+        if (text == null || text.trim().isEmpty) {
+          throw const FoodScanException(
+            FoodScanErrorType.invalidResponse,
+            'Food analysis returned no result.',
+          );
+        }
+        return text;
+      } on FoodScanException {
+        rethrow;
+      } on SocketException {
+        throw const FoodScanException(
+          FoodScanErrorType.network,
+          'Check your internet connection and try again.',
+        );
+      } on TimeoutException {
+        throw const FoodScanException(
+          FoodScanErrorType.timeout,
+          'Food analysis is taking longer than expected.',
+        );
+      } on FormatException {
         throw const FoodScanException(
           FoodScanErrorType.invalidResponse,
-          'Food analysis returned no result.',
+          'Food analysis returned an invalid result.',
+        );
+      } catch (_) {
+        throw const FoodScanException(
+          FoodScanErrorType.network,
+          'Food analysis could not be completed.',
         );
       }
-      return text;
-    } on FoodScanException {
-      rethrow;
-    } on SocketException {
-      throw const FoodScanException(
-        FoodScanErrorType.network,
-        'Check your internet connection and try again.',
-      );
-    } on TimeoutException {
-      throw const FoodScanException(
-        FoodScanErrorType.timeout,
-        'Food analysis is taking longer than expected.',
-      );
-    } on FormatException {
-      throw const FoodScanException(
-        FoodScanErrorType.invalidResponse,
-        'Food analysis returned an invalid result.',
-      );
-    } catch (_) {
-      throw const FoodScanException(
-        FoodScanErrorType.network,
-        'Food analysis could not be completed.',
-      );
     }
+
+    // Unreachable in practice — every branch above either returns or
+    // throws — but required so the function has a return path for the
+    // analyzer.
+    throw const FoodScanException(
+      FoodScanErrorType.rateLimited,
+      'Food analysis is temporarily busy. Please try again in a moment.',
+    );
   }
 
   Map<String, dynamic> _parseObject(String text) {
@@ -278,7 +362,7 @@ class FoodVisionService {
     if (start < 0 || end <= start) {
       throw const FoodScanException(
         FoodScanErrorType.invalidResponse,
-        'Food analysis returned invalid JSON.',
+        'Food analysis returned an unreadable result.',
       );
     }
     try {
@@ -287,17 +371,10 @@ class FoodVisionService {
     } catch (_) {
       throw const FoodScanException(
         FoodScanErrorType.invalidResponse,
-        'Food analysis returned invalid JSON.',
+        'Food analysis returned an unreadable result.',
       );
     }
   }
-
-  double? _number(Object? value) => value is num
-      ? value.toDouble()
-      : double.tryParse(value?.toString() ?? '');
-  bool _boolValue(Object? value, bool fallback) => value is bool
-      ? value
-      : (value?.toString().toLowerCase() == 'true' ? true : fallback);
 }
 
 class _PreparedImage {

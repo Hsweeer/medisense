@@ -30,10 +30,23 @@ class OpenFoodFactsService {
   OpenFoodFactsService._();
   static final instance = OpenFoodFactsService._();
 
+  // IMPORTANT: world.openfoodfacts.ORG is the production database.
+  // world.openfoodfacts.NET is the STAGING/test server — it requires
+  // HTTP Basic Auth (user "off", password "off") and its product data is
+  // sparse/test data, so unauthenticated requests to .net either get
+  // rejected or come back as "not found" even for real, well-known
+  // barcodes. That mismatch was the actual bug behind "Product not
+  // found" on every scan.
   static const _searchEndpoint =
       'https://world.openfoodfacts.org/cgi/search.pl';
   static const _defaultBarcodeEndpoint =
-      'https://world.openfoodfacts.net/api/v3.6/product/{barcode}.json';
+      'https://world.openfoodfacts.org/api/v2/product/{barcode}.json';
+
+  // Open Food Facts asks every client to send a custom User-Agent
+  // identifying the app, so it isn't mistaken for a bot and rate-limited
+  // or blocked. Format: "AppName/Version (contact-email)". Replace the
+  // email with a real inbox you control before shipping.
+  static const _userAgent = 'MediSense/1.0 (support@medisense.app)';
 
   /// Ingredient keywords that make a product non-halal when no explicit
   /// halal certification is present. Kept lowercase for matching against
@@ -92,7 +105,9 @@ class OpenFoodFactsService {
 
     late final http.Response response;
     try {
-      response = await http.get(uri).timeout(const Duration(seconds: 8));
+      response = await http
+          .get(uri, headers: const {'User-Agent': _userAgent})
+          .timeout(const Duration(seconds: 8));
     } on TimeoutException {
       throw const NutritionLookupException('Nutrition database timed out.');
     } on SocketException {
@@ -146,7 +161,9 @@ class OpenFoodFactsService {
 
     late final http.Response response;
     try {
-      response = await http.get(uri).timeout(const Duration(seconds: 8));
+      response = await http
+          .get(uri, headers: const {'User-Agent': _userAgent})
+          .timeout(const Duration(seconds: 8));
     } on TimeoutException {
       throw const NutritionLookupException('Nutrition database timed out.');
     } on SocketException {

@@ -6,18 +6,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:provider/provider.dart';
 
 import '../../core/services/gemini_service.dart';
 import '../../core/services/image_cleaner_service.dart';
-import '../../core/services/prescription_history_preferences.dart';
 import '../../core/services/prescription_log_service.dart';
 import '../../core/services/prescription_parser.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_loading.dart';
+import '../../core/widgets/guest_gate.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/prescription_models.dart';
-import '../../providers/auth_provider.dart';
 import '../chat/prescription_review_screen.dart';
 import '../profile/prescription_history_screen.dart';
 
@@ -84,29 +82,11 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
       final meds = getMedsFromOcr(jsonOutput);
       final summary = buildProfessionalSummary(meds);
 
-      final validCount = meds.where((m) => m.name.trim().isNotEmpty).length;
-      // Guests can scan and read a prescription like anyone else, but
-      // there's no account to attach the Firestore history record to —
-      // skip the auto-save rather than let it fail silently, or worse,
-      // write under the wrong user if a real sign-in happens later in
-      // the same session.
-      final isGuest = mounted && context.read<AuthProvider>().isGuest;
-      if (validCount > 0 &&
-          !isGuest &&
-          await PrescriptionHistoryPreferences.instance.isEnabled()) {
-        try {
-          await PrescriptionLogService.instance.save(
-            PrescriptionHistoryEntry(
-              summary: summary,
-              medicineCount: validCount,
-              scannedAt: DateTime.now(),
-            ),
-          );
-        } catch (_) {
-          // Non-fatal — result is still shown even if history save fails.
-        }
-      }
-
+      // NOTE: saving to history now happens explicitly from the "Save
+      // summary & photo" button on the result screen below — not
+      // silently here. That way the person can see and confirm exactly
+      // what gets saved (and it isn't lost if the save were to fail
+      // silently in the background before they ever see the result).
       if (!mounted) return;
       setState(() {
         _processing = false;
@@ -329,8 +309,54 @@ class _ResultView extends StatefulWidget {
 }
 
 class _ResultViewState extends State<_ResultView> {
+  bool _saving = false;
+  bool _saved = false;
+
+  List<ParsedMedicine> get _validMeds =>
+      widget.meds.where((m) => m.name.trim().isNotEmpty).toList();
+
+  Future<void> _save() async {
+    if (_saving || _saved) return;
+    if (!await requireLogin(
+      context,
+      feature: 'save this prescription to your history',
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _saving = true);
+    try {
+      await PrescriptionLogService.instance.save(
+        PrescriptionHistoryEntry(
+          summary: widget.summary,
+          medicineCount: _validMeds.length,
+          scannedAt: DateTime.now(),
+          // Stored the same way skin-scan history keeps its photo — as
+          // the local file path, not uploaded to cloud storage. Good
+          // enough to redisplay on this device; won't follow the
+          // account to a different phone.
+          photoUrl: widget.imagePath,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saved = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't save — please try again.")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final meds = _validMeds;
+    final dateLabel = _formatDate(DateTime.now());
+
     return ListView(
       padding: EdgeInsets.symmetric(vertical: 16.h),
       children: [
@@ -339,25 +365,40 @@ class _ResultViewState extends State<_ResultView> {
             borderRadius: BorderRadius.circular(14.r),
             child: Image.file(
               File(widget.imagePath!),
-              height: 140.h,
+              height: 150.h,
               width: double.infinity,
               fit: BoxFit.cover,
             ),
           ),
-        SizedBox(height: 14.h),
+        SizedBox(height: 16.h),
         Row(
           children: [
             Expanded(
-              child: Text(
-                'Prescription summary',
-                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w800),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Prescription summary',
+                    style: GoogleFonts.sora(
+                      fontSize: 17.sp,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    '$dateLabel · ${meds.length} '
+                    '${meds.length == 1 ? 'medicine' : 'medicines'} identified',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
+                  ),
+                ],
               ),
             ),
             IconButton(
               tooltip: 'Copy summary',
               icon: Icon(
                 Icons.copy_rounded,
-                size: 18.sp,
+                size: 19.sp,
                 color: AppColors.muted,
               ),
               onPressed: () {
@@ -369,19 +410,46 @@ class _ResultViewState extends State<_ResultView> {
             ),
           ],
         ),
-        MCard(
-          color: AppColors.paper,
-          child: SelectableText(
-            widget.summary,
-            style: TextStyle(
-              fontSize: 12.5.sp,
-              color: AppColors.inkSoft,
-              height: 1.55,
-              fontFamily: 'monospace',
-            ),
+        SizedBox(height: 8.h),
+        // One clearly-structured card per medicine — a heading (name +
+        // dose), then its details as separate labeled rows, instead of
+        // one long monospace text block the old design used.
+        for (var i = 0; i < meds.length; i++) ...[
+          _MedicineCard(index: i + 1, medicine: meds[i]),
+          SizedBox(height: 10.h),
+        ],
+        SizedBox(height: 8.h),
+        Container(
+          padding: EdgeInsets.all(12.r),
+          decoration: BoxDecoration(
+            color: AppColors.soft,
+            borderRadius: BorderRadius.circular(12.r),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                size: 16.sp,
+                color: AppColors.primaryDark,
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  'This summary is generated from a scanned image and may '
+                  'contain reading errors — always confirm with your '
+                  'prescribing doctor or pharmacist before relying on it.',
+                  style: TextStyle(
+                    fontSize: 11.5.sp,
+                    height: 1.4,
+                    color: AppColors.onSoft,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        SizedBox(height: 18.h),
+        SizedBox(height: 20.h),
         PrimaryButton(
           label: 'Add reminders',
           icon: Icons.alarm_add_rounded,
@@ -395,17 +463,245 @@ class _ResultViewState extends State<_ResultView> {
             ),
           ),
         ),
-        SizedBox(height: 18.h),
+        SizedBox(height: 10.h),
+        if (_saved)
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(vertical: 13.h),
+            decoration: BoxDecoration(
+              color: AppColors.successSoft,
+              borderRadius: BorderRadius.circular(14.r),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 18.sp,
+                  color: AppColors.success,
+                ),
+                SizedBox(width: 8.w),
+                Text(
+                  'Saved summary & photo to history',
+                  style: TextStyle(
+                    fontSize: 13.5.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.success,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          SecondaryButton(
+            label: _saving ? 'Saving…' : 'Save summary & photo',
+            icon: Icons.bookmark_add_outlined,
+            onPressed: _saving ? null : _save,
+          ),
+        SizedBox(height: 10.h),
         OutlinedButton.icon(
           onPressed: widget.onRescan,
           icon: const Icon(Icons.replay_rounded),
           label: const Text('Scan another'),
         ),
-        SizedBox(height: 8.h),
-        Center(
+        SizedBox(height: 6.h),
+      ],
+    );
+  }
+}
+
+const _monthNames = [
+  '',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// Formats a date as "Jan 5, 2026" without pulling in the `intl`
+/// package — it isn't declared as a dependency in this project yet.
+String _formatDate(DateTime date) =>
+    '${_monthNames[date.month]} ${date.day}, ${date.year}';
+
+/// One medicine's card in the result list — a clear heading (name +
+/// dose + a low-confidence flag when relevant), then its schedule,
+/// duration, and instructions as separate labeled detail rows.
+class _MedicineCard extends StatelessWidget {
+  const _MedicineCard({required this.index, required this.medicine});
+
+  final int index;
+  final ParsedMedicine medicine;
+
+  String _frequencyLabel(BuildContext context) {
+    final times = medicine.times.map((t) => t.format(context)).join(', ');
+    final perDay = medicine.timesPerDay;
+    final freq = perDay <= 1 ? 'Once daily' : '$perDay× daily';
+    return times.isEmpty ? freq : '$freq ($times)';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lowConfidence = medicine.confidence.toLowerCase() != 'high';
+
+    return MCard(
+      padding: EdgeInsets.all(14.r),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 26.r,
+                height: 26.r,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.soft,
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: Text(
+                  '$index',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      medicine.name,
+                      style: TextStyle(
+                        fontSize: 14.5.sp,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    if (medicine.dose.trim().isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(top: 2.h),
+                        child: Text(
+                          medicine.dose,
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          _DetailRow(
+            icon: Icons.schedule_rounded,
+            label: 'Frequency',
+            value: _frequencyLabel(context),
+          ),
+          if (medicine.durationDays != null) ...[
+            SizedBox(height: 8.h),
+            _DetailRow(
+              icon: Icons.event_repeat_rounded,
+              label: 'Duration',
+              value: '${medicine.durationDays} days',
+            ),
+          ],
+          if (medicine.instructions.trim().isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            _DetailRow(
+              icon: Icons.notes_rounded,
+              label: 'Instructions',
+              value: medicine.instructions,
+            ),
+          ],
+          if (lowConfidence) ...[
+            SizedBox(height: 10.h),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
+              decoration: BoxDecoration(
+                color: AppColors.warningSoft,
+                borderRadius: BorderRadius.circular(9.r),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 14.sp,
+                    color: AppColors.warning,
+                  ),
+                  SizedBox(width: 6.w),
+                  Expanded(
+                    child: Text(
+                      'Low confidence — please verify against the '
+                      'original prescription.',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 15.sp, color: AppColors.primary),
+        SizedBox(width: 8.w),
+        SizedBox(
+          width: 78.w,
           child: Text(
-            'Automatically saved to your prescription history.',
-            style: TextStyle(fontSize: 11.sp, color: AppColors.muted),
+            label,
+            style: TextStyle(
+              fontSize: 11.5.sp,
+              fontWeight: FontWeight.w700,
+              color: AppColors.muted,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.5.sp,
+              color: AppColors.inkSoft,
+              height: 1.35,
+            ),
           ),
         ),
       ],
