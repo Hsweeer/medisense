@@ -6,6 +6,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:convert';
 
 import '../core/services/alarm_sound_catalog.dart';
 import '../core/services/alarm_sound_prefs.dart';
@@ -13,6 +16,7 @@ import '../data/models/models.dart';
 import '../data/models/notification_model.dart';
 import 'native_alarm_bridge.dart';
 import 'notification_storage_helper.dart';
+import 'notification_repository.dart';
 
 /// Fires when a notification ACTION is tapped while the app is fully
 /// terminated. Must stay a top-level (or static) function — the OS
@@ -549,10 +553,13 @@ class NotificationService {
   /// cross-platform "was just displayed" callback — only a tap callback —
   /// so this foreground check plus the tap handler above together cover
   /// the realistic cases).
-  Future<void> logFiredReminder(
-      {required String title, required String message, required String time}) async {
-    debugPrint(
-        '[NotificationService] logFiredReminder title=$title time=$time');
+  Future<void> logFiredReminder({
+    required String title,
+    required String message,
+    required String time,
+    String? relatedEntityId,
+  }) async {
+    debugPrint('[NotificationService] logFiredReminder title=$title time=$time');
     final now = DateTime.now();
     final item = NotificationItem(
       id: now.microsecondsSinceEpoch.toString(),
@@ -563,11 +570,33 @@ class NotificationService {
       createdAt: now,
       isRead: false,
     );
+
+    // Local JSON history (fallback / offline UX)
     await NotificationStorageHelper.append(item);
     debugPrint('[NotificationService] logFiredReminder saved to JSON history');
     onHistoryChanged?.call();
-    debugPrint(
-        '[NotificationService] onHistoryChanged invoked=${onHistoryChanged != null}');
+
+    // Also create a canonical Firestore notification so other devices and
+    // the centralized Notification Center reflect this event.
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await NotificationRepository.instance.createNotification(
+          recipientUid: uid,
+          senderUid: uid,
+          type: 'reminder',
+          title: title,
+          body: message,
+          relatedEntityId: relatedEntityId,
+          relatedEntityType: relatedEntityId != null ? 'reminder' : null,
+          route: relatedEntityId != null ? {'name': 'reminder', 'params': {'reminderId': relatedEntityId}} : null,
+        );
+        debugPrint('[NotificationService] created Firestore notification for reminder uid=$uid');
+      }
+    } catch (e) {
+      debugPrint('[NotificationService] failed to write reminder notification to Firestore: $e');
+      // Don't rethrow; local JSON history already exists and app must not crash.
+    }
   }
 
   static String formatDate(DateTime d) {
@@ -586,6 +615,48 @@ class NotificationService {
   }
 
   // ── Generic alerts (caregiver requests / responses / SOS activity) ───
+
+  /// Show a notification created from an incoming FCM message while app is foregrounded.
+  /// This displays a local system notification so the user sees the banner even when
+  /// the message arrives in foreground, and attaches a payload that will be handled
+  /// by the existing tap handling code.
+  Future<void> showFcmNotification(RemoteMessage message) async {
+    try {
+      final title = message.notification?.title ?? (message.data['title'] as String?) ?? 'MediSense';
+      final body = message.notification?.body ?? (message.data['body'] as String?) ?? '';
+
+      // Build payload consumed by _saveFromPayload (keeps local JSON history behavior)
+      final payloadMap = <String, dynamic>{
+        'title': title,
+        'message': body,
+      };
+      // Include any relevant route/meta so taps can navigate correctly
+      if (message.data.isNotEmpty) {
+        payloadMap['meta'] = message.data;
+      }
+      final payload = jsonEncode(payloadMap);
+
+      final details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          _alertsChannel.id,
+          _alertsChannel.name,
+          channelDescription: _alertsChannel.description,
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentSound: true,
+          presentBadge: true,
+        ),
+      );
+
+      await _plugin.show(_nextAlertId++, title, body, details, payload: payload);
+    } catch (e) {
+      debugPrint('[NotificationService] showFcmNotification failed: $e');
+    }
+  }
   //
   // Unlike scheduled medicine reminders, these are fired the moment a
   // relevant Firestore change is observed (see CaregiverAlertWatcher) —

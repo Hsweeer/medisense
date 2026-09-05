@@ -10,6 +10,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'core/services/loading_overlay_controller.dart';
 import 'core/theme/app_theme.dart';
@@ -20,6 +21,7 @@ import 'features/sos/sos_screen.dart';
 import 'features/sos/sos_overlay_button.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
+import 'services/fcm_token_service.dart';
 import 'providers/chat_provider.dart';
 import 'providers/location_provider.dart';
 import 'providers/notification_provider.dart';
@@ -78,9 +80,9 @@ class _MediSenseAppState extends State<MediSenseApp> {
         options: DefaultFirebaseOptions.currentPlatform,
       );
       await NotificationService.instance.initialize();
-      // Turns caregiver-request and SOS Firestore events into local
-      // notifications (see CaregiverAlertWatcher for what it covers).
-      // Starts/re-attaches itself per signed-in account.
+      // Initialize FCM token management (register tokens on login)
+      await FcmTokenService.instance.initialize();
+      // Starts caregiver/SOS watcher if still needed
       CaregiverAlertWatcher.instance.start();
     } catch (e) {
       debugPrint('[Bootstrap] Critical init error: $e');
@@ -90,6 +92,33 @@ class _MediSenseAppState extends State<MediSenseApp> {
 
     if (mounted) setState(() => _initialized = true);
     _setupListeners();
+
+    // Setup FCM foreground/background handlers
+    try {
+      // Foreground messages — show a local notification
+      FirebaseMessaging.onMessage.listen((message) {
+        debugPrint('[FCM] onMessage: ${message.messageId}');
+        NotificationService.instance.showFcmNotification(message);
+      });
+
+      // When the user taps a notification and the app is brought to foreground
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        debugPrint('[FCM] onMessageOpenedApp: ${message.messageId}');
+        _handleRemoteMessage(message);
+      });
+
+      // Cold-start (app launched by tapping a notification)
+      FirebaseMessaging.instance.getInitialMessage().then((message) {
+        if (message != null) {
+          debugPrint('[FCM] getInitialMessage: ${message.messageId}');
+          // Delay slightly to allow app bootstrapping
+          Future.delayed(const Duration(milliseconds: 300), () => _handleRemoteMessage(message));
+        }
+      });
+    } catch (e) {
+      debugPrint('[FCM] setup error: $e');
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) => _notifyNativeReady());
   }
 
@@ -143,6 +172,73 @@ class _MediSenseAppState extends State<MediSenseApp> {
         debugPrint('SOS_DEBUG: navigation error: $e');
       }
       gPendingSosNavigation = false;
+    }
+  }
+
+  void _handleRemoteMessage(message) {
+    try {
+      final data = (message?.data ?? {}) as Map<dynamic, dynamic>;
+      final title = message?.notification?.title ?? data['title'] ?? 'MediSense';
+      final body = message?.notification?.body ?? data['body'] ?? '';
+
+      // SOS has a dedicated route
+      if ((data['type'] == 'sos_alert') || (data['route'] == 'sos') || (data['screen'] == 'sos')) {
+        final sosId = data['sosSessionId'] ?? data['relatedEntityId'];
+        navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (r) => false);
+        return;
+      }
+
+      // Otherwise show a lightweight dialog offering to open the relevant screen.
+      final ctx = navigatorKey.currentState?.context;
+      if (ctx == null) return;
+
+      showDialog(
+        context: ctx,
+        builder: (ctx2) => AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx2).pop(),
+              child: const Text('Close'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx2).pop();
+                // Try to navigate if route info exists. Wrap in try/catch to avoid crashes
+                try {
+                  final routeName = data['routeName'] ?? data['screen'] ?? data['route'];
+                  final reminderId = data['reminderId'] ?? data['relatedEntityId'];
+                  if (routeName == 'reminder' && reminderId != null) {
+                    try {
+                      navigatorKey.currentState?.pushNamed('/reminders');
+                    } catch (_) {
+                      // Route may not be registered; ignore
+                    }
+                  } else if (routeName == 'caregiver_request') {
+                    try {
+                      navigatorKey.currentState?.pushNamed('/caregiver_requests');
+                    } catch (_) {}
+                  } else {
+                    // fallback: open app home
+                    try {
+                      navigatorKey.currentState?.pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const PatientShell()),
+                        (r) => false,
+                      );
+                    } catch (_) {}
+                  }
+                } catch (e) {
+                  debugPrint('[FCM] navigation attempt failed: $e');
+                }
+              },
+              child: const Text('View'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('[FCM] _handleRemoteMessage error: $e');
     }
   }
 

@@ -94,12 +94,13 @@ class CaregiverAlertWatcher {
   void start() {
     if (_started) return;
     _started = true;
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-      _teardownFirestoreListeners();
-      if (user != null) _attach(user.uid);
-    });
-    final current = FirebaseAuth.instance.currentUser;
-    if (current != null) _attach(current.uid);
+    // After migrating notifications to Firestore + FCM via Cloud Functions,
+    // most caregiver/SOS notification events are now produced server-side
+    // as canonical notification documents. To avoid duplicate local-only
+    // alerts, this watcher no longer emits local notifications for
+    // caregiver/link/sos events. The watcher remains attached for any
+    // future client-only cases, but currently acts as a no-op.
+    debugPrint('[CaregiverAlertWatcher] start() - no-op after migration to server-side notifications');
   }
 
   Future<void> _attach(String uid) async {

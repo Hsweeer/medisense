@@ -1,35 +1,262 @@
-rules_version = '2';
+﻿rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
+
+    // ============================================================
+    // Utility functions
+    // ============================================================
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
+    match /users/{userId} {
+
+      // Authenticated users can read user profiles.
+      allow read: if signedIn();
+
+      // A user can only create/update/delete their own user document.
+      allow create, update, delete: if isOwner(userId);
+
+
+      // ==========================================================
+      // FCM DEVICE TOKENS
+      // ==========================================================
+
+      match /devices/{deviceId} {
+
+        // Create device token
+        allow create: if isOwner(userId)
+          && request.resource.data.token is string
+          && request.resource.data.token.size() > 0;
+
+        // Update device token
+        allow update: if isOwner(userId)
+          && request.resource.data.token is string
+          && request.resource.data.token.size() > 0;
+
+        // Delete device token
+        allow delete: if isOwner(userId);
+
+        // User can read their own device tokens
+        allow read: if isOwner(userId);
+      }
+
+
+      // ==========================================================
+      // NOTIFICATIONS
+      // ==========================================================
+
+      match /notifications/{notificationId} {
+
+        // Only notification owner can read
+        allow read: if isOwner(userId);
+
+        // Client may create a notification only for itself.
+        // Server/Cloud Functions can create notifications using
+        // Admin SDK and are not restricted by these client rules.
+        allow create: if isOwner(userId)
+          && request.resource.data.recipientUserId == userId
+          && (
+            request.resource.data.senderUserId == request.auth.uid
+            || request.resource.data.senderUserId == null
+          )
+          && request.resource.data.type is string
+          && request.resource.data.title is string
+          && request.resource.data.body is string;
+
+        // Owner can update notification state,
+        // but cannot change its identity/content.
+        allow update: if isOwner(userId)
+          && request.resource.data.recipientUserId
+              == resource.data.recipientUserId
+          && request.resource.data.senderUserId
+              == resource.data.senderUserId
+          && request.resource.data.type
+              == resource.data.type
+          && request.resource.data.title
+              == resource.data.title
+          && request.resource.data.body
+              == resource.data.body;
+
+        // Owner can delete own notification
+        allow delete: if isOwner(userId);
+      }
+
+
+      // ==========================================================
+      // REMINDERS
+      // ==========================================================
+
+      match /reminders/{reminderId} {
+
+        // Owner can read.
+        // Creator can also read if different from owner.
+        allow read: if signedIn()
+          && (
+            request.auth.uid == userId
+            || request.auth.uid == resource.data.createdByUid
+          );
+
+        // User can create their own reminder.
+        //
+        // A caregiver can also create a reminder for a patient
+        // if an accepted caregiver link exists.
+        allow create: if signedIn()
+          && (
+            request.auth.uid == userId
+            ||
+            (
+              request.resource.data.createdByUid == request.auth.uid
+              &&
+              exists(
+                /databases/$(database)/documents/caregiver_links/
+                $(request.auth.uid + '_' + userId)
+              )
+              &&
+              get(
+                /databases/$(database)/documents/caregiver_links/
+                $(request.auth.uid + '_' + userId)
+              ).data.status == 'accepted'
+            )
+          );
+
+        // Owner or creator can update/delete.
+        allow update, delete: if signedIn()
+          && (
+            request.auth.uid == userId
+            || request.auth.uid == resource.data.createdByUid
+          );
+      }
+
+
+      // ==========================================================
+      // OTHER USER SUBCOLLECTIONS
+      // ==========================================================
+      //
+      // IMPORTANT:
+      // Do NOT add a recursive catch-all rule here because it can
+      // accidentally override the security design of specific
+      // subcollections such as notifications/devices/reminders.
+      //
+      // Add explicit rules for future user subcollections instead.
     }
 
-    function isOwner(uid) {
-      return signedIn() && request.auth.uid == uid;
+
+    // ============================================================
+    // CAREGIVER LINKS
+    // ============================================================
+
+    match /caregiver_links/{linkId} {
+
+      // Only sender or recipient can read a caregiver link.
+      allow read: if signedIn() && (request.auth.uid == resource.data.senderUid || request.auth.uid == resource.data.recipientUid);
+
+      // Only sender can create a request.
+      allow create: if signedIn() && request.auth.uid == request.resource.data.senderUid;
+
+      // Recipient can accept/reject a pending request.
+      //
+      // Sender can reset/revoke a non-accepted request back to
+      // pending according to the existing application logic.
+      allow update: if signedIn() && (
+        (
+          request.auth.uid == resource.data.recipientUid
+          &&
+          resource.data.status == 'pending'
+          &&
+          request.resource.data.status in [ 'accepted', 'rejected' ]
+        )
+        ||
+        (
+          request.auth.uid == resource.data.senderUid
+          &&
+          request.resource.data.status == 'pending'
+          &&
+          resource.data.status != 'pending'
+          &&
+          resource.data.status != 'accepted'
+        )
+      );
+
+      // Sender or recipient can delete the link.
+      allow delete: if signedIn() && (request.auth.uid == resource.data.senderUid || request.auth.uid == resource.data.recipientUid);
     }
 
-    match /users/{uid} {
-      allow read, update, delete: if isOwner(uid);
-      allow create: if signedIn() && request.auth.uid == uid;
-    }
 
-    match /users/{uid}/emergencyContacts/{contactId} {
-      allow read, create, update, delete: if isOwner(uid);
-    }
+    // ============================================================
+    // SOS SESSIONS
+    // ============================================================
 
     match /sos_sessions/{sessionId} {
+
+      // Only authenticated user can create their own SOS session.
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow read: if signedIn() && resource.data.userId == request.auth.uid;
-      allow update: if signedIn() && resource.data.userId == request.auth.uid;
-      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+
+      // Patient can read their own SOS session; accepted caregiver may read too.
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.userId
+        ||
+        (
+          exists(
+            /databases/$(database)/documents/caregiver_links/
+            $(request.auth.uid + '_' + resource.data.userId)
+          )
+          &&
+          get(
+            /databases/$(database)/documents/caregiver_links/
+            $(request.auth.uid + '_' + resource.data.userId)
+          ).data.status == 'accepted'
+        )
+      );
+
+      // Only SOS owner can update their session.
+      allow update: if signedIn() && request.auth.uid == resource.data.userId;
+
+      // SOS sessions cannot be deleted from client.
+      allow delete: if false;
     }
 
+
+    // ============================================================
+    // TRACKING SESSIONS
+    // ============================================================
+
     match /tracking_sessions/{token} {
-      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+
+      // Owner or explicitly allowed viewer can read.
+      allow get: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        ||
+        (
+          resource.data.allowedViewerUids is list
+          &&
+          request.auth.uid in resource.data.allowedViewerUids
+        )
+      );
+
+      // Only authenticated user can create their own tracking session.
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if signedIn() && resource.data.userId == request.auth.uid;
-      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+
+      // Only owner can update tracking session.
+      allow update: if signedIn() && request.auth.uid == resource.data.userId;
+
+      // Client cannot list or delete tracking sessions.
+      allow list: if false;
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // DENY EVERYTHING ELSE
+    // ============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

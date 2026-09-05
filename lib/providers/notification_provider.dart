@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../data/models/notification_model.dart';
 import '../services/notification_service.dart';
+import '../services/notification_repository.dart';
 import 'reminder_provider.dart';
 
 /// UI-facing state for the Notification screen. Holds no business logic
@@ -12,21 +13,32 @@ import 'reminder_provider.dart';
 /// just keeps `notifications` in sync and calls `notifyListeners()`.
 class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
   NotificationProvider({required this._reminderProvider}) {
-    debugPrint('[NotificationProvider] constructor — wiring onHistoryChanged');
+    debugPrint('[NotificationProvider] constructor — switching to Firestore stream');
     WidgetsBinding.instance.addObserver(this);
-    NotificationService.onHistoryChanged = refresh;
-    _load();
     _startWatching();
 
-    // Refresh whenever the user changes (login/logout/switch)
+    // Subscribe to Firestore notifications for current user
     FirebaseAuth.instance.authStateChanges().listen((user) {
       debugPrint('[NotificationProvider] authStateChanged: ${user?.email}');
-      _load();
+      _remSub?.cancel();
+      if (user != null) {
+        _remSub = NotificationRepository.instance.notificationsStream(user.uid).listen((items) {
+          notifications = items;
+          isLoading = false;
+          notifyListeners();
+        });
+      } else {
+        notifications = [];
+        isLoading = false;
+        notifyListeners();
+      }
     });
   }
 
   final ReminderProvider _reminderProvider;
   final _service = NotificationService.instance;
+
+  StreamSubscription<List<NotificationItem>>? _remSub;
 
   List<NotificationItem> notifications = [];
   bool isLoading = true;
@@ -40,7 +52,11 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
     debugPrint('[NotificationProvider] _load() start');
     isLoading = true;
     notifyListeners();
-    notifications = await _service.loadHistory();
+    // Fallback to local history when not signed in
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      notifications = await _service.loadHistory();
+    }
     debugPrint('[NotificationProvider] _load() loaded ${notifications.length} items');
     isLoading = false;
     notifyListeners();
@@ -49,7 +65,10 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Re-reads history from disk. Safe to call as often as needed.
   Future<void> refresh() async {
     debugPrint('[NotificationProvider] refresh() called');
-    notifications = await _service.loadHistory();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      notifications = await _service.loadHistory();
+    }
     debugPrint(
         '[NotificationProvider] refresh() loaded ${notifications.length} items — notifying listeners');
     notifyListeners();
@@ -57,16 +76,28 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> markAsRead(NotificationItem item) async {
     if (item.isRead) return;
-    notifications = await _service.markAsRead(item.id);
-    notifyListeners();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await NotificationRepository.instance.markAsRead(uid, item.id);
+      // local state will be updated by Firestore stream
+    } else {
+      notifications = await _service.markAsRead(item.id);
+      notifyListeners();
+    }
   }
 
   Future<void> delete(NotificationItem item) async {
-    notifications = await _service.deleteNotification(item.id);
-    notifyListeners();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await NotificationRepository.instance.delete(uid, item.id);
+    } else {
+      notifications = await _service.deleteNotification(item.id);
+      notifyListeners();
+    }
   }
 
   Future<void> clearAll() async {
+    // Do not mass-delete server-side notifications by default. Clear local JSON.
     notifications = await _service.clearHistory();
     notifyListeners();
   }
@@ -104,7 +135,7 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint(
           '[NotificationProvider] due-time watcher matched "${r.title}" at $minuteKey');
       _service.logFiredReminder(
-          title: 'Medicine Reminder', message: message, time: r.time);
+          title: 'Medicine Reminder', message: message, time: r.time, relatedEntityId: r.id);
     }
   }
 
