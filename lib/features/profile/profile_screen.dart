@@ -41,9 +41,13 @@ class ProfileScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
-        children: [
+      body: RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: () => _onRefresh(context),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 24.h),
+          children: [
           MCard(
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const EditProfileScreen()),
@@ -421,8 +425,26 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
+}
+
+/// Pull-to-refresh handler for the Profile screen. The profile, contacts,
+/// and AI insights below are already live Firestore snapshot listeners
+/// (see ProfileProvider), so they're never actually stale — the one
+/// piece of real, on-demand work a manual refresh can meaningfully do is
+/// force the "For You" AI tip to regenerate right now instead of waiting
+/// for its normal refresh interval. A short minimum delay is added so
+/// the pull animation always reads as a deliberate "refreshing…" moment
+/// even on a fast connection, matching the familiar Instagram-style feel
+/// instead of just flickering.
+Future<void> _onRefresh(BuildContext context) async {
+  final prov = context.read<ProfileProvider>();
+  await Future.wait([
+    prov.refreshForYouTip(),
+    Future.delayed(const Duration(milliseconds: 500)),
+  ]);
 }
 
 /// Small helper so the profile card shows the signed-in email without

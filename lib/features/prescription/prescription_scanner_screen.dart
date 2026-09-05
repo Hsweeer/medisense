@@ -19,6 +19,7 @@ import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/prescription_models.dart';
 import '../../providers/auth_provider.dart';
 import '../chat/prescription_review_screen.dart';
+import '../profile/prescription_history_screen.dart';
 
 /// Home-screen entry point for scanning a prescription directly — same
 /// Gemini read + parsing + professional summary used in chat, just without
@@ -142,6 +143,17 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
         backgroundColor: AppColors.paper,
         surfaceTintColor: AppColors.paper,
         title: const Text('Scan prescription'),
+        actions: [
+          IconButton(
+            tooltip: 'History',
+            icon: const Icon(Icons.history_rounded, color: AppColors.primary),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const PrescriptionHistoryScreen(),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -229,7 +241,7 @@ class _IntroView extends StatelessWidget {
             ],
             SizedBox(height: 26.h),
             PrimaryButton(
-              label: 'Take a photo',
+              label: 'Start scan',
               icon: Icons.camera_alt_rounded,
               onPressed: () => onCapture(ImageSource.camera),
             ),

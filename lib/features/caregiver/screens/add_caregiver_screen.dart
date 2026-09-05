@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:contacts_service_plus/contacts_service_plus.dart' as cs;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -25,22 +27,36 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
   bool _searching = false;
   bool _notRegistered = false;
   String? _lastQuery;
+  Timer? _debounce;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
   Future<void> _onSearchChanged(String query) async {
-    _lastQuery = query;
-    if (query.trim().length < 2) {
+    _debounce?.cancel();
+    // A single matching character should already surface suggestions
+    // (searchIndex now stores every prefix, not just whole words), so
+    // there's no minimum-length gate anymore — just a short debounce to
+    // avoid firing a query on every keystroke while the user is typing.
+    if (query.trim().isEmpty) {
       setState(() {
         _searchResults = [];
         _notRegistered = false;
+        _searching = false;
       });
       return;
     }
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _runSearch(query);
+    });
+  }
+
+  Future<void> _runSearch(String query) async {
+    _lastQuery = query;
     setState(() => _searching = true);
     try {
       final results = await CaregiverService.instance.searchUsers(query);
@@ -191,7 +207,10 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
       'Request sent to ${recipient.name}',
       color: AppColors.primary,
     );
-    Navigator.pop(context);
+    // Stay on the search screen instead of popping — the sent-requests
+    // stream below updates this same list live, so the button for
+    // `recipient` flips from "Request" to "Sent" right where the user is
+    // looking, instead of them having to reopen the screen to see it.
   }
 
   @override
@@ -345,93 +364,200 @@ class _AddCaregiverScreenState extends State<AddCaregiverScreen> {
                   ),
                 ),
               Expanded(
-                child: ListView.separated(
-                  padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
-                  itemCount: _searchResults.length,
-                  separatorBuilder: (_, _) => SizedBox(height: 10.h),
-                  itemBuilder: (_, i) {
-                    final user = _searchResults[i];
-                    return Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 14.w,
-                        vertical: 10.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: BorderRadius.circular(16.r),
-                        border: Border.all(color: AppColors.line),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20.r,
-                            backgroundColor: AppColors.soft,
-                            child: Text(
-                              user.name.isNotEmpty
-                                  ? user.name[0].toUpperCase()
-                                  : '?',
-                              style: TextStyle(
-                                fontSize: 15.sp,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.onSoft,
-                              ),
-                            ),
+                child: StreamBuilder<List<CaregiverLink>>(
+                  stream: CaregiverService.instance.mySentRequests(),
+                  builder: (context, snapshot) {
+                    // Latest status per recipient uid, from every request
+                    // I've ever sent them (pending / accepted / declined /
+                    // restricted) — declined/restricted fall through to
+                    // "Request" again below since those aren't active.
+                    final statusByRecipient = <String, CaregiverLinkStatus>{
+                      for (final link
+                          in snapshot.data ?? const <CaregiverLink>[])
+                        link.recipientUid: link.status,
+                    };
+
+                    return ListView.separated(
+                      padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
+                      itemCount: _searchResults.length,
+                      separatorBuilder: (_, _) => SizedBox(height: 10.h),
+                      itemBuilder: (_, i) {
+                        final user = _searchResults[i];
+                        final status = statusByRecipient[user.uid];
+                        return Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 14.w,
+                            vertical: 10.h,
                           ),
-                          SizedBox(width: 12.w),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user.name,
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(16.r),
+                            border: Border.all(color: AppColors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 20.r,
+                                backgroundColor: AppColors.soft,
+                                child: Text(
+                                  user.name.isNotEmpty
+                                      ? user.name[0].toUpperCase()
+                                      : '?',
                                   style: TextStyle(
-                                    fontSize: 14.sp,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.onSoft,
                                   ),
                                 ),
-                                SizedBox(height: 2.h),
-                                Text(
-                                  user.phone.isNotEmpty
-                                      ? user.phone
-                                      : user.email,
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: AppColors.muted,
-                                  ),
+                              ),
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      user.name,
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.ink,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2.h),
+                                    Text(
+                                      user.phone.isNotEmpty
+                                          ? user.phone
+                                          : user.email,
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        color: AppColors.muted,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              SizedBox(width: 8.w),
+                              _RequestButton(
+                                status: status,
+                                onTap: () => _confirmAndSend(user),
+                              ),
+                            ],
                           ),
-                          SizedBox(width: 8.w),
-                          FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16.w,
-                                vertical: 10.h,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10.r),
-                              ),
-                            ),
-                            onPressed: () => _confirmAndSend(user),
-                            child: Text(
-                              'Request',
-                              style: TextStyle(
-                                fontSize: 12.5.sp,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     );
                   },
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Right-side action on a search result row. Reflects the live status of
+/// any request I've already sent this person:
+/// - no request yet, or they declined/I revoked → active "Request" button
+/// - request pending → "Sent" pill (grey, clock icon) — still tappable,
+///   just surfaces a toast instead of sending a duplicate request
+/// - request accepted → "Added" pill (green, check icon) — tappable too,
+///   lets the person know they're already connected instead of silently
+///   doing nothing.
+class _RequestButton extends StatelessWidget {
+  const _RequestButton({required this.status, required this.onTap});
+
+  final CaregiverLinkStatus? status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (status == CaregiverLinkStatus.pending) {
+      return _Pill(
+        label: 'Sent',
+        icon: Icons.schedule_rounded,
+        background: AppColors.paper,
+        foreground: AppColors.muted,
+        onTap: () => showToast(
+          context,
+          'Your request has already been sent',
+          color: AppColors.muted,
+        ),
+      );
+    }
+    if (status == CaregiverLinkStatus.accepted) {
+      return _Pill(
+        label: 'Added',
+        icon: Icons.check_circle_rounded,
+        background: AppColors.successSoft,
+        foreground: AppColors.success,
+        onTap: () => showToast(
+          context,
+          'You\'re already connected with this person',
+          color: AppColors.success,
+        ),
+      );
+    }
+    // declined, restricted, or no request at all — free to (re)send.
+    return FilledButton(
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10.r),
+        ),
+      ),
+      onPressed: onTap,
+      child: Text(
+        'Request',
+        style: TextStyle(fontSize: 12.5.sp, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.label,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(10.r),
+          border: Border.all(color: foreground.withValues(alpha: .3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14.sp, color: foreground),
+            SizedBox(width: 5.w),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5.sp,
+                fontWeight: FontWeight.w700,
+                color: foreground,
+              ),
+            ),
+          ],
         ),
       ),
     );

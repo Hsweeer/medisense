@@ -1,13 +1,12 @@
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+
+import '../../services/notification_server_client.dart';
 
 class SosBackendService {
   SosBackendService._();
 
   static final instance = SosBackendService._();
-
-  FirebaseFunctions get _functions => FirebaseFunctions.instance;
 
   Future<Map<String, dynamic>> notifyContacts({
     required String sosSessionId,
@@ -21,22 +20,15 @@ class SosBackendService {
     }
 
     try {
-      final callable = _functions.httpsCallable('sendSosAlert');
-      final result = await callable.call<Map<String, dynamic>>({
-        'sosSessionId': sosSessionId,
-        'trackingToken': trackingToken,
-        'contacts': contacts,
-        'userName': userName,
-        'userId': uid,
-      });
-
-      return result.data;
+      return await NotificationServerClient.sendSosAlert(
+        sosSessionId: sosSessionId,
+        trackingToken: trackingToken,
+        userName: userName,
+        contacts: contacts,
+      );
     } catch (e) {
       debugPrint('[SosBackendService] notifyContacts failed: $e');
-      return {
-        'status': 'failed',
-        'error': e.toString(),
-      };
+      return {'status': 'failed', 'error': e.toString()};
     }
   }
 
@@ -46,19 +38,14 @@ class SosBackendService {
     required bool accessRestricted,
   }) async {
     try {
-      final callable = _functions.httpsCallable('updateSosTrackingStatus');
-      final result = await callable.call<Map<String, dynamic>>({
-        'trackingToken': trackingToken,
-        'status': status,
-        'accessRestricted': accessRestricted,
-      });
-      return result.data;
+      return await NotificationServerClient.updateSosTrackingStatus(
+        trackingToken: trackingToken,
+        status: status,
+        accessRestricted: accessRestricted,
+      );
     } catch (e) {
       debugPrint('[SosBackendService] updateTrackingStatus failed: $e');
-      return {
-        'status': 'failed',
-        'error': e.toString(),
-      };
+      return {'status': 'failed', 'error': e.toString()};
     }
   }
 }

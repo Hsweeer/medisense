@@ -1317,7 +1317,7 @@ class _VoiceRecordingBarState extends State<_VoiceRecordingBar>
               children: [
                 AnimatedBuilder(
                   animation: _wave,
-                  builder: (_, __) => Container(
+                  builder: (_, _) => Container(
                     width: 9.r,
                     height: 9.r,
                     decoration: BoxDecoration(
@@ -1337,7 +1337,7 @@ class _VoiceRecordingBarState extends State<_VoiceRecordingBar>
                 Expanded(
                   child: AnimatedBuilder(
                     animation: _wave,
-                    builder: (_, __) {
+                    builder: (_, _) {
                       final rng = Random(_seconds);
                       return Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,

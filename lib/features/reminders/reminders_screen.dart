@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../core/widgets/guest_gate.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/reminder_provider.dart';
@@ -61,38 +60,38 @@ class RemindersScreen extends StatelessWidget {
           : prov.reminders.isEmpty
           ? _buildEmptyState(context)
           : ListView(
-        padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
-        children: [
-          // Stats header: done · streak · adherence
-          MCard(
-            color: AppColors.soft,
-            border: Border.all(
-              color: AppColors.primary.withValues(alpha: .3),
-            ),
-            padding: EdgeInsets.symmetric(
-              horizontal: 14.w,
-              vertical: 14.h,
-            ),
-            child: Row(
+              padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 90.h),
               children: [
-                _Stat(
-                  value: '${prov.takenCount}/${prov.reminders.length}',
-                  label: 'Done today',
+                // Stats header: done · streak · adherence
+                MCard(
+                  color: AppColors.soft,
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: .3),
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 14.h,
+                  ),
+                  child: Row(
+                    children: [
+                      _Stat(
+                        value: '${prov.takenCount}/${prov.reminders.length}',
+                        label: 'Done today',
+                      ),
+                      _statDivider(),
+                      _Stat(
+                        value: '${prov.bestStreak} days',
+                        label: 'Best streak',
+                      ),
+                      _statDivider(),
+                      _Stat(value: '${prov.adherencePct}%', label: 'This week'),
+                    ],
+                  ),
                 ),
-                _statDivider(),
-                _Stat(
-                  value: '${prov.bestStreak} days',
-                  label: 'Best streak',
-                ),
-                _statDivider(),
-                _Stat(value: '${prov.adherencePct}%', label: 'This week'),
+                SizedBox(height: 16.h),
+                ..._buildGroupedCards(prov),
               ],
             ),
-          ),
-          SizedBox(height: 16.h),
-          ..._buildGroupedCards(prov),
-        ],
-      ),
     );
   }
 
@@ -120,7 +119,12 @@ class RemindersScreen extends StatelessWidget {
         } else {
           card = _GroupedReminderCard(reminders: groupReminders);
         }
-        cards.add(Padding(padding: EdgeInsets.only(bottom: 10.h), child: card));
+        cards.add(
+          Padding(
+            padding: EdgeInsets.only(bottom: 10.h),
+            child: card,
+          ),
+        );
       } else {
         cards.add(
           Padding(
@@ -185,7 +189,7 @@ class RemindersScreen extends StatelessWidget {
       context: context,
       title: 'Clear all reminders?',
       message:
-      'This will permanently delete all your scheduled reminders and alarms.',
+          'This will permanently delete all your scheduled reminders and alarms.',
       confirmText: 'Delete all',
       destructive: true,
       icon: Icons.alarm_off_rounded,
@@ -197,15 +201,15 @@ class RemindersScreen extends StatelessWidget {
 }
 
 void _confirmDeleteDialog(
-    BuildContext context,
-    ReminderProvider prov,
-    Reminder reminder,
-    ) async {
+  BuildContext context,
+  ReminderProvider prov,
+  Reminder reminder,
+) async {
   final confirmed = await AppDialog.confirm(
     context: context,
     title: 'Delete reminder?',
     message:
-    'Are you sure you want to delete "${reminder.title}"? This action cannot be undone.',
+        'Are you sure you want to delete "${reminder.title}"? This action cannot be undone.',
     confirmText: 'Delete',
     destructive: true,
     icon: Icons.delete_outline_rounded,
@@ -252,6 +256,10 @@ class _ReminderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (reminder.isCheckup) {
+      return _CheckupReminderCard(reminder: reminder);
+    }
+
     final prov = context.read<ReminderProvider>();
     final r = reminder;
     final isPending = r.status == DoseStatus.pending;
@@ -291,16 +299,16 @@ class _ReminderCard extends StatelessWidget {
                   ),
                   child: r.taken
                       ? Icon(
-                    Icons.check_rounded,
-                    size: 16.sp,
-                    color: Colors.white,
-                  )
+                          Icons.check_rounded,
+                          size: 16.sp,
+                          color: Colors.white,
+                        )
                       : isSnoozed
                       ? Icon(
-                    Icons.snooze_rounded,
-                    size: 15.sp,
-                    color: Colors.white,
-                  )
+                          Icons.snooze_rounded,
+                          size: 15.sp,
+                          color: Colors.white,
+                        )
                       : null,
                 ),
               ),
@@ -340,7 +348,7 @@ class _ReminderCard extends StatelessWidget {
                     SizedBox(height: 2.h),
                     Text(
                       '${r.dose} · ${r.schedule}'
-                          '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
+                      '${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
                       style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
                     ),
                     SizedBox(height: 8.h),
@@ -430,38 +438,216 @@ class _ReminderCard extends StatelessWidget {
               ),
             )
           else if (isPending)
-              Padding(
-                padding: EdgeInsets.only(top: 10.h),
-                child: Row(
+            Padding(
+              padding: EdgeInsets.only(top: 10.h),
+              child: Row(
+                children: [
+                  _MiniAction(
+                    label: 'Take now',
+                    color: AppColors.success,
+                    onTap: () => prov.take(r),
+                  ),
+                  SizedBox(width: 8.w),
+                  _MiniAction(
+                    label: 'Snooze 10 min',
+                    color: AppColors.warning,
+                    onTap: () {
+                      prov.snooze(r);
+                      showToast(
+                        context,
+                        '${r.title} snoozed — rings again in 10 min',
+                      );
+                    },
+                  ),
+                  SizedBox(width: 8.w),
+                  _MiniAction(
+                    label: 'Skip',
+                    color: AppColors.muted,
+                    onTap: () => prov.skip(r),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dedicated card for a doctor visit / appointment reminder
+/// (reminder.isCheckup) — a calendar icon instead of a take/snooze/skip
+/// dose action, plus location and doctor/provider rows, matching a
+/// professional appointment-card layout instead of the medication card.
+class _CheckupReminderCard extends StatelessWidget {
+  const _CheckupReminderCard({required this.reminder});
+
+  final Reminder reminder;
+
+  @override
+  Widget build(BuildContext context) {
+    final prov = context.read<ReminderProvider>();
+    final r = reminder;
+
+    return MCard(
+      padding: EdgeInsets.all(14.r),
+      onTap: () => _showEditSheet(context, reminder: r),
+      border: Border.all(color: AppColors.success.withValues(alpha: .18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46.r,
+                height: 46.r,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.successSoft,
+                      AppColors.successSoft.withValues(alpha: .55),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14.r),
+                ),
+                child: Icon(
+                  Icons.event_available_rounded,
+                  color: AppColors.success,
+                  size: 24.sp,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _MiniAction(
-                      label: 'Take now',
-                      color: AppColors.success,
-                      onTap: () => prov.take(r),
+                    Text(
+                      r.title,
+                      style: TextStyle(
+                        fontSize: 15.5.sp,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
                     ),
-                    SizedBox(width: 8.w),
-                    _MiniAction(
-                      label: 'Snooze 10 min',
-                      color: AppColors.warning,
-                      onTap: () {
-                        prov.snooze(r);
-                        showToast(
-                          context,
-                          '${r.title} snoozed — rings again in 10 min',
-                        );
-                      },
-                    ),
-                    SizedBox(width: 8.w),
-                    _MiniAction(
-                      label: 'Skip',
-                      color: AppColors.muted,
-                      onTap: () => prov.skip(r),
+                    SizedBox(height: 3.h),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.event_note_rounded,
+                          size: 12.sp,
+                          color: AppColors.success,
+                        ),
+                        SizedBox(width: 4.w),
+                        Text(
+                          r.dose.isEmpty ? 'Scheduled appointment' : r.dose,
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.success,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
+              SizedBox(width: 6.w),
+              MChip(
+                r.time,
+                icon: Icons.schedule_rounded,
+                background: AppColors.paper,
+                foreground: AppColors.inkSoft,
+              ),
+            ],
+          ),
+          if (r.location.isNotEmpty || r.provider.isNotEmpty) ...[
+            SizedBox(height: 12.h),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: AppColors.paper,
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (r.location.isNotEmpty)
+                    _CheckupInfoRow(
+                      icon: Icons.location_on_rounded,
+                      text: r.location,
+                    ),
+                  if (r.location.isNotEmpty && r.provider.isNotEmpty)
+                    SizedBox(height: 7.h),
+                  if (r.provider.isNotEmpty)
+                    _CheckupInfoRow(
+                      icon: Icons.badge_rounded,
+                      text: r.provider,
+                    ),
+                ],
+              ),
+            ),
+          ],
+          if (r.instructions.isNotEmpty) ...[
+            SizedBox(height: 10.h),
+            Text(
+              r.instructions,
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: AppColors.muted,
+                height: 1.4,
+              ),
+            ),
+          ],
+          SizedBox(height: 10.h),
+          Row(
+            children: [
+              _QuickAction(
+                icon: Icons.edit_rounded,
+                color: AppColors.primary,
+                onTap: () => _showEditSheet(context, reminder: r),
+              ),
+              SizedBox(width: 10.w),
+              _QuickAction(
+                icon: Icons.delete_outline_rounded,
+                color: AppColors.danger,
+                onTap: () => _confirmDeleteDialog(context, prov, r),
+              ),
+            ],
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// A single location or doctor line inside the check-up card.
+class _CheckupInfoRow extends StatelessWidget {
+  const _CheckupInfoRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 15.sp, color: AppColors.success),
+        SizedBox(width: 8.w),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.inkSoft,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -533,7 +719,7 @@ class _GroupedReminderCard extends StatelessWidget {
           SizedBox(height: 2.h),
           Text(
             '${first.dose} · ${sorted.length}× daily · ${first.schedule}'
-                '${first.instructions.isEmpty ? '' : ' · ${first.instructions}'}',
+            '${first.instructions.isEmpty ? '' : ' · ${first.instructions}'}',
             style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
           ),
           SizedBox(height: 10.h),
@@ -558,10 +744,10 @@ class _GroupedReminderCard extends StatelessWidget {
                       ),
                       child: r.taken
                           ? Icon(
-                        Icons.check_rounded,
-                        size: 13.sp,
-                        color: Colors.white,
-                      )
+                              Icons.check_rounded,
+                              size: 13.sp,
+                              color: Colors.white,
+                            )
                           : null,
                     ),
                   ),
@@ -594,15 +780,15 @@ class _GroupedReminderCard extends StatelessWidget {
 }
 
 void _confirmDeleteGroupDialog(
-    BuildContext context,
-    ReminderProvider prov,
-    List<Reminder> group,
-    ) async {
+  BuildContext context,
+  ReminderProvider prov,
+  List<Reminder> group,
+) async {
   final confirmed = await AppDialog.confirm(
     context: context,
     title: 'Delete reminder?',
     message:
-    'Are you sure you want to delete all ${group.length} doses of '
+        'Are you sure you want to delete all ${group.length} doses of '
         '"${group.first.title}"? This cannot be undone.',
     confirmText: 'Delete',
     cancelText: 'Cancel',
@@ -638,7 +824,11 @@ class _TimeGroupedReminderCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.access_time_rounded, size: 16.sp, color: AppColors.primary),
+              Icon(
+                Icons.access_time_rounded,
+                size: 16.sp,
+                color: AppColors.primary,
+              ),
               SizedBox(width: 6.w),
               Expanded(
                 child: Row(
@@ -679,7 +869,8 @@ class _TimeGroupedReminderCard extends StatelessWidget {
               _QuickAction(
                 icon: Icons.delete_outline_rounded,
                 color: AppColors.danger,
-                onTap: () => _confirmDeleteTimeGroupDialog(context, prov, reminders),
+                onTap: () =>
+                    _confirmDeleteTimeGroupDialog(context, prov, reminders),
               ),
             ],
           ),
@@ -706,7 +897,11 @@ class _TimeGroupedReminderCard extends StatelessWidget {
                         ),
                       ),
                       child: r.taken
-                          ? Icon(Icons.check_rounded, size: 13.sp, color: Colors.white)
+                          ? Icon(
+                              Icons.check_rounded,
+                              size: 13.sp,
+                              color: Colors.white,
+                            )
                           : null,
                     ),
                   ),
@@ -720,13 +915,18 @@ class _TimeGroupedReminderCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 13.5.sp,
                             fontWeight: FontWeight.w700,
-                            decoration: r.taken ? TextDecoration.lineThrough : null,
+                            decoration: r.taken
+                                ? TextDecoration.lineThrough
+                                : null,
                             color: r.taken ? AppColors.muted : AppColors.ink,
                           ),
                         ),
                         Text(
                           '${r.dose}${r.instructions.isEmpty ? '' : ' · ${r.instructions}'}',
-                          style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+                          style: TextStyle(
+                            fontSize: 11.5.sp,
+                            color: AppColors.muted,
+                          ),
                         ),
                       ],
                     ),
@@ -734,7 +934,10 @@ class _TimeGroupedReminderCard extends StatelessWidget {
                   if (r.status == DoseStatus.snoozed)
                     Text(
                       'Snoozed',
-                      style: TextStyle(fontSize: 11.sp, color: AppColors.warning),
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppColors.warning,
+                      ),
                     ),
                 ],
               ),
@@ -746,15 +949,15 @@ class _TimeGroupedReminderCard extends StatelessWidget {
 }
 
 void _confirmDeleteTimeGroupDialog(
-    BuildContext context,
-    ReminderProvider prov,
-    List<Reminder> group,
-    ) async {
+  BuildContext context,
+  ReminderProvider prov,
+  List<Reminder> group,
+) async {
   final confirmed = await AppDialog.confirm(
     context: context,
     title: 'Delete reminder?',
     message:
-    'Are you sure you want to delete all ${group.length} medicines '
+        'Are you sure you want to delete all ${group.length} medicines '
         'scheduled at ${group.first.time}? This cannot be undone.',
     confirmText: 'Delete',
     cancelText: 'Cancel',
@@ -833,11 +1036,9 @@ class _MiniAction extends StatelessWidget {
 /// Opens the category picker (Medications / Measurements / Activities),
 /// which then opens a full-screen, category-themed add-reminder form.
 /// Editing an existing card still uses the compact [_showEditSheet].
-/// Guests can browse the (empty) Reminders tab, but creating a reminder
-/// needs an account — it's written to Firestore and drives real alarms.
+/// Personal reminders can also be created in guest mode; the provider keeps
+/// them locally for the current guest session and schedules their alarms.
 void _openAddReminderFlow(BuildContext context) async {
-  if (!await requireLogin(context, feature: 'add a reminder')) return;
-  if (!context.mounted) return;
   Navigator.of(
     context,
   ).push(MaterialPageRoute(builder: (_) => const AddReminderCategoryScreen()));
@@ -1065,7 +1266,7 @@ void _showEditSheet(BuildContext context, {Reminder? reminder}) {
                           }
 
                           times.sort(
-                                (a, b) => minutesOf(a).compareTo(minutesOf(b)),
+                            (a, b) => minutesOf(a).compareTo(minutesOf(b)),
                           );
                         });
                       }

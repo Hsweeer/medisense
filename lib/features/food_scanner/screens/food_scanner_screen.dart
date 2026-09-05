@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_loading.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../../../data/models/food_models.dart';
+import '../../profile/nutrition_history_screen.dart';
 import 'barcode_scan_screen.dart';
 import 'food_review_screen.dart';
 import 'food_scan_camera_screen.dart';
@@ -88,16 +89,14 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
 
   Future<void> _scanBarcode() async {
     if (_processing) return;
-    final code = await Navigator.of(
-      context,
-    ).push<String>(MaterialPageRoute(builder: (_) => const BarcodeScanScreen()));
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const BarcodeScanScreen()),
+    );
     if (code == null || !mounted) return;
 
     setState(() => _processing = true);
     try {
-      final product = await OpenFoodFactsService.instance.lookupByBarcode(
-        code,
-      );
+      final product = await OpenFoodFactsService.instance.lookupByBarcode(code);
       if (!mounted) return;
       setState(() => _processing = false);
 
@@ -116,6 +115,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
             foodName: product.name,
             portionLabel: product.nutrition.portionLabel,
             nutrition: product.nutrition,
+            ingredients: product.ingredients,
           ),
         ),
       );
@@ -247,7 +247,18 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan food')),
+      appBar: AppBar(
+        title: const Text('Scan food'),
+        actions: [
+          IconButton(
+            tooltip: 'History',
+            icon: const Icon(Icons.history_rounded, color: AppColors.primary),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -298,7 +309,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
                         ),
                         const SizedBox(height: 30),
                         PrimaryButton(
-                          label: 'Take a photo',
+                          label: 'Start scan',
                           icon: Icons.camera_alt_rounded,
                           onPressed: () async {
                             final photo = await Navigator.of(context)

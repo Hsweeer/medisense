@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.medisense.medisense_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -22,8 +22,8 @@ android {
     defaultConfig {
         applicationId = "com.medisense.medisense_app"
 
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 26
+        targetSdk = 36
 
         versionCode = flutter.versionCode
         versionName = flutter.versionName

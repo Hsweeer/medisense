@@ -7,27 +7,40 @@ class FoodLogService {
   FoodLogService._();
   static final instance = FoodLogService._();
 
-  String get _uid => FirebaseAuth.instance.currentUser!.uid;
+  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
-  CollectionReference<Map<String, dynamic>> get _log => FirebaseFirestore
-      .instance
-      .collection('users')
-      .doc(_uid)
-      .collection('food_log');
+  CollectionReference<Map<String, dynamic>>? get _log {
+    final uid = _uid;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('food_log');
+  }
 
   Future<void> save(FoodLogEntry entry) async {
-    await _log.add(entry.toMap());
+    final log = _log;
+    // No signed-in account (e.g. guest mode) — nothing to save to. The UI
+    // already gates the "save" actions that call this behind a login
+    // prompt, so this is just a defensive no-op, not the normal path.
+    if (log == null) return;
+    await log.add(entry.toMap());
   }
 
   Future<void> delete(String entryId) async {
-    await _log.doc(entryId).delete();
+    final log = _log;
+    if (log == null) return;
+    await log.doc(entryId).delete();
   }
 
   Stream<List<FoodLogEntry>> entriesForDay(DateTime day) {
+    final log = _log;
+    if (log == null) return Stream.value(const []);
+
     final start = DateTime(day.year, day.month, day.day);
     final end = start.add(const Duration(days: 1));
 
-    return _log
+    return log
         .where(
           'loggedAtMs',
           isGreaterThanOrEqualTo: start.millisecondsSinceEpoch,
@@ -40,8 +53,15 @@ class FoodLogService {
         );
   }
 
+  /// Everything the user has ever logged. Returns an empty stream (never
+  /// throws) for a guest browsing without an account — the history
+  /// screen then shows its normal "No nutrition history yet." state
+  /// instead of crashing on a null uid.
   Stream<List<FoodLogEntry>> allEntries() {
-    return _log
+    final log = _log;
+    if (log == null) return Stream.value(const []);
+
+    return log
         .orderBy('loggedAtMs', descending: true)
         .snapshots()
         .map(

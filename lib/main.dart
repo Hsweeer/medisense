@@ -175,15 +175,14 @@ class _MediSenseAppState extends State<MediSenseApp> {
     }
   }
 
-  void _handleRemoteMessage(message) {
+  void _handleRemoteMessage(RemoteMessage? message) {
     try {
-      final data = (message?.data ?? {}) as Map<dynamic, dynamic>;
+      final Map<dynamic, dynamic> data = (message?.data ?? {}) as Map<dynamic, dynamic>;
       final title = message?.notification?.title ?? data['title'] ?? 'MediSense';
       final body = message?.notification?.body ?? data['body'] ?? '';
 
       // SOS has a dedicated route
       if ((data['type'] == 'sos_alert') || (data['route'] == 'sos') || (data['screen'] == 'sos')) {
-        final sosId = data['sosSessionId'] ?? data['relatedEntityId'];
         navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (r) => false);
         return;
       }

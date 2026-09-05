@@ -4,314 +4,20 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/services/caregiver_service.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/widgets/guest_gate.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/caregiver_models.dart';
 import '../caregiver/screens/add_caregiver_screen.dart';
 import '../caregiver/screens/create_caregiver_reminder_screen.dart';
-import 'add_reminder_form_screen.dart';
-import 'reminder_form_helpers.dart';
 
-/// Shown when the user taps "Add reminder". A single screen with a
-/// two-way toggle up top — "For you" / "For someone else" — so switching
-/// who the reminder is for never means leaving the screen. "For you"
-/// lists the four personal categories (Medications / Measurements /
-/// Activities / Check-ups); "For someone else" lists the caregiver
-/// recipients already on the account directly, with a small badge for
-/// any pending caregiver requests.
-class AddReminderCategoryScreen extends StatefulWidget {
-  const AddReminderCategoryScreen({super.key});
-
-  @override
-  State<AddReminderCategoryScreen> createState() =>
-      _AddReminderCategoryScreenState();
-}
-
-class _AddReminderCategoryScreenState extends State<AddReminderCategoryScreen> {
-  bool _forYou = true;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.paper,
-      appBar: AppBar(
-        backgroundColor: AppColors.paper,
-        elevation: 0,
-        title: Text(
-          "Let's set up a reminder!",
-          style: GoogleFonts.sora(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.w800,
-            color: AppColors.ink,
-          ),
-        ),
-        actions: [
-          if (!_forYou)
-            StreamBuilder<List<CaregiverLink>>(
-              stream: CaregiverService.instance.incomingRequests(),
-              builder: (context, snapshot) {
-                final requests = snapshot.data ?? const [];
-                return Padding(
-                  padding: EdgeInsets.only(right: 14.w),
-                  child: _PendingBadge(
-                    count: requests.length,
-                    onTap: () => _openPendingSheet(context, requests),
-                  ),
-                );
-              },
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 6.h),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _ToggleButton(
-                      icon: Icons.person_rounded,
-                      label: 'For you',
-                      selected: _forYou,
-                      color: AppColors.primary,
-                      onTap: () => setState(() => _forYou = true),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: _ToggleButton(
-                      icon: Icons.people_alt_rounded,
-                      label: 'For someone else',
-                      selected: !_forYou,
-                      color: AppColors.ai,
-                      onTap: () async {
-                        if (!await requireLogin(
-                          context,
-                          feature: 'create a reminder for someone else',
-                        )) {
-                          return;
-                        }
-                        if (context.mounted) {
-                          setState(() => _forYou = false);
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: _forYou
-                  ? const _ForYouSection()
-                  : const _ForSomeoneElseSection(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openPendingSheet(BuildContext context, List<CaregiverLink> requests) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      builder: (_) => _PendingSheet(requests: requests),
-    );
-  }
-}
-
-/// Segmented-style toggle button used for the "For you" / "For someone
-/// else" switch at the top of the screen.
-class _ToggleButton extends StatelessWidget {
-  const _ToggleButton({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(vertical: 12.h),
-        decoration: BoxDecoration(
-          color: selected ? color : AppColors.card,
-          borderRadius: BorderRadius.circular(14.r),
-          border: Border.all(color: selected ? color : AppColors.line),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 20.sp, color: selected ? Colors.white : color),
-            SizedBox(height: 4.h),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.inkSoft,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── FOR YOU ──────────────────────────────────────────────────────────────
-
-/// The four personal categories — same content as before, just embedded
-/// under the toggle instead of on its own screen.
-class _ForYouSection extends StatelessWidget {
-  const _ForYouSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 24.h),
-      children: [
-        Text(
-          'Choose a category to get started.',
-          style: TextStyle(fontSize: 13.5.sp, color: AppColors.muted),
-        ),
-        SizedBox(height: 16.h),
-        for (final cat in ReminderCategory.values) ...[
-          _CategoryCard(
-            category: cat,
-            onTap: () async {
-              final saved = await Navigator.of(context).push<bool>(
-                MaterialPageRoute(
-                  builder: (_) => AddReminderFormScreen(category: cat),
-                ),
-              );
-              if (saved == true && context.mounted) {
-                Navigator.of(context).pop(true);
-              }
-            },
-          ),
-          SizedBox(height: 14.h),
-        ],
-      ],
-    );
-  }
-}
-
-class _CategoryCard extends StatelessWidget {
-  const _CategoryCard({required this.category, required this.onTap});
-
-  final ReminderCategory category;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: EdgeInsets.all(16.r),
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(20.r),
-          border: Border.all(
-            color: category.color.withValues(alpha: .22),
-            width: 1.3.w,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.ink.withValues(alpha: .04),
-              blurRadius: 14.r,
-              offset: Offset(0, 4.h),
-            ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 54.r,
-              height: 54.r,
-              decoration: BoxDecoration(
-                color: category.softColor,
-                borderRadius: BorderRadius.circular(16.r),
-              ),
-              alignment: Alignment.center,
-              child: Icon(category.icon, color: category.color, size: 26.sp),
-            ),
-            SizedBox(width: 14.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          category.label,
-                          style: GoogleFonts.sora(
-                            fontSize: 15.5.sp,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      Container(
-                        width: 30.r,
-                        height: 30.r,
-                        decoration: BoxDecoration(
-                          color: category.softColor,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          Icons.add_rounded,
-                          color: category.color,
-                          size: 18.sp,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    category.description,
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: AppColors.muted,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── FOR SOMEONE ELSE ────────────────────────────────────────────────────
-
-/// Direct, tappable list of accepted caregiver recipients — tapping one
-/// jumps straight into [CreateCaregiverReminderScreen] with them
-/// preselected.
-class _ForSomeoneElseSection extends StatelessWidget {
-  const _ForSomeoneElseSection();
+/// The "For someone else" branch of the add-reminder flow. Unlike the old
+/// single flat caregiver card, this is its own dedicated screen: a small
+/// pending-requests badge up top (so an incoming request never gets
+/// missed), and — front and center — the direct, tappable list of people
+/// already accepted as recipients. Tapping a person jumps straight into
+/// [CreateCaregiverReminderScreen] with them preselected, so setting a
+/// reminder for someone is exactly two taps once they're connected.
+class ForSomeoneElseScreen extends StatelessWidget {
+  const ForSomeoneElseScreen({super.key});
 
   void _openAddCaregiver(BuildContext context) {
     Navigator.of(
@@ -332,44 +38,151 @@ class _ForSomeoneElseSection extends StatelessWidget {
     }
   }
 
+  void _openPendingSheet(BuildContext context, List<CaregiverLink> requests) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      builder: (_) => _PendingSheet(requests: requests),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<CaregiverLink>>(
-      stream: CaregiverService.instance.myAcceptedRecipients(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final links = snapshot.data!;
+    return Scaffold(
+      backgroundColor: AppColors.paper,
+      appBar: AppBar(
+        backgroundColor: AppColors.paper,
+        elevation: 0,
+        title: Text(
+          'For someone else',
+          style: GoogleFonts.sora(
+            fontSize: 17.sp,
+            fontWeight: FontWeight.w800,
+            color: AppColors.ink,
+          ),
+        ),
+        actions: [
+          StreamBuilder<List<CaregiverLink>>(
+            stream: CaregiverService.instance.incomingRequests(),
+            builder: (context, snapshot) {
+              final requests = snapshot.data ?? const [];
+              return Padding(
+                padding: EdgeInsets.only(right: 14.w),
+                child: _PendingBadge(
+                  count: requests.length,
+                  onTap: () => _openPendingSheet(context, requests),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: StreamBuilder<List<CaregiverLink>>(
+          stream: CaregiverService.instance.myAcceptedRecipients(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final links = snapshot.data!;
 
-        if (links.isEmpty) {
-          return _EmptyState(onInvite: () => _openAddCaregiver(context));
-        }
+            if (links.isEmpty) {
+              return _EmptyState(onInvite: () => _openAddCaregiver(context));
+            }
 
-        return ListView(
-          padding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 24.h),
-          children: [
-            Text(
-              'Choose who this reminder is for.',
-              style: TextStyle(fontSize: 13.5.sp, color: AppColors.muted),
-            ),
-            SizedBox(height: 16.h),
-            for (final link in links) ...[
-              _RecipientCard(
-                link: link,
-                onTap: () => _openRecipient(context, link),
-              ),
-              SizedBox(height: 12.h),
-            ],
-            SizedBox(height: 6.h),
-            _InviteAnotherRow(onTap: () => _openAddCaregiver(context)),
-          ],
-        );
-      },
+            return ListView(
+              padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 24.h),
+              children: [
+                Text(
+                  'Choose who this reminder is for.',
+                  style: TextStyle(fontSize: 14.sp, color: AppColors.muted),
+                ),
+                SizedBox(height: 18.h),
+                for (final link in links) ...[
+                  _RecipientCard(
+                    link: link,
+                    onTap: () => _openRecipient(context, link),
+                  ),
+                  SizedBox(height: 12.h),
+                ],
+                SizedBox(height: 10.h),
+                _InviteAnotherRow(onTap: () => _openAddCaregiver(context)),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }
 
+/// Small round icon in the app bar showing how many caregiver requests
+/// are waiting — a quiet reminder that doesn't interrupt the main "pick a
+/// recipient" flow below it, but is never more than one tap away.
+class _PendingBadge extends StatelessWidget {
+  const _PendingBadge({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: count > 0 ? AppColors.warningSoft : AppColors.soft,
+      borderRadius: BorderRadius.circular(14.r),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14.r),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.all(9.r),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(
+                Icons.hourglass_top_rounded,
+                color: count > 0 ? AppColors.warning : AppColors.primary,
+                size: 20.sp,
+              ),
+              if (count > 0)
+                Positioned(
+                  top: -4.h,
+                  right: -4.w,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 4.w,
+                      vertical: 1.h,
+                    ),
+                    constraints: BoxConstraints(minWidth: 15.r),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger,
+                      borderRadius: BorderRadius.circular(99.r),
+                      border: Border.all(color: AppColors.paper, width: 1.5.w),
+                    ),
+                    child: Text(
+                      '$count',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 9.sp,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One accepted recipient, rendered as a large tappable card (name +
+/// avatar initial + a clear "set a reminder" call to action) so the whole
+/// "for someone else" screen reads as a person-picker, not a settings
+/// list.
 class _RecipientCard extends StatelessWidget {
   const _RecipientCard({required this.link, required this.onTap});
 
@@ -454,6 +267,9 @@ class _RecipientCard extends StatelessWidget {
   }
 }
 
+/// Trailing row offering to invite one more caregiver connection — kept
+/// low-key (a text row, not a full CTA card) since the primary action on
+/// this screen is picking someone already connected.
 class _InviteAnotherRow extends StatelessWidget {
   const _InviteAnotherRow({required this.onTap});
 
@@ -495,6 +311,9 @@ class _InviteAnotherRow extends StatelessWidget {
   }
 }
 
+/// Shown when the account has no accepted caregiver recipients yet —
+/// explains the flow in one line and gets straight to the "Invite"
+/// action, since there's nothing to pick from otherwise.
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onInvite});
 
@@ -534,7 +353,7 @@ class _EmptyState extends StatelessWidget {
             SizedBox(height: 8.h),
             Text(
               'Invite a family member or friend and, once they accept, '
-              "they'll show up right here so you can set reminders for them.",
+              'they\'ll show up right here so you can set reminders for them.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13.sp,
@@ -555,66 +374,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ── PENDING REQUESTS BADGE + SHEET ─────────────────────────────────────
-
-class _PendingBadge extends StatelessWidget {
-  const _PendingBadge({required this.count, required this.onTap});
-
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: count > 0 ? AppColors.warningSoft : AppColors.soft,
-      borderRadius: BorderRadius.circular(14.r),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14.r),
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.all(9.r),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(
-                Icons.hourglass_top_rounded,
-                color: count > 0 ? AppColors.warning : AppColors.primary,
-                size: 20.sp,
-              ),
-              if (count > 0)
-                Positioned(
-                  top: -4.h,
-                  right: -4.w,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 4.w,
-                      vertical: 1.h,
-                    ),
-                    constraints: BoxConstraints(minWidth: 15.r),
-                    decoration: BoxDecoration(
-                      color: AppColors.danger,
-                      borderRadius: BorderRadius.circular(99.r),
-                      border: Border.all(color: AppColors.paper, width: 1.5.w),
-                    ),
-                    child: Text(
-                      '$count',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 9.sp,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
+/// Bottom sheet listing incoming caregiver requests, with accept/decline
+/// actions — a self-contained copy of the pattern used on the caregiver
+/// hub screen, so this screen doesn't need to depend on it.
 class _PendingSheet extends StatelessWidget {
   const _PendingSheet({required this.requests});
 

@@ -17,7 +17,6 @@ abstract class AppColors {
   static const danger = Color(0xFFD03A30);
   static const dangerSoft = Color(0xFFFBE9E7);
   static const dangerDark = Color(0xFF2A0F0D);
-  static const dangerGradient = [Color(0xFFD03A30), Color(0xFFE0554B)];
 
   // Brand — MediSense teal
   static const primary = Color(0xFF0C8577);

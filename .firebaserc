@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "firebase deploy --only functions --project <YOUR_PROJECT_ID>medisense-7144b ": "medisense-7144b"
+  },
+  "targets": {},
+  "etags": {}
+}

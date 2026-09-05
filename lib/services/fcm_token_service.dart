@@ -1,93 +1,93 @@
-import 'dart:async';
+import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
+/// Manages FCM device-token registration for the current user.
+///
+/// Tokens are stored at `users/{uid}/fcmTokens/{token}` — using the raw
+/// token string as the document id gives automatic duplicate-token
+/// prevention (re-registering the same token on the same device just
+/// overwrites its own doc) while still allowing one user to have many
+/// devices (each device's token is its own doc).
+///
+/// This does not send any FCM messages itself — sending is done
+/// server-side (Cloud Functions) using the tokens stored here, per the
+/// project's requirement that only the backend sends pushes.
 class FcmTokenService {
   FcmTokenService._();
   static final instance = FcmTokenService._();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final _messaging = FirebaseMessaging.instance;
+  final _db = FirebaseFirestore.instance;
 
-  StreamSubscription<User?>? _authSub;
-  StreamSubscription<String?>? _tokenSub;
+  bool _refreshListenerAttached = false;
 
+  CollectionReference<Map<String, dynamic>> _tokensFor(String uid) =>
+      _db.collection('users').doc(uid).collection('fcmTokens');
+
+  /// Requests notification permission (iOS requires this explicitly;
+  /// Android 13+ permission itself is requested via the existing
+  /// permission_handler POST_NOTIFICATIONS flow used for local reminder
+  /// alarms — this call is safe to make on both platforms).
+  Future<bool> requestPermission() async {
+    final settings = await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+
+  /// Initializes token registration for the current signed-in user and
+  /// attaches the refresh listener once.
   Future<void> initialize() async {
-    // Request permissions on supported platforms
-    try {
-      await _messaging.requestPermission();
-    } catch (e) {
-      debugPrint('[FcmTokenService] requestPermission error: $e');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await registerCurrentToken();
+    }
+  }
+
+  /// Registers (or re-registers) the current device's FCM token for the
+  /// signed-in user, and starts listening for token refreshes. Call this
+  /// after login and on app start once a user is signed in.
+  Future<void> registerCurrentToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final token = await _messaging.getToken();
+    if (token != null) {
+      await _saveToken(user.uid, token);
     }
 
-    // React to auth changes
-    _authSub = _auth.authStateChanges().listen((user) async {
-      if (user != null) {
-        await _registerCurrentToken();
-        // listen for token refresh
-        _tokenSub?.cancel();
-        _tokenSub = FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
-          await _saveToken(token);
-        });
-      } else {
-        // logout: remove any stored tokens for this client device
-        _tokenSub?.cancel();
-        await _removeCurrentToken();
-      }
-    });
+    if (!_refreshListenerAttached) {
+      _refreshListenerAttached = true;
+      _messaging.onTokenRefresh.listen((newToken) {
+        final current = FirebaseAuth.instance.currentUser;
+        if (current != null) {
+          _saveToken(current.uid, newToken);
+        }
+      });
+    }
   }
 
-  Future<void> dispose() async {
-    await _authSub?.cancel();
-    await _tokenSub?.cancel();
+  Future<void> _saveToken(String uid, String token) async {
+    await _tokensFor(uid).doc(token).set({
+      'token': token,
+      'platform': Platform.isIOS ? 'ios' : 'android',
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
-  Future<void> _registerCurrentToken() async {
+  /// Removes only this device's token for [uid]. Call before signing out
+  /// so a logged-out device stops receiving pushes for that account, while
+  /// leaving that user's other devices registered.
+  Future<void> removeCurrentDeviceToken(String uid) async {
     final token = await _messaging.getToken();
     if (token == null) return;
-    await _saveToken(token);
-  }
-
-  String _deviceDocIdFor(String token) => token.replaceAll(RegExp(r"[^a-zA-Z0-9_-]"), '_');
-
-  Future<void> _saveToken(String token) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-
-    try {
-      final docId = _deviceDocIdFor(token);
-      final docRef = _db.collection('users').doc(uid).collection('devices').doc(docId);
-      await docRef.set({
-        'token': token,
-        'platform': defaultTargetPlatform.name,
-        'lastSeenAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      debugPrint('[FcmTokenService] saved token for user=$uid doc=$docId');
-    } catch (e) {
-      debugPrint('[FcmTokenService] _saveToken error: $e');
-    }
-  }
-
-  Future<void> _removeCurrentToken() async {
-    try {
-      final token = await _messaging.getToken();
-      if (token == null) return;
-      final uid = _auth.currentUser?.uid;
-      // If no logged-in user, remove from any users collection that may own it is not safe.
-      // Best-effort: try removing from previous user's devices if any.
-      if (uid != null) {
-        final docId = _deviceDocIdFor(token);
-        await _db.collection('users').doc(uid).collection('devices').doc(docId).delete().catchError((_) {});
-        debugPrint('[FcmTokenService] removed token doc=$docId for user=$uid');
-      }
-      // Also delete token locally
-      await _messaging.deleteToken();
-    } catch (e) {
-      debugPrint('[FcmTokenService] _removeCurrentToken error: $e');
-    }
+    await _tokensFor(uid).doc(token).delete().catchError((_) {});
   }
 }

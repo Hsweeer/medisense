@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../data/models/caregiver_models.dart';
 import '../../data/models/models.dart';
+import '../../services/notification_server_client.dart';
 
 class CaregiverService {
   CaregiverService._();
@@ -50,25 +51,30 @@ class CaregiverService {
     await _links
         .doc(id)
         .set(
-      CaregiverLink(
-        id: id,
-        senderUid: _uid,
-        senderName: myName,
-        recipientUid: recipient.uid,
-        recipientName: recipient.name,
-        status: CaregiverLinkStatus.pending,
-        requestedAt: DateTime.now(),
-      ).toMap(),
-    );
+          CaregiverLink(
+            id: id,
+            senderUid: _uid,
+            senderName: myName,
+            recipientUid: recipient.uid,
+            recipientName: recipient.name,
+            status: CaregiverLinkStatus.pending,
+            requestedAt: DateTime.now(),
+          ).toMap(),
+        );
+
+    try {
+      await NotificationServerClient.notifyCaregiverRequest(id);
+    } catch (_) {
+      // Best-effort: the Firestore write is still successful even if the push
+      // server is temporarily unavailable.
+    }
   }
 
   Future<void> respondToRequest(String linkId, {required bool accept}) async {
-    await _links.doc(linkId).update({
-      'status':
-      (accept ? CaregiverLinkStatus.accepted : CaregiverLinkStatus.declined)
-          .name,
-      'respondedAtMs': DateTime.now().millisecondsSinceEpoch,
-    });
+    await NotificationServerClient.respondCaregiverRequest(
+      requestId: linkId,
+      action: accept ? 'accept' : 'reject',
+    );
   }
 
   Stream<List<CaregiverLink>> incomingRequests() {
@@ -78,8 +84,8 @@ class CaregiverService {
         .snapshots()
         .map(
           (s) =>
-          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
-    );
+              s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+        );
   }
 
   /// Every request I've ever sent, in every status (pending, accepted,
@@ -92,8 +98,8 @@ class CaregiverService {
         .snapshots()
         .map(
           (s) =>
-          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
-    );
+              s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+        );
   }
 
   Stream<List<CaregiverLink>> myAcceptedRecipients() {
@@ -103,8 +109,8 @@ class CaregiverService {
         .snapshots()
         .map(
           (s) =>
-          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
-    );
+              s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+        );
   }
 
   Stream<List<CaregiverLink>> whoHasAccessToMe() {
@@ -114,8 +120,8 @@ class CaregiverService {
         .snapshots()
         .map(
           (s) =>
-          s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
-    );
+              s.docs.map((d) => CaregiverLink.fromMap(d.data(), d.id)).toList(),
+        );
   }
 
   Future<void> revokeAccess(String linkId) async {
@@ -123,6 +129,12 @@ class CaregiverService {
       'status': CaregiverLinkStatus.restricted.name,
       'respondedAtMs': DateTime.now().millisecondsSinceEpoch,
     });
+
+    try {
+      await NotificationServerClient.notifyCaregiverResponse(linkId);
+    } catch (_) {
+      // Best-effort notification after a status change outside the accept/reject flow.
+    }
   }
 
   Future<void> cancelRemindersFrom(String senderUid) async {
@@ -160,11 +172,23 @@ class CaregiverService {
         ..['createdByUid'] = _uid
         ..['recipientUid'] = recipientUid;
 
-      await _db
+      final reminderDoc = await _db
           .collection('users')
           .doc(recipientUid)
           .collection('reminders')
           .add(data);
+
+      if (_uid != recipientUid) {
+        try {
+          await NotificationServerClient.notifyReminder(
+            recipientUid: recipientUid,
+            reminderId: reminderDoc.id,
+          );
+        } catch (_) {
+          // Best-effort: Firestore reminder creation still succeeds if the push
+          // server is unavailable.
+        }
+      }
     }
   }
 

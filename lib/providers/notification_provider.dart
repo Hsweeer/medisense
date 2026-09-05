@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/widgets.dart';
 
+import '../data/models/app_notification.dart';
 import '../data/models/notification_model.dart';
 import '../services/notification_service.dart';
 import '../services/notification_repository.dart';
@@ -23,7 +24,7 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
       _remSub?.cancel();
       if (user != null) {
         _remSub = NotificationRepository.instance.notificationsStream(user.uid).listen((items) {
-          notifications = items;
+          notifications = items.map(_toNotificationItem).toList();
           isLoading = false;
           notifyListeners();
         });
@@ -38,7 +39,7 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
   final ReminderProvider _reminderProvider;
   final _service = NotificationService.instance;
 
-  StreamSubscription<List<NotificationItem>>? _remSub;
+  StreamSubscription<List<AppNotification>>? _remSub;
 
   List<NotificationItem> notifications = [];
   bool isLoading = true;
@@ -48,18 +49,16 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   int get unreadCount => notifications.where((n) => !n.isRead).length;
 
-  Future<void> _load() async {
-    debugPrint('[NotificationProvider] _load() start');
-    isLoading = true;
-    notifyListeners();
-    // Fallback to local history when not signed in
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      notifications = await _service.loadHistory();
-    }
-    debugPrint('[NotificationProvider] _load() loaded ${notifications.length} items');
-    isLoading = false;
-    notifyListeners();
+  NotificationItem _toNotificationItem(AppNotification item) {
+    return NotificationItem(
+      id: item.id,
+      title: item.title,
+      message: item.body,
+      date: NotificationService.formatDate(item.createdAt),
+      time: NotificationService.formatTime(item.createdAt),
+      createdAt: item.createdAt,
+      isRead: item.isRead,
+    );
   }
 
   /// Re-reads history from disk. Safe to call as often as needed.
@@ -89,7 +88,7 @@ class NotificationProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> delete(NotificationItem item) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      await NotificationRepository.instance.delete(uid, item.id);
+      await NotificationRepository.instance.deleteNotification(uid, item.id);
     } else {
       notifications = await _service.deleteNotification(item.id);
       notifyListeners();

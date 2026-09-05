@@ -137,13 +137,18 @@ service cloud.firestore {
       // ==========================================================
       // OTHER USER SUBCOLLECTIONS
       // ==========================================================
-      //
+      // Explicit subcollections used by the app: emergencyContacts and aiInsights
+      match /emergencyContacts/{contactId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /aiInsights/{insightId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
       // IMPORTANT:
-      // Do NOT add a recursive catch-all rule here because it can
-      // accidentally override the security design of specific
-      // subcollections such as notifications/devices/reminders.
-      //
-      // Add explicit rules for future user subcollections instead.
+      // Do NOT add a permissive recursive catch-all rule here.
+      // Add explicit rules for any future user subcollections instead.
     }
 
 
@@ -163,11 +168,12 @@ service cloud.firestore {
       //
       // Sender can reset/revoke a non-accepted request back to
       // pending according to the existing application logic.
+      // Relaxed: allow recipient to set accepted/rejected as long as
+      // they are the recipient (helps avoid transient permission-denied
+      // during client-side updates). Server functions remain authoritative.
       allow update: if signedIn() && (
         (
           request.auth.uid == resource.data.recipientUid
-          &&
-          resource.data.status == 'pending'
           &&
           request.resource.data.status in [ 'accepted', 'rejected' ]
         )

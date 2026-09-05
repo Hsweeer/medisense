@@ -19,6 +19,7 @@ class FoodReviewScreen extends StatefulWidget {
     required this.foodName,
     required this.portionLabel,
     required this.nutrition,
+    this.ingredients,
     this.photo,
     this.photoBytes,
   });
@@ -26,6 +27,7 @@ class FoodReviewScreen extends StatefulWidget {
   final String foodName;
   final String portionLabel;
   final FoodNutrition nutrition;
+  final String? ingredients;
   final File? photo;
   final Uint8List? photoBytes;
 
@@ -93,7 +95,10 @@ class _FoodReviewScreenState extends State<FoodReviewScreen> {
   }
 
   Future<void> _confirm() async {
-    if (await NutritionHistoryPreferences.instance.isEnabled() &&
+    final historyEnabled = await NutritionHistoryPreferences.instance
+        .isEnabled();
+    if (!mounted) return;
+    if (historyEnabled &&
         !await requireLogin(
           context,
           feature: 'save this to your nutrition history',
@@ -103,7 +108,7 @@ class _FoodReviewScreenState extends State<FoodReviewScreen> {
     if (!mounted) return;
     setState(() => _saving = true);
 
-    if (await NutritionHistoryPreferences.instance.isEnabled()) {
+    if (historyEnabled) {
       await FoodLogService.instance.save(
         FoodLogEntry(
           foodName: widget.foodName,
@@ -565,6 +570,41 @@ class _FoodReviewScreenState extends State<FoodReviewScreen> {
                         ),
                         const SizedBox(height: 12),
                       ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.list_alt_rounded,
+                        size: 16,
+                        color: AppColors.primaryDark,
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Ingredients',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  MCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      widget.ingredients?.trim().isNotEmpty == true
+                          ? widget.ingredients!.trim()
+                          : 'Ingredients are not available for this product.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.45,
+                        color: AppColors.inkSoft,
+                      ),
                     ),
                   ),
 
