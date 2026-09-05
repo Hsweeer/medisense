@@ -333,12 +333,16 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
             SizedBox(height: 26.h),
             _SectionLabel('SCHEDULE'),
             SizedBox(height: 12.h),
-            Wrap(
-              spacing: 8.w,
-              runSpacing: 10.h,
-              children: [
-                for (final s in _scheduleOptions)
-                  GestureDetector(
+            SizedBox(
+              height: 42.h,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: _scheduleOptions.length,
+                separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                itemBuilder: (context, index) {
+                  final s = _scheduleOptions[index];
+                  return GestureDetector(
                     onTap: () {
                       if (s == 'On a date') {
                         _pickOnDate();
@@ -393,8 +397,9 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                         ],
                       ),
                     ),
-                  ),
-              ],
+                  );
+                },
+              ),
             ),
             if (_schedule == 'Custom') ...[
               SizedBox(height: 20.h),

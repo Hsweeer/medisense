@@ -51,7 +51,7 @@ class _CreateCaregiverReminderScreenState
   static const _scheduleOptions = [
     'Daily',
     'Weekdays',
-    'Mon · Wed · Fri',
+    'Mon, Wed, Fri',
     'Custom',
     'On a date',
   ];
@@ -424,12 +424,16 @@ class _CreateCaregiverReminderScreenState
               SizedBox(height: 26.h),
               _SectionLabel('SCHEDULE'),
               SizedBox(height: 12.h),
-              Wrap(
-                spacing: 8.w,
-                runSpacing: 10.h,
-                children: [
-                  for (final s in _scheduleOptions)
-                    GestureDetector(
+              SizedBox(
+                height: 42.h,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _scheduleOptions.length,
+                  separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                  itemBuilder: (context, index) {
+                    final s = _scheduleOptions[index];
+                    return GestureDetector(
                       onTap: () {
                         if (s == 'On a date') {
                           _pickOnDate();
@@ -440,7 +444,7 @@ class _CreateCaregiverReminderScreenState
                           _onDate = null;
                           if (s == 'Daily') _selectedDays = {};
                           if (s == 'Weekdays') _selectedDays = {1, 2, 3, 4, 5};
-                          if (s == 'Mon · Wed · Fri') _selectedDays = {1, 3, 5};
+                          if (s == 'Mon, Wed, Fri') _selectedDays = {1, 3, 5};
                         });
                       },
                       child: AnimatedContainer(
@@ -484,8 +488,9 @@ class _CreateCaregiverReminderScreenState
                           ],
                         ),
                       ),
-                    ),
-                ],
+                    );
+                  },
+                ),
               ),
               if (_schedule == 'Custom') ...[
                 SizedBox(height: 20.h),
