@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../../../data/models/caregiver_models.dart';
 import '../../../data/models/models.dart';
+import '../../reminders/custom_suggestions_store.dart';
 import '../../reminders/reminder_form_helpers.dart';
 
 /// Full-screen "create a reminder for someone I care for" flow, styled to
@@ -14,7 +15,12 @@ import '../../reminders/reminder_form_helpers.dart';
 /// chips, multi-time picker with a clock icon, day-of-week schedule) with
 /// one extra section up top so the caregiver can choose who it's for.
 class CreateCaregiverReminderScreen extends StatefulWidget {
-  const CreateCaregiverReminderScreen({super.key});
+  const CreateCaregiverReminderScreen({super.key, this.initialRecipientUid});
+
+  /// When opened straight from a specific person's card (the "For someone
+  /// else" list), that person is preselected so the caregiver doesn't
+  /// have to find and tap their chip again.
+  final String? initialRecipientUid;
 
   @override
   State<CreateCaregiverReminderScreen> createState() =>
@@ -23,7 +29,9 @@ class CreateCaregiverReminderScreen extends StatefulWidget {
 
 class _CreateCaregiverReminderScreenState
     extends State<CreateCaregiverReminderScreen> {
-  final Set<String> _selectedRecipientUids = {};
+  late final Set<String> _selectedRecipientUids = {
+    if (widget.initialRecipientUid != null) widget.initialRecipientUid!,
+  };
 
   ReminderCategory _category = ReminderCategory.medication;
   bool _directAssign = true;
@@ -35,9 +43,53 @@ class _CreateCaregiverReminderScreenState
   final List<String> _times = [];
   String _schedule = 'Daily';
   Set<int> _selectedDays = {};
+  DateTime? _onDate;
   bool _saving = false;
 
-  static const _scheduleOptions = ['Daily', 'Weekdays', 'Mon · Wed · Fri', 'Custom'];
+  List<String> _customSuggestions = [];
+
+  static const _scheduleOptions = [
+    'Daily',
+    'Weekdays',
+    'Mon · Wed · Fri',
+    'Custom',
+    'On a date',
+  ];
+
+  List<String> get _allSuggestions => [
+    ..._category.suggestions,
+    ..._customSuggestions,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomSuggestions();
+  }
+
+  Future<void> _loadCustomSuggestions() async {
+    final saved = await CustomSuggestionsStore.instance.load(_category);
+    if (mounted) setState(() => _customSuggestions = saved);
+  }
+
+  Future<void> _addCustomSuggestion(String value) async {
+    final updated = await CustomSuggestionsStore.instance.add(_category, value);
+    if (!mounted) return;
+    setState(() {
+      _customSuggestions = updated;
+      _name.text = value;
+    });
+  }
+
+  Future<void> _pickOnDate() async {
+    final picked = await pickAppointmentDate(context, initial: _onDate);
+    if (picked == null) return;
+    setState(() {
+      _schedule = 'On a date';
+      _onDate = picked;
+      _selectedDays = {};
+    });
+  }
 
   @override
   void dispose() {
@@ -52,12 +104,20 @@ class _CreateCaregiverReminderScreenState
     FocusScope.of(context).unfocus();
 
     if (_selectedRecipientUids.isEmpty) {
-      showToast(context, 'Please select at least one recipient', color: AppColors.danger);
+      showToast(
+        context,
+        'Please select at least one recipient',
+        color: AppColors.danger,
+      );
       return;
     }
     final name = _name.text.trim();
     if (name.isEmpty) {
       showToast(context, 'Please enter a name first', color: AppColors.danger);
+      return;
+    }
+    if (_schedule == 'On a date' && _onDate == null) {
+      showToast(context, 'Please pick a date', color: AppColors.danger);
       return;
     }
 
@@ -68,13 +128,17 @@ class _CreateCaregiverReminderScreenState
       final sorted = _selectedDays.toList()..sort();
       const dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       finalSchedule = sorted.map((d) => dayNames[d]).join(' · ');
+    } else if (_schedule == 'On a date' && _onDate != null) {
+      finalSchedule = formatAppointmentDate(_onDate!);
     }
     final joinedTimes = _times.isEmpty ? '9:00 AM' : _times.join(', ');
 
     final reminder = Reminder(
       title: name,
       dose: _directAssign
-          ? (_value.text.trim().isEmpty ? _category.defaultValue : _value.text.trim())
+          ? (_value.text.trim().isEmpty
+                ? _category.defaultValue
+                : _value.text.trim())
           : '',
       time: joinedTimes,
       schedule: finalSchedule,
@@ -88,11 +152,19 @@ class _CreateCaregiverReminderScreenState
         recipientUids: _selectedRecipientUids.toList(),
       );
       if (!mounted) return;
-      showToast(context, '$name added for your recipients', color: _category.color);
+      showToast(
+        context,
+        '$name added for your recipients',
+        color: _category.color,
+      );
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      showToast(context, 'Could not create reminder: $e', color: AppColors.danger);
+      showToast(
+        context,
+        'Could not create reminder: $e',
+        color: AppColors.danger,
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -110,9 +182,14 @@ class _CreateCaregiverReminderScreenState
         appBar: AppBar(
           backgroundColor: AppColors.paper,
           elevation: 0,
-          title: Text('New reminder for someone',
-              style: GoogleFonts.sora(
-                  fontSize: 17.sp, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          title: Text(
+            'New reminder for someone',
+            style: GoogleFonts.sora(
+              fontSize: 17.sp,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
         ),
         body: SafeArea(
           child: ListView(
@@ -136,42 +213,66 @@ class _CreateCaregiverReminderScreenState
               SizedBox(height: 26.h),
               _SectionLabel('CATEGORY'),
               SizedBox(height: 10.h),
-              Wrap(
-                spacing: 8.w,
-                runSpacing: 8.h,
-                children: [
-                  for (final c in ReminderCategory.values)
-                    _CategoryChip(
+              SizedBox(
+                height: 42.h,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: ReminderCategory.values.length,
+                  separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                  itemBuilder: (ctx, i) {
+                    final c = ReminderCategory.values[i];
+                    return _CategoryChip(
                       category: c,
                       selected: _category == c,
-                      onTap: () => setState(() {
-                        _category = c;
-                        _name.clear();
-                      }),
-                    ),
-                ],
+                      onTap: () {
+                        setState(() {
+                          _category = c;
+                          _name.clear();
+                        });
+                        _loadCustomSuggestions();
+                      },
+                    );
+                  },
+                ),
               ),
               SizedBox(height: 14.h),
               _CategoryBanner(category: _category),
               SizedBox(height: 26.h),
-              _SectionLabel(_category.nameSectionLabel),
-              SizedBox(height: 10.h),
-              Wrap(
-                spacing: 8.w,
-                runSpacing: 8.h,
+              Row(
                 children: [
-                  for (final s in _category.suggestions)
-                    _SuggestionChip(
+                  Expanded(child: _SectionLabel(_category.nameSectionLabel)),
+                  AddSuggestionButton(
+                    color: accent,
+                    hintText: _category.nameFieldHint,
+                    onAdded: _addCustomSuggestion,
+                  ),
+                ],
+              ),
+              SizedBox(height: 10.h),
+              SizedBox(
+                height: 38.h,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _allSuggestions.length,
+                  separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                  itemBuilder: (ctx, i) {
+                    final s = _allSuggestions[i];
+                    return _SuggestionChip(
                       label: s,
                       selected: _name.text.trim() == s,
                       color: accent,
                       onTap: () => setState(() => _name.text = s),
-                    ),
-                ],
+                    );
+                  },
+                ),
               ),
               SizedBox(height: 6.h),
-              Text('Tap a suggestion or type your own below.',
-                  style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
+              Text(
+                'Tap a suggestion, add your own with +, or type below.',
+                style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+              ),
               SizedBox(height: 12.h),
               TextField(
                 controller: _name,
@@ -224,7 +325,10 @@ class _CreateCaregiverReminderScreenState
                 children: [
                   for (final t in _times)
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 9.h,
+                      ),
                       decoration: BoxDecoration(
                         color: accent.withValues(alpha: .10),
                         borderRadius: BorderRadius.circular(12.r),
@@ -233,13 +337,20 @@ class _CreateCaregiverReminderScreenState
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.access_time_filled_rounded, color: accent, size: 16.sp),
+                          Icon(
+                            Icons.access_time_filled_rounded,
+                            color: accent,
+                            size: 16.sp,
+                          ),
                           SizedBox(width: 6.w),
-                          Text(t,
-                              style: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.ink)),
+                          Text(
+                            t,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
                           SizedBox(width: 4.w),
                           GestureDetector(
                             onTap: () {
@@ -247,7 +358,11 @@ class _CreateCaregiverReminderScreenState
                                 setState(() => _times.remove(t));
                               }
                             },
-                            child: Icon(Icons.close_rounded, size: 16.sp, color: AppColors.muted),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 16.sp,
+                              color: AppColors.muted,
+                            ),
                           ),
                         ],
                       ),
@@ -265,12 +380,18 @@ class _CreateCaregiverReminderScreenState
                             final t = parseTimeLabel(s) ?? TimeOfDay.now();
                             return t.hour * 60 + t.minute;
                           }
-                          _times.sort((a, b) => minutesOf(a).compareTo(minutesOf(b)));
+
+                          _times.sort(
+                            (a, b) => minutesOf(a).compareTo(minutesOf(b)),
+                          );
                         });
                       }
                     },
                     child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 9.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 9.h,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.card,
                         borderRadius: BorderRadius.circular(12.r),
@@ -281,9 +402,14 @@ class _CreateCaregiverReminderScreenState
                         children: [
                           Icon(Icons.add_rounded, size: 16.sp, color: accent),
                           SizedBox(width: 4.w),
-                          Text('Add time',
-                              style: TextStyle(
-                                  fontSize: 13.sp, fontWeight: FontWeight.w700, color: accent)),
+                          Text(
+                            'Add time',
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w700,
+                              color: accent,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -291,8 +417,10 @@ class _CreateCaregiverReminderScreenState
                 ],
               ),
               SizedBox(height: 6.h),
-              Text('Add every time this is due — one reminder handles all of them.',
-                  style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted)),
+              Text(
+                'Add every time this is due — one reminder handles all of them.',
+                style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
+              ),
               SizedBox(height: 26.h),
               _SectionLabel('SCHEDULE'),
               SizedBox(height: 12.h),
@@ -303,8 +431,13 @@ class _CreateCaregiverReminderScreenState
                   for (final s in _scheduleOptions)
                     GestureDetector(
                       onTap: () {
+                        if (s == 'On a date') {
+                          _pickOnDate();
+                          return;
+                        }
                         setState(() {
                           _schedule = s;
+                          _onDate = null;
                           if (s == 'Daily') _selectedDays = {};
                           if (s == 'Weekdays') _selectedDays = {1, 2, 3, 4, 5};
                           if (s == 'Mon · Wed · Fri') _selectedDays = {1, 3, 5};
@@ -312,17 +445,44 @@ class _CreateCaregiverReminderScreenState
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16.w,
+                          vertical: 10.h,
+                        ),
                         decoration: BoxDecoration(
                           color: s == _schedule ? accent : AppColors.card,
                           borderRadius: BorderRadius.circular(12.r),
-                          border: Border.all(color: s == _schedule ? accent : AppColors.line),
+                          border: Border.all(
+                            color: s == _schedule ? accent : AppColors.line,
+                          ),
                         ),
-                        child: Text(s,
-                            style: TextStyle(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (s == 'On a date') ...[
+                              Icon(
+                                Icons.event_rounded,
+                                size: 15.sp,
+                                color: s == _schedule
+                                    ? Colors.white
+                                    : AppColors.muted,
+                              ),
+                              SizedBox(width: 5.w),
+                            ],
+                            Text(
+                              s == 'On a date' && _onDate != null
+                                  ? formatAppointmentDate(_onDate!)
+                                  : s,
+                              style: TextStyle(
                                 fontSize: 13.sp,
                                 fontWeight: FontWeight.w700,
-                                color: s == _schedule ? Colors.white : AppColors.muted)),
+                                color: s == _schedule
+                                    ? Colors.white
+                                    : AppColors.muted,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                 ],
@@ -332,7 +492,9 @@ class _CreateCaregiverReminderScreenState
                 Container(
                   padding: EdgeInsets.all(12.r),
                   decoration: BoxDecoration(
-                      color: _category.softColor, borderRadius: BorderRadius.circular(16.r)),
+                    color: _category.softColor,
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -344,7 +506,9 @@ class _CreateCaregiverReminderScreenState
                           onTap: () {
                             setState(() {
                               if (_selectedDays.contains(i)) {
-                                if (_selectedDays.length > 1) _selectedDays.remove(i);
+                                if (_selectedDays.length > 1) {
+                                  _selectedDays.remove(i);
+                                }
                               } else {
                                 _selectedDays.add(i);
                               }
@@ -353,6 +517,15 @@ class _CreateCaregiverReminderScreenState
                         ),
                     ],
                   ),
+                ),
+              ],
+              if (_schedule == 'On a date') ...[
+                SizedBox(height: 6.h),
+                Text(
+                  _onDate == null
+                      ? 'Tap "On a date" again to pick a date.'
+                      : 'This reminder is set for ${formatAppointmentDate(_onDate!)} only.',
+                  style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
                 ),
               ],
               SizedBox(height: 26.h),
@@ -409,8 +582,10 @@ class _RecipientPicker extends StatelessWidget {
                   child: const CircularProgressIndicator(strokeWidth: 2),
                 ),
                 SizedBox(width: 12.w),
-                Text('Loading your recipients…',
-                    style: TextStyle(fontSize: 13.sp, color: AppColors.muted)),
+                Text(
+                  'Loading your recipients…',
+                  style: TextStyle(fontSize: 13.sp, color: AppColors.muted),
+                ),
               ],
             ),
           );
@@ -426,14 +601,21 @@ class _RecipientPicker extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline_rounded, size: 20.sp, color: AppColors.onSoft),
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 20.sp,
+                  color: AppColors.onSoft,
+                ),
                 SizedBox(width: 10.w),
                 Expanded(
-                  child: Text('No accepted recipients yet — send a request first.',
-                      style: TextStyle(
-                          fontSize: 12.5.sp,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.onSoft)),
+                  child: Text(
+                    'No accepted recipients yet — send a request first.',
+                    style: TextStyle(
+                      fontSize: 12.5.sp,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.onSoft,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -454,7 +636,8 @@ class _RecipientPicker extends StatelessWidget {
                   color: selected ? AppColors.primary : AppColors.card,
                   borderRadius: BorderRadius.circular(99.r),
                   border: Border.all(
-                      color: selected ? AppColors.primary : AppColors.line),
+                    color: selected ? AppColors.primary : AppColors.line,
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -469,20 +652,28 @@ class _RecipientPicker extends StatelessWidget {
                             ? l.recipientName[0].toUpperCase()
                             : '?',
                         style: TextStyle(
-                            fontSize: 10.sp,
-                            fontWeight: FontWeight.w800,
-                            color: selected ? Colors.white : AppColors.onSoft),
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w800,
+                          color: selected ? Colors.white : AppColors.onSoft,
+                        ),
                       ),
                     ),
                     SizedBox(width: 8.w),
-                    Text(l.recipientName,
-                        style: TextStyle(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w700,
-                            color: selected ? Colors.white : AppColors.inkSoft)),
+                    Text(
+                      l.recipientName,
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: selected ? Colors.white : AppColors.inkSoft,
+                      ),
+                    ),
                     if (selected) ...[
                       SizedBox(width: 6.w),
-                      Icon(Icons.check_circle_rounded, size: 15.sp, color: Colors.white),
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 15.sp,
+                        color: Colors.white,
+                      ),
                     ],
                   ],
                 ),
@@ -500,7 +691,11 @@ class _RecipientPicker extends StatelessWidget {
 /// caregiver's reminder looks and behaves identically once it lands on the
 /// recipient's device.
 class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({required this.category, required this.selected, required this.onTap});
+  const _CategoryChip({
+    required this.category,
+    required this.selected,
+    required this.onTap,
+  });
 
   final ReminderCategory category;
   final bool selected;
@@ -519,16 +714,24 @@ class _CategoryChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(14.r),
           border: Border.all(color: selected ? color : AppColors.line),
         ),
+        alignment: Alignment.center,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(category.icon, size: 17.sp, color: selected ? Colors.white : color),
+            Icon(
+              category.icon,
+              size: 17.sp,
+              color: selected ? Colors.white : color,
+            ),
             SizedBox(width: 7.w),
-            Text(category.label,
-                style: TextStyle(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? Colors.white : AppColors.inkSoft)),
+            Text(
+              category.label,
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.inkSoft,
+              ),
+            ),
           ],
         ),
       ),
@@ -565,11 +768,14 @@ class _TogglePill extends StatelessWidget {
           borderRadius: BorderRadius.circular(12.r),
           border: Border.all(color: selected ? color : AppColors.line),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 13.sp,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.muted)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13.sp,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : AppColors.muted,
+          ),
+        ),
       ),
     );
   }
@@ -602,12 +808,15 @@ class _CategoryBanner extends StatelessWidget {
           ),
           SizedBox(width: 12.w),
           Expanded(
-            child: Text(category.description,
-                style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: category.color,
-                    height: 1.4)),
+            child: Text(
+              category.description,
+              style: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: category.color,
+                height: 1.4,
+              ),
+            ),
           ),
         ],
       ),
@@ -622,12 +831,15 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text,
-        style: TextStyle(
-            fontSize: 11.sp,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: AppColors.muted));
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 11.sp,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.2,
+        color: AppColors.muted,
+      ),
+    );
   }
 }
 
@@ -656,11 +868,15 @@ class _SuggestionChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(99.r),
           border: Border.all(color: selected ? color : AppColors.line),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12.5.sp,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.inkSoft)),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5.sp,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : AppColors.inkSoft,
+          ),
+        ),
       ),
     );
   }

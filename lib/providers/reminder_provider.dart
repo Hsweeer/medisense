@@ -23,19 +23,25 @@ class ReminderProvider extends ChangeNotifier {
     // Immediate check for current user on startup
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
-      debugPrint('[ReminderProvider] User already logged in: ${currentUser.email}, fetching...');
+      debugPrint(
+        '[ReminderProvider] User already logged in: ${currentUser.email}, fetching...',
+      );
       _initializeReminders();
     }
 
     // Listen to future auth changes (login/logout)
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
-        debugPrint('[ReminderProvider] Auth change: User logged in: ${user.email}');
+        debugPrint(
+          '[ReminderProvider] Auth change: User logged in: ${user.email}',
+        );
         // Reset initialization to force a reload for the new user
         _initialized = false;
         _initializeReminders();
       } else {
-        debugPrint('[ReminderProvider] Auth change: User logged out, clearing data...');
+        debugPrint(
+          '[ReminderProvider] Auth change: User logged out, clearing data...',
+        );
         _remindersSub?.cancel();
         _remindersSub = null;
         reminders.clear();
@@ -57,7 +63,8 @@ class ReminderProvider extends ChangeNotifier {
       reminders.clear();
       reminders.addAll(loaded);
       debugPrint(
-          '[ReminderProvider] initialized with ${reminders.length} reminders from Firestore');
+        '[ReminderProvider] initialized with ${reminders.length} reminders from Firestore',
+      );
 
       // Reschedule alarms for all enabled reminders (cold start recovery),
       // and reset any status left over from a previous day — otherwise a
@@ -66,7 +73,8 @@ class ReminderProvider extends ChangeNotifier {
       for (final r in reminders) {
         if (r.status != DoseStatus.pending && r.isStatusStale) {
           debugPrint(
-              '[ReminderProvider] Resetting stale status for "${r.title}" (was ${r.status})');
+            '[ReminderProvider] Resetting stale status for "${r.title}" (was ${r.status})',
+          );
           r.status = DoseStatus.pending;
           r.snoozeLabel = null;
           r.lastStatusDate = DateTime.now();
@@ -139,11 +147,13 @@ class ReminderProvider extends ChangeNotifier {
       }
 
       final existing = reminders[idx];
-      final scheduleRelevantChange = existing.time != fresh.time ||
+      final scheduleRelevantChange =
+          existing.time != fresh.time ||
           existing.schedule != fresh.schedule ||
           existing.enabled != fresh.enabled ||
           existing.dose != fresh.dose;
-      final anyChange = scheduleRelevantChange ||
+      final anyChange =
+          scheduleRelevantChange ||
           existing.status != fresh.status ||
           existing.snoozeLabel != fresh.snoozeLabel ||
           existing.instructions != fresh.instructions;
@@ -267,6 +277,17 @@ class ReminderProvider extends ChangeNotifier {
 
   /// Add a new reminder: save to Firestore, schedule alarm, and update UI.
   Future<void> add(Reminder r) async {
+    // Guest users can create personal reminders without an account. These
+    // remain in the provider for the current guest session and still get
+    // native alarms, while signed-in users continue using Firestore.
+    if (!_firestoreService.isLoggedIn) {
+      r.id ??= 'guest-${DateTime.now().microsecondsSinceEpoch}';
+      reminders.insert(0, r);
+      NotificationService.instance.scheduleReminder(r);
+      notifyListeners();
+      return;
+    }
+
     final saved = await _firestoreService.createReminder(r);
     if (saved != null) {
       reminders.insert(0, saved); // Insert at top (newest)
@@ -291,8 +312,13 @@ class ReminderProvider extends ChangeNotifier {
   }
 
   /// Update a reminder: save to Firestore, reschedule alarm, and update UI.
-  Future<void> update(Reminder r,
-      {String? dose, String? time, String? schedule, String? instructions}) async {
+  Future<void> update(
+    Reminder r, {
+    String? dose,
+    String? time,
+    String? schedule,
+    String? instructions,
+  }) async {
     if (dose != null && dose.isNotEmpty) r.dose = dose;
     if (time != null && time.isNotEmpty) r.time = time;
     if (schedule != null && schedule.isNotEmpty) r.schedule = schedule;

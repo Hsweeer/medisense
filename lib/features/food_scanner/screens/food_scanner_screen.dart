@@ -115,6 +115,7 @@ class _FoodScannerScreenState extends State<FoodScannerScreen> {
             foodName: product.name,
             portionLabel: product.nutrition.portionLabel,
             nutrition: product.nutrition,
+            ingredients: product.ingredients,
           ),
         ),
       );

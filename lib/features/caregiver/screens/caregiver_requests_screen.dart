@@ -10,34 +10,34 @@ import 'create_caregiver_reminder_screen.dart';
 
 /// "Caregiver requests" — a premium hero header, three color-coded summary
 /// cards (pending / who manages you / who you manage), and an "Invite
-/// caregiver" call-to-action card. Tapping a summary card opens a detail
-/// sheet with the same accept/decline/revoke actions as before — no
-/// functionality changed, only the visual layer.
+/// caregiver" call-to-action card. Tapping a summary card navigates to a
+/// dedicated full screen with the same accept/decline/revoke actions as
+/// before, instead of opening a bottom sheet.
 class CaregiverRequestsScreen extends StatelessWidget {
   const CaregiverRequestsScreen({super.key});
-
-  Future<void> _revoke(BuildContext context, CaregiverLink link) async {
-    final cancelExisting = await AppDialog.confirm(
-      context: context,
-      title: 'Restrict ${link.senderName}?',
-      message:
-          '${link.senderName} won\'t be able to create new reminders for you. '
-          'Do you also want to cancel reminders they already created?',
-      confirmText: 'Cancel those too',
-      cancelText: 'Keep existing reminders',
-      destructive: true,
-      icon: Icons.block_rounded,
-    );
-    if (!cancelExisting) return;
-
-    await CaregiverService.instance.revokeAccess(link.id);
-    await CaregiverService.instance.cancelRemindersFrom(link.senderUid);
-  }
 
   void _openAddCaregiver(BuildContext context) {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const AddCaregiverScreen()));
+  }
+
+  void _openPendingScreen(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const _PendingRequestsScreen()));
+  }
+
+  void _openAccessScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const _PeopleWhoManageYouScreen()),
+    );
+  }
+
+  void _openManagedScreen(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const _PeopleYouManageScreen()));
   }
 
   @override
@@ -87,7 +87,7 @@ class CaregiverRequestsScreen extends StatelessWidget {
                 subtitle: requests.isEmpty
                     ? 'No pending requests.'
                     : '${requests.length} pending request${requests.length == 1 ? '' : 's'}',
-                onTap: () => _openPendingSheet(context, requests),
+                onTap: () => _openPendingScreen(context),
               );
             },
           ),
@@ -104,7 +104,7 @@ class CaregiverRequestsScreen extends StatelessWidget {
                 subtitle: links.isEmpty
                     ? 'No one has access yet.'
                     : '${links.length} ${links.length == 1 ? 'person has' : 'people have'} access',
-                onTap: () => _openAccessSheet(context, links),
+                onTap: () => _openAccessScreen(context),
               );
             },
           ),
@@ -121,7 +121,7 @@ class CaregiverRequestsScreen extends StatelessWidget {
                 subtitle: links.isEmpty
                     ? 'No accepted recipients yet — send a request above.'
                     : '${links.length} ${links.length == 1 ? 'person' : 'people'} you manage',
-                onTap: () => _openManagedSheet(context, links),
+                onTap: () => _openManagedScreen(context),
               );
             },
           ),
@@ -131,22 +131,42 @@ class CaregiverRequestsScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  void _openPendingSheet(BuildContext context, List<CaregiverLink> requests) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      builder: (_) => _DetailSheet(
-        icon: Icons.hourglass_top_rounded,
-        color: AppColors.warning,
-        title: 'Pending requests',
-        subtitle: 'People who want to manage your reminders.',
-        child: requests.isEmpty
-            ? const _EmptyRow('No pending requests.')
-            : Column(
-                children: requests.map((r) {
+/// Full page for the "Pending requests" summary card — was previously a
+/// bottom sheet; now a dedicated screen the user is navigated to, with its
+/// own live stream so accept/decline updates the list immediately without
+/// needing to reopen anything.
+class _PendingRequestsScreen extends StatelessWidget {
+  const _PendingRequestsScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.paper,
+      appBar: AppBar(
+        backgroundColor: AppColors.paper,
+        elevation: 0,
+        title: const Text('Pending requests'),
+      ),
+      body: StreamBuilder<List<CaregiverLink>>(
+        stream: CaregiverService.instance.incomingRequests(),
+        builder: (context, snapshot) {
+          final requests = snapshot.data ?? [];
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            children: [
+              const _ScreenBanner(
+                icon: Icons.hourglass_top_rounded,
+                color: AppColors.warning,
+                title: 'Pending requests',
+                subtitle: 'People who want to manage your reminders.',
+              ),
+              const SizedBox(height: 22),
+              if (requests.isEmpty)
+                const _EmptyRow('No pending requests.')
+              else
+                ...requests.map((r) {
                   return _PersonRow(
                     icon: Icons.person_add_alt_1_rounded,
                     color: AppColors.warning,
@@ -174,27 +194,66 @@ class CaregiverRequestsScreen extends StatelessWidget {
                       ],
                     ),
                   );
-                }).toList(),
-              ),
+                }),
+            ],
+          );
+        },
       ),
     );
   }
+}
 
-  void _openAccessSheet(BuildContext context, List<CaregiverLink> links) {
-    showModalBottomSheet(
+/// Full page for the "People who can manage your reminders" summary card
+/// (i.e. the senders whose accepted request gives them access to me).
+class _PeopleWhoManageYouScreen extends StatelessWidget {
+  const _PeopleWhoManageYouScreen();
+
+  Future<void> _revoke(BuildContext context, CaregiverLink link) async {
+    final cancelExisting = await AppDialog.confirm(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      builder: (sheetCtx) => _DetailSheet(
-        icon: Icons.groups_2_rounded,
-        color: AppColors.success,
-        title: 'Who can manage your reminders',
-        subtitle: 'They can create reminders for you until you revoke access.',
-        child: links.isEmpty
-            ? const _EmptyRow('No one has access yet.')
-            : Column(
-                children: links.map((l) {
+      title: 'Restrict ${link.senderName}?',
+      message:
+          '${link.senderName} won\'t be able to create new reminders for you. '
+          'Do you also want to cancel reminders they already created?',
+      confirmText: 'Cancel those too',
+      cancelText: 'Keep existing reminders',
+      destructive: true,
+      icon: Icons.block_rounded,
+    );
+    if (!cancelExisting) return;
+
+    await CaregiverService.instance.revokeAccess(link.id);
+    await CaregiverService.instance.cancelRemindersFrom(link.senderUid);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.paper,
+      appBar: AppBar(
+        backgroundColor: AppColors.paper,
+        elevation: 0,
+        title: const Text('Who can manage your reminders'),
+      ),
+      body: StreamBuilder<List<CaregiverLink>>(
+        stream: CaregiverService.instance.whoHasAccessToMe(),
+        builder: (context, snapshot) {
+          final links = snapshot.data ?? [];
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            children: [
+              const _ScreenBanner(
+                icon: Icons.groups_2_rounded,
+                color: AppColors.success,
+                title: 'Who can manage your reminders',
+                subtitle:
+                    'They can create reminders for you until you revoke access.',
+              ),
+              const SizedBox(height: 22),
+              if (links.isEmpty)
+                const _EmptyRow('No one has access yet.')
+              else
+                ...links.map((l) {
                   return _PersonRow(
                     icon: Icons.shield_rounded,
                     color: AppColors.success,
@@ -202,7 +261,7 @@ class CaregiverRequestsScreen extends StatelessWidget {
                     title: l.senderName,
                     subtitle: 'Can create reminders for you',
                     trailing: TextButton(
-                      onPressed: () => _revoke(sheetCtx, l),
+                      onPressed: () => _revoke(context, l),
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.danger,
                         textStyle: const TextStyle(fontWeight: FontWeight.w700),
@@ -210,56 +269,102 @@ class CaregiverRequestsScreen extends StatelessWidget {
                       child: const Text('Revoke'),
                     ),
                   );
-                }).toList(),
-              ),
+                }),
+            ],
+          );
+        },
       ),
     );
   }
+}
 
-  void _openManagedSheet(BuildContext context, List<CaregiverLink> links) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      builder: (sheetCtx) => _DetailSheet(
-        icon: Icons.supervisor_account_rounded,
-        color: AppColors.ai,
-        title: 'People you manage',
-        subtitle: 'You can create reminders on their behalf.',
-        child: Column(
-          children: [
-            if (links.isEmpty)
-              const _EmptyRow(
-                'No accepted recipients yet — send a request above.',
-              )
-            else
-              ...links.map((l) {
-                return _PersonRow(
-                  icon: Icons.person_rounded,
-                  color: AppColors.ai,
-                  soft: AppColors.aiSoft,
-                  title: l.recipientName,
-                  subtitle: 'You can set reminders for them',
-                );
-              }),
-            const SizedBox(height: 6),
-            PrimaryButton(
-              label: 'Create reminder for someone',
-              onPressed: links.isEmpty
-                  ? null
-                  : () {
-                      Navigator.of(sheetCtx).pop();
-                      Navigator.of(sheetCtx).push(
-                        MaterialPageRoute(
-                          builder: (_) => const CreateCaregiverReminderScreen(),
-                        ),
-                      );
-                    },
-            ),
-          ],
-        ),
+/// Full page for the "People you manage" summary card — accepted
+/// recipients I can create reminders for, plus the CTA to do so.
+class _PeopleYouManageScreen extends StatelessWidget {
+  const _PeopleYouManageScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.paper,
+      appBar: AppBar(
+        backgroundColor: AppColors.paper,
+        elevation: 0,
+        title: const Text('People you manage'),
       ),
+      body: StreamBuilder<List<CaregiverLink>>(
+        stream: CaregiverService.instance.myAcceptedRecipients(),
+        builder: (context, snapshot) {
+          final links = snapshot.data ?? [];
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            children: [
+              const _ScreenBanner(
+                icon: Icons.supervisor_account_rounded,
+                color: AppColors.ai,
+                title: 'People you manage',
+                subtitle: 'You can create reminders on their behalf.',
+              ),
+              const SizedBox(height: 22),
+              if (links.isEmpty)
+                const _EmptyRow(
+                  'No accepted recipients yet — send a request above.',
+                )
+              else
+                ...links.map((l) {
+                  return _PersonRow(
+                    icon: Icons.person_rounded,
+                    color: AppColors.ai,
+                    soft: AppColors.aiSoft,
+                    title: l.recipientName,
+                    subtitle: 'You can set reminders for them',
+                  );
+                }),
+              const SizedBox(height: 16),
+              PrimaryButton(
+                label: 'Create reminder for someone',
+                onPressed: links.isEmpty
+                    ? null
+                    : () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                const CreateCaregiverReminderScreen(),
+                          ),
+                        );
+                      },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Icon + title + subtitle banner at the top of each of the three detail
+/// screens above — same visual language as [SheetHeader] but framed as a
+/// standalone in-page banner rather than a bottom-sheet header.
+class _ScreenBanner extends StatelessWidget {
+  const _ScreenBanner({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return SheetHeader(
+      icon: icon,
+      color: color,
+      title: title,
+      subtitle: subtitle,
     );
   }
 }
@@ -341,7 +446,7 @@ class _HeroHeader extends StatelessWidget {
 
 /// One color-coded summary card on the main screen — icon badge, title,
 /// subtitle (live count from the stream), and a chevron that opens the
-/// matching detail sheet.
+/// matching detail screen.
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.icon,
@@ -486,67 +591,6 @@ class _InviteCaregiverCta extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Shared premium bottom-sheet shell used by all three detail sheets
-/// (pending / who-manages-you / who-you-manage) — same handle + icon
-/// header language as the rest of the app's sheets.
-class _DetailSheet extends StatelessWidget {
-  const _DetailSheet({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  final IconData icon;
-  final Color color;
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.ink.withValues(alpha: .10),
-            blurRadius: 30,
-            offset: const Offset(0, -8),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SheetHandle(),
-              const SizedBox(height: 18),
-              SheetHeader(
-                icon: icon,
-                color: color,
-                title: title,
-                subtitle: subtitle,
-              ),
-              const SizedBox(height: 18),
-              Flexible(child: SingleChildScrollView(child: child)),
-            ],
-          ),
-        ),
       ),
     );
   }

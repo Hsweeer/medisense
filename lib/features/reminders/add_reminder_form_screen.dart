@@ -7,13 +7,15 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/shared_widgets.dart';
 import '../../data/models/models.dart';
 import '../../providers/reminder_provider.dart';
+import 'custom_suggestions_store.dart';
 import 'reminder_form_helpers.dart';
 
 /// Full-screen version of the add-reminder flow, opened from
 /// [AddReminderCategoryScreen]. Same fields as the quick edit bottom sheet
 /// (name, dose/value, time(s), schedule, notes) but rendered as its own
-/// page, with category-aware suggestion chips so the user can tap a
-/// preset or type something entirely their own.
+/// page, with category-aware suggestion chips (the app's own presets plus
+/// anything the user has added themselves) so the user can tap a preset
+/// or type something entirely their own.
 class AddReminderFormScreen extends StatefulWidget {
   const AddReminderFormScreen({super.key, required this.category});
 
@@ -32,16 +34,36 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
   final List<String> _times = [];
   String _schedule = 'Daily';
   Set<int> _selectedDays = {};
+  DateTime? _onDate;
   bool _saving = false;
+
+  List<String> _customSuggestions = [];
 
   static const _scheduleOptions = [
     'Daily',
     'Weekdays',
     'Mon · Wed · Fri',
     'Custom',
+    'On a date',
   ];
 
   ReminderCategory get category => widget.category;
+
+  List<String> get _allSuggestions => [
+    ...category.suggestions,
+    ..._customSuggestions,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomSuggestions();
+  }
+
+  Future<void> _loadCustomSuggestions() async {
+    final saved = await CustomSuggestionsStore.instance.load(category);
+    if (mounted) setState(() => _customSuggestions = saved);
+  }
 
   @override
   void dispose() {
@@ -52,11 +74,25 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
     super.dispose();
   }
 
+  Future<void> _pickOnDate() async {
+    final picked = await pickAppointmentDate(context, initial: _onDate);
+    if (picked == null) return;
+    setState(() {
+      _schedule = 'On a date';
+      _onDate = picked;
+      _selectedDays = {};
+    });
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     final name = _name.text.trim();
     if (name.isEmpty) {
       showToast(context, 'Please enter a name first', color: AppColors.danger);
+      return;
+    }
+    if (_schedule == 'On a date' && _onDate == null) {
+      showToast(context, 'Please pick a date', color: AppColors.danger);
       return;
     }
 
@@ -67,6 +103,8 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
       final sorted = _selectedDays.toList()..sort();
       const dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       finalSchedule = sorted.map((d) => dayNames[d]).join(' · ');
+    } else if (_schedule == 'On a date' && _onDate != null) {
+      finalSchedule = formatAppointmentDate(_onDate!);
     }
     final joinedTimes = _times.isEmpty ? '9:00 AM' : _times.join(', ');
 
@@ -117,28 +155,40 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
       ),
       body: SafeArea(
         child: ListView(
+          physics: category.hasProviderField
+              ? const NeverScrollableScrollPhysics()
+              : null,
           padding: EdgeInsets.fromLTRB(20.w, 4.h, 20.w, 40.h),
           children: [
             _CategoryBanner(category: category),
             SizedBox(height: 26.h),
-            _SectionLabel(category.nameSectionLabel),
-            SizedBox(height: 10.h),
-            Wrap(
-              spacing: 8.w,
-              runSpacing: 8.h,
+            Row(
               children: [
-                for (final s in category.suggestions)
-                  _SuggestionChip(
+                Expanded(child: _SectionLabel(category.nameSectionLabel)),
+              ],
+            ),
+            SizedBox(height: 10.h),
+            SizedBox(
+              height: 38.h,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: _allSuggestions.length,
+                separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                itemBuilder: (ctx, i) {
+                  final s = _allSuggestions[i];
+                  return _SuggestionChip(
                     label: s,
                     selected: _name.text.trim() == s,
                     color: accent,
                     onTap: () => setState(() => _name.text = s),
-                  ),
-              ],
+                  );
+                },
+              ),
             ),
             SizedBox(height: 6.h),
             Text(
-              'Tap a suggestion or type your own below.',
+              'Tap a suggestion or type below.',
               style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
             ),
             SizedBox(height: 12.h),
@@ -290,8 +340,13 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                 for (final s in _scheduleOptions)
                   GestureDetector(
                     onTap: () {
+                      if (s == 'On a date') {
+                        _pickOnDate();
+                        return;
+                      }
                       setState(() {
                         _schedule = s;
+                        _onDate = null;
                         if (s == 'Daily') _selectedDays = {};
                         if (s == 'Weekdays') _selectedDays = {1, 2, 3, 4, 5};
                         if (s == 'Mon · Wed · Fri') _selectedDays = {1, 3, 5};
@@ -310,15 +365,32 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                           color: s == _schedule ? accent : AppColors.line,
                         ),
                       ),
-                      child: Text(
-                        s,
-                        style: TextStyle(
-                          fontSize: 13.sp,
-                          fontWeight: FontWeight.w700,
-                          color: s == _schedule
-                              ? Colors.white
-                              : AppColors.muted,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (s == 'On a date') ...[
+                            Icon(
+                              Icons.event_rounded,
+                              size: 15.sp,
+                              color: s == _schedule
+                                  ? Colors.white
+                                  : AppColors.muted,
+                            ),
+                            SizedBox(width: 5.w),
+                          ],
+                          Text(
+                            s == 'On a date' && _onDate != null
+                                ? formatAppointmentDate(_onDate!)
+                                : s,
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w700,
+                              color: s == _schedule
+                                  ? Colors.white
+                                  : AppColors.muted,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -354,6 +426,15 @@ class _AddReminderFormScreenState extends State<AddReminderFormScreen> {
                       ),
                   ],
                 ),
+              ),
+            ],
+            if (_schedule == 'On a date') ...[
+              SizedBox(height: 6.h),
+              Text(
+                _onDate == null
+                    ? 'Tap "On a date" again to pick a date.'
+                    : 'This reminder is set for ${formatAppointmentDate(_onDate!)} only.',
+                style: TextStyle(fontSize: 11.5.sp, color: AppColors.muted),
               ),
             ],
             SizedBox(height: 26.h),
@@ -470,6 +551,7 @@ class _SuggestionChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(99.r),
           border: Border.all(color: selected ? color : AppColors.line),
         ),
+        alignment: Alignment.center,
         child: Text(
           label,
           style: TextStyle(
