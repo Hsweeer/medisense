@@ -13,6 +13,8 @@ import 'package:provider/provider.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'core/services/loading_overlay_controller.dart';
+import 'core/services/overpass_service.dart';
+import 'core/services/facility_cache_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -85,13 +87,54 @@ class _MediSenseAppState extends State<MediSenseApp> {
       // Starts caregiver/SOS watcher if still needed
       CaregiverAlertWatcher.instance.start();
     } catch (e) {
-      debugPrint('[Bootstrap] Critical init error: $e');
-      Future.delayed(const Duration(seconds: 1), _bootstrap);
-      return;
+      final message = e.toString();
+      final isPermissionIssue =
+          message.contains('permission-denied') ||
+          message.contains('PERMISSION_DENIED');
+      if (isPermissionIssue) {
+        debugPrint(
+          '[Bootstrap] Non-blocking Firebase permission issue during startup: $e',
+        );
+      } else {
+        debugPrint('[Bootstrap] Critical init error: $e');
+        Future.delayed(const Duration(seconds: 1), _bootstrap);
+        return;
+      }
     }
 
     if (mounted) setState(() => _initialized = true);
     _setupListeners();
+
+    // Prefetch location and nearby facilities so Nearby / SOS don't show
+    // placeholder data and load live results as soon as possible.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final locProv = context.read<LocationProvider>();
+        // Try a silent access request to kick-start geolocation without
+        // prompting the user aggressively on first launch.
+        await locProv.requestAccess(silent: true);
+        final pos = locProv.position;
+        if (pos != null) {
+          // Fetch nearby facilities and cache them for immediate use by
+          // Nearby and SOS screens.
+          final results = await OverpassService.instance.fetchNearby(
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            userPosition: pos,
+            radiusMeters: 5000,
+          );
+          if (results.isNotEmpty) {
+            await FacilityCacheService.instance.save(
+              latitude: pos.latitude,
+              longitude: pos.longitude,
+              facilities: results,
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('[Bootstrap] Prefetch nearby failed: $e');
+      }
+    });
 
     // Setup FCM foreground/background handlers
     try {
@@ -112,7 +155,10 @@ class _MediSenseAppState extends State<MediSenseApp> {
         if (message != null) {
           debugPrint('[FCM] getInitialMessage: ${message.messageId}');
           // Delay slightly to allow app bootstrapping
-          Future.delayed(const Duration(milliseconds: 300), () => _handleRemoteMessage(message));
+          Future.delayed(
+            const Duration(milliseconds: 300),
+            () => _handleRemoteMessage(message),
+          );
         }
       });
     } catch (e) {
@@ -177,13 +223,20 @@ class _MediSenseAppState extends State<MediSenseApp> {
 
   void _handleRemoteMessage(RemoteMessage? message) {
     try {
-      final Map<dynamic, dynamic> data = (message?.data ?? {}) as Map<dynamic, dynamic>;
-      final title = message?.notification?.title ?? data['title'] ?? 'MediSense';
+      final Map<dynamic, dynamic> data =
+          (message?.data ?? {}) as Map<dynamic, dynamic>;
+      final title =
+          message?.notification?.title ?? data['title'] ?? 'MediSense';
       final body = message?.notification?.body ?? data['body'] ?? '';
 
       // SOS has a dedicated route
-      if ((data['type'] == 'sos_alert') || (data['route'] == 'sos') || (data['screen'] == 'sos')) {
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/sos', (r) => false);
+      if ((data['type'] == 'sos_alert') ||
+          (data['route'] == 'sos') ||
+          (data['screen'] == 'sos')) {
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/sos',
+          (r) => false,
+        );
         return;
       }
 
@@ -206,8 +259,10 @@ class _MediSenseAppState extends State<MediSenseApp> {
                 Navigator.of(ctx2).pop();
                 // Try to navigate if route info exists. Wrap in try/catch to avoid crashes
                 try {
-                  final routeName = data['routeName'] ?? data['screen'] ?? data['route'];
-                  final reminderId = data['reminderId'] ?? data['relatedEntityId'];
+                  final routeName =
+                      data['routeName'] ?? data['screen'] ?? data['route'];
+                  final reminderId =
+                      data['reminderId'] ?? data['relatedEntityId'];
                   if (routeName == 'reminder' && reminderId != null) {
                     try {
                       navigatorKey.currentState?.pushNamed('/reminders');
@@ -216,7 +271,9 @@ class _MediSenseAppState extends State<MediSenseApp> {
                     }
                   } else if (routeName == 'caregiver_request') {
                     try {
-                      navigatorKey.currentState?.pushNamed('/caregiver_requests');
+                      navigatorKey.currentState?.pushNamed(
+                        '/caregiver_requests',
+                      );
                     } catch (_) {}
                   } else {
                     // fallback: open app home

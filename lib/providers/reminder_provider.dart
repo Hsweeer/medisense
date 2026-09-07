@@ -297,9 +297,16 @@ class ReminderProvider extends ChangeNotifier {
   }
 
   /// Used by MedAI after scanning a prescription — returns how many landed.
+  /// Adds multiple reminders but skips duplicates (same title & time).
   Future<int> addAll(List<Reminder> newOnes) async {
     int count = 0;
     for (final r in newOnes) {
+      // Simple duplicate guard: same normalized title and same time
+      if (_isDuplicate(r)) {
+        debugPrint('[ReminderProvider] Skipping duplicate reminder: ${r.title} @ ${r.time}');
+        continue;
+      }
+
       final saved = await _firestoreService.createReminder(r);
       if (saved != null) {
         reminders.insert(0, saved); // Insert at top
@@ -310,6 +317,17 @@ class ReminderProvider extends ChangeNotifier {
     notifyListeners();
     return count;
   }
+
+  bool _isDuplicate(Reminder r) {
+    final normTitle = _normalizeTitle(r.title);
+    return reminders.any((existing) {
+      if (!existing.enabled) return false;
+      if (existing.time != r.time) return false;
+      return _normalizeTitle(existing.title) == normTitle;
+    });
+  }
+
+  String _normalizeTitle(String t) => t.toLowerCase().trim().replaceAll(RegExp(r"[^a-z0-9 ]"), '');
 
   /// Update a reminder: save to Firestore, reschedule alarm, and update UI.
   Future<void> update(

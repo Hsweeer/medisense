@@ -30,69 +30,10 @@ abstract class MockData {
     medications: ['Albuterol inhaler', 'Vitamin D 2000 IU'],
   );
 
-  /// SOS-only fallback hospital list — not used by the Nearby care screen.
-  static final hospitals = <Facility>[
-    const Facility(
-      name: 'UCSF Medical Center',
-      type: FacilityType.hospital,
-      address: '505 Parnassus Ave, San Francisco, CA 94143',
-      position: LatLng(37.7631, -122.4586),
-      distanceMiles: 2.6,
-      etaMinutes: 12,
-      rating: 4.6,
-      openLabel: 'Open 24 hours',
-      tags: ['ER', 'Level I Trauma'],
-      phone: '(415) 476-1000',
-    ),
-    const Facility(
-      name: 'Zuckerberg SF General Hospital',
-      type: FacilityType.hospital,
-      address: '1001 Potrero Ave, San Francisco, CA 94110',
-      position: LatLng(37.7554, -122.4046),
-      distanceMiles: 1.7,
-      etaMinutes: 9,
-      rating: 4.2,
-      openLabel: 'Open 24 hours',
-      tags: ['ER', 'Trauma Center'],
-      phone: '(628) 206-8000',
-    ),
-    const Facility(
-      name: 'CPMC Van Ness Campus',
-      type: FacilityType.hospital,
-      address: '1101 Van Ness Ave, San Francisco, CA 94109',
-      position: LatLng(37.7867, -122.4212),
-      distanceMiles: 0.9,
-      etaMinutes: 6,
-      rating: 4.5,
-      openLabel: 'Open 24 hours',
-      tags: ['ER', 'Cardiology'],
-      phone: '(415) 600-6000',
-    ),
-    const Facility(
-      name: 'Kaiser Permanente SF',
-      type: FacilityType.hospital,
-      address: '2425 Geary Blvd, San Francisco, CA 94115',
-      position: LatLng(37.7827, -122.4443),
-      distanceMiles: 1.8,
-      etaMinutes: 10,
-      rating: 4.3,
-      openLabel: 'ER open 24 hours',
-      tags: ['ER', 'Urgent Care'],
-      phone: '(415) 833-2000',
-    ),
-    const Facility(
-      name: 'Saint Francis Memorial Hospital',
-      type: FacilityType.hospital,
-      address: '900 Hyde St, San Francisco, CA 94109',
-      position: LatLng(37.7896, -122.4174),
-      distanceMiles: 1.1,
-      etaMinutes: 7,
-      rating: 4.1,
-      openLabel: 'Open 24 hours',
-      tags: ['ER', 'Burn Center'],
-      phone: '(415) 353-6000',
-    ),
-  ];
+  // SOS-only fallback hospital list removed. Live data (OverpassService)
+  // and FacilityCacheService are used at runtime. Keeping this empty
+  // prevents any dummy hospitals being shown by default.
+  static final hospitals = <Facility>[];
 
   static final reminders = <Reminder>[
     Reminder(

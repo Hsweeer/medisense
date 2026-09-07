@@ -32,7 +32,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
   bool _loading = false;
   String? _error;
   bool _didInitialFetch = false;
-  bool _didLiveFetch = false;
 
   List<Facility> get _facilities => switch (_filter) {
     1 => _all.where((f) => f.type == FacilityType.hospital).toList(),
@@ -158,12 +157,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     if (!_didInitialFetch) {
       _didInitialFetch = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _load(userPosition));
-    }
-    if (!_didLiveFetch && location.position != null) {
-      _didLiveFetch = true;
-      WidgetsBinding.instance.addPostFrameCallback(
-            (_) => _load(location.position!),
-      );
     }
 
     final sorted = [..._facilities]

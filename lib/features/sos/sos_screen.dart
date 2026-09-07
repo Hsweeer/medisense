@@ -695,149 +695,43 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
               ),
             ),
 
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20.r),
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 16.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: AppColors.gradient,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+
+          MCard(
+            border: Border.all(color: AppColors.danger.withValues(alpha: .3)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.medical_information_rounded,
+                      color: AppColors.danger,
+                      size: 20.sp,
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Medical ID',
+                      style: GoogleFonts.sora(
+                        fontSize: 13.5.sp,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
-                borderRadius: BorderRadius.circular(20.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: .32),
-                    blurRadius: 20.r,
-                    offset: Offset(0, 10.h),
+                SizedBox(height: 8.h),
+                Text(
+                  '${p.bloodType} · allergies: ${p.allergies.isEmpty ? "None" : p.allergies.join(", ")} · '
+                  '${p.conditions.isEmpty ? "No conditions" : p.conditions.join(", ")}',
+                  style: TextStyle(
+                    fontSize: 12.5.sp,
+                    height: 1.5,
+                    color: AppColors.inkSoft,
                   ),
-                ],
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    right: -20.r,
-                    top: -30.r,
-                    child: Container(
-                      width: 110.r,
-                      height: 110.r,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: .06),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 40.r,
-                    bottom: -36.r,
-                    child: Container(
-                      width: 70.r,
-                      height: 70.r,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: .05),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 46.r,
-                        height: 46.r,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: .18),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: .25),
-                            width: 1.2.w,
-                          ),
-                        ),
-                        child: Icon(
-                          sos.userLocation != null
-                              ? Icons.crisis_alert_rounded
-                              : Icons.gps_off_rounded,
-                          color: Colors.white,
-                          size: 23.sp,
-                        ),
-                      ),
-                      SizedBox(width: 14.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                _LivePulseDot(color: Colors.white, size: 6),
-                                SizedBox(width: 6.w),
-                                Text(
-                                  'SOS ACTIVE',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: .9),
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 11.sp,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 4.h),
-                            Text(
-                              sos.userLocation != null
-                                  ? 'Tracking on'
-                                  : 'Locating…',
-                              style: GoogleFonts.sora(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 17.sp,
-                              ),
-                            ),
-                            if (sos.selectedHospital != null &&
-                                sos.realEtaMinutes > 0) ...[
-                              SizedBox(height: 3.h),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.timer_outlined,
-                                    size: 13.sp,
-                                    color: Colors.white.withValues(alpha: .85),
-                                  ),
-                                  SizedBox(width: 4.w),
-                                  Text(
-                                    'ETA to ER: ${sos.realEtaMinutes.toStringAsFixed(0)} min',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.9,
-                                      ),
-                                      fontSize: 12.sp,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: EdgeInsets.all(6.r),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: .16),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.chevron_right_rounded,
-                          color: Colors.white,
-                          size: 18.sp,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+
           SizedBox(height: 14.h),
 
           const _EmergencyServiceButtons(),
@@ -1081,42 +975,6 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
             ),
           ),
 
-          SizedBox(height: 14.h),
-          MCard(
-            border: Border.all(color: AppColors.danger.withValues(alpha: .3)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.medical_information_rounded,
-                      color: AppColors.danger,
-                      size: 20.sp,
-                    ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Medical ID',
-                      style: GoogleFonts.sora(
-                        fontSize: 13.5.sp,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  '${p.bloodType} · allergies: ${p.allergies.isEmpty ? "None" : p.allergies.join(", ")} · '
-                  '${p.conditions.isEmpty ? "No conditions" : p.conditions.join(", ")}',
-                  style: TextStyle(
-                    fontSize: 12.5.sp,
-                    height: 1.5,
-                    color: AppColors.inkSoft,
-                  ),
-                ),
-              ],
-            ),
-          ),
           SizedBox(height: 20.h),
           Center(
             child: TextButton.icon(

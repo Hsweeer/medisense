@@ -288,6 +288,25 @@ class SosProvider extends ChangeNotifier {
   Future<void> _fetchHospitals(LatLng location) async {
     isLoadingHospitals = true;
     notifyListeners();
+
+    final cached = await FacilityCacheService.instance.load(
+      latitude: location.latitude,
+      longitude: location.longitude,
+    );
+    final cachedHospitals = cached?.facilities
+            .where((f) => f.type == FacilityType.hospital)
+            .toList() ??
+        [];
+
+    if (cachedHospitals.isNotEmpty) {
+      nearbyHospitals = cachedHospitals;
+      selectHospital(cachedHospitals.first);
+      errorMessage = null;
+      isLoadingHospitals = false;
+      notifyListeners();
+      return;
+    }
+
     try {
       final results = await OverpassService.instance.fetchNearby(
         latitude: location.latitude,

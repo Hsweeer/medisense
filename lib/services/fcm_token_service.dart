@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -57,9 +58,19 @@ class FcmTokenService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final token = await _messaging.getToken();
-    if (token != null) {
-      await _saveToken(user.uid, token);
+    try {
+      final token = await _messaging.getToken();
+      if (token != null) {
+        await _saveToken(user.uid, token);
+      }
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          '[FcmTokenService] Skipping token registration: Firestore permission denied.',
+        );
+        return;
+      }
+      rethrow;
     }
 
     if (!_refreshListenerAttached) {
@@ -67,19 +78,38 @@ class FcmTokenService {
       _messaging.onTokenRefresh.listen((newToken) {
         final current = FirebaseAuth.instance.currentUser;
         if (current != null) {
-          _saveToken(current.uid, newToken);
+          _saveToken(current.uid, newToken).catchError((error) {
+            if (error is FirebaseException &&
+                error.code == 'permission-denied') {
+              debugPrint(
+                '[FcmTokenService] Skipping refreshed token write: Firestore permission denied.',
+              );
+              return null;
+            }
+            throw error;
+          });
         }
       });
     }
   }
 
   Future<void> _saveToken(String uid, String token) async {
-    await _tokensFor(uid).doc(token).set({
-      'token': token,
-      'platform': Platform.isIOS ? 'ios' : 'android',
-      'updatedAt': DateTime.now().millisecondsSinceEpoch,
-      'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      await _tokensFor(uid).doc(token).set({
+        'token': token,
+        'platform': Platform.isIOS ? 'ios' : 'android',
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint(
+          '[FcmTokenService] Firestore permission denied while saving FCM token.',
+        );
+        return;
+      }
+      rethrow;
+    }
   }
 
   /// Removes only this device's token for [uid]. Call before signing out
