@@ -69,25 +69,45 @@ class ReminderFirestoreService {
     }
 
     try {
-      // Ensure createdAt is set before saving
+      final userRemindersRef = _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('reminders');
+
+      final normalizedTitle = _normalizeText(reminder.title);
+      final normalizedTime = _normalizeText(reminder.time);
+
+      if (normalizedTitle.isNotEmpty && normalizedTime.isNotEmpty) {
+        final existing = await userRemindersRef
+            .where('title', isEqualTo: reminder.title.trim())
+            .where('time', isEqualTo: reminder.time.trim())
+            .limit(1)
+            .get();
+
+        if (existing.docs.isNotEmpty) {
+          final duplicate = Reminder.fromMap(existing.docs.first.data(), existing.docs.first.id);
+          debugPrint(
+            '[ReminderFirestoreService] createReminder: duplicate skipped id=${duplicate.id} title=${duplicate.title} time=${duplicate.time}',
+          );
+          return duplicate;
+        }
+      }
+
       final reminderData = reminder.toMap();
       reminderData['createdAt'] = reminderData['createdAt'] ?? DateTime.now();
 
-      final docRef = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('reminders')
-          .add(reminderData);
-
+      final docRef = await userRemindersRef.add(reminderData);
       reminder.id = docRef.id;
-      debugPrint(
-          '[ReminderFirestoreService] createReminder: saved id=${reminder.id} title=${reminder.title}');
+
+      debugPrint('[ReminderFirestoreService] createReminder: saved id=${reminder.id} title=${reminder.title}');
       return reminder;
     } catch (e) {
       debugPrint('[ReminderFirestoreService] createReminder: error — $e');
       return null;
     }
   }
+
+  String _normalizeText(String value) => value.trim().toLowerCase();
 
   /// Update an existing reminder (requires reminder.id to be set).
   Future<bool> updateReminder(Reminder reminder) async {

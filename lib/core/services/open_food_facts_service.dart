@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../../data/models/food_models.dart';
 
@@ -30,16 +29,18 @@ class OpenFoodFactsService {
   OpenFoodFactsService._();
   static final instance = OpenFoodFactsService._();
 
-  // IMPORTANT: world.openfoodfacts.ORG is the production database.
-  // world.openfoodfacts.NET is the STAGING/test server — it requires
-  // HTTP Basic Auth (user "off", password "off") and its product data is
-  // sparse/test data, so unauthenticated requests to .net either get
-  // rejected or come back as "not found" even for real, well-known
-  // barcodes. That mismatch was the actual bug behind "Product not
-  // found" on every scan.
   static const _searchEndpoint =
       'https://world.openfoodfacts.org/cgi/search.pl';
-  static const _defaultBarcodeEndpoint =
+
+  // Hardcoded rather than read from .env — same pattern already used for
+  // the Overpass hospital/pharmacy endpoints. This is the production
+  // .org v2 endpoint specifically, NOT .net: world.openfoodfacts.net is
+  // Open Food Facts' STAGING/test server, requires HTTP Basic Auth, and
+  // its product data is sparse/test data — unauthenticated requests to
+  // it either get rejected or come back "not found" even for real,
+  // well-known barcodes. That .net/.org mix-up was the actual bug behind
+  // every barcode scan showing "Product not found".
+  static const _barcodeEndpoint =
       'https://world.openfoodfacts.org/api/v2/product/{barcode}.json';
 
   // Open Food Facts asks every client to send a custom User-Agent
@@ -148,9 +149,10 @@ class OpenFoodFactsService {
     final code = barcode.trim();
     if (code.isEmpty) return null;
 
-    final endpoint =
-        (dotenv.env['OPEN_FOOD_FACTS_BARCODE_API'] ?? _defaultBarcodeEndpoint)
-            .replaceAll('{barcode}', Uri.encodeComponent(code));
+    final endpoint = _barcodeEndpoint.replaceAll(
+      '{barcode}',
+      Uri.encodeComponent(code),
+    );
     final uri = Uri.parse(endpoint).replace(
       queryParameters: {
         'fields':

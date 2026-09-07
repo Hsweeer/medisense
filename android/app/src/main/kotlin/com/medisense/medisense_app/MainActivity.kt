@@ -279,7 +279,14 @@ class MainActivity : FlutterActivity() {
     private fun handleCancelAlarm(call: MethodCall, result: MethodChannel.Result) {
         val reminderId = call.argument<String>("reminderId")
         if (reminderId != null) {
+            AlarmStore.setReminderCancelled(this, reminderId, true)
             AlarmScheduler.cancelAllForReminder(this, reminderId)
+
+            val stopIntent = Intent(this, AlarmRingingService::class.java).apply {
+                action = AlarmRingingService.ACTION_STOP
+            }
+            startService(stopIntent)
+
             result.success(null)
         } else {
             result.error("INVALID_ARGUMENTS", "reminderId is null", null)

@@ -85,6 +85,10 @@ object AlarmScheduler {
 
     /** Schedules (or replaces) one alarm and records it in [AlarmStore]. */
     fun schedule(context: Context, entry: AlarmStore.AlarmEntry) {
+        // A reminder that has been explicitly cancelled must never be re-armed
+        // by a stale pending intent or a previously-fired broadcast.
+        AlarmStore.clearReminderCancelled(context, entry.reminderId)
+
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
         // "interval" (every N days) alarms are anchored to the millis of
@@ -149,6 +153,7 @@ object AlarmScheduler {
 
     /** Cancels every native alarm (daily/weekday slots 0-7 + the snooze slot) for [reminderId]. */
     fun cancelAllForReminder(context: Context, reminderId: String) {
+        AlarmStore.setReminderCancelled(context, reminderId, true)
         val base = baseIdFor(reminderId)
         for (sub in 0..SNOOZE_SUB_ID) cancel(context, base * 10 + sub)
         AlarmStore.removeAllForReminder(context, reminderId)

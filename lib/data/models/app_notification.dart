@@ -159,7 +159,7 @@ class AppNotification {
     'notificationId': id,
     'type': type.name,
     'relatedEntityType': relatedEntityType.name,
-    if (relatedEntityId != null) 'relatedEntityId': relatedEntityId!,
+    'relatedEntityId': ?relatedEntityId,
     for (final entry in data.entries) entry.key: entry.value.toString(),
   };
 

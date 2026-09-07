@@ -18,6 +18,11 @@ class AlarmReceiver : BroadcastReceiver() {
         if (alarmId == -1) return
 
         val reminderId = intent.getStringExtra(AlarmScheduler.EXTRA_REMINDER_ID) ?: return
+        if (AlarmStore.isReminderCancelled(context, reminderId)) {
+            AlarmStore.remove(context, alarmId)
+            return
+        }
+
         val title = intent.getStringExtra(AlarmScheduler.EXTRA_TITLE) ?: "Medicine Reminder"
         val dose = intent.getStringExtra(AlarmScheduler.EXTRA_DOSE) ?: ""
         val displayTime = intent.getStringExtra(AlarmScheduler.EXTRA_DISPLAY_TIME) ?: ""

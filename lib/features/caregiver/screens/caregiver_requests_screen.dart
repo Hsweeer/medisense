@@ -216,7 +216,7 @@ class _PeopleWhoManageYouScreen extends StatelessWidget {
           '${link.senderName} won\'t be able to create new reminders for you. '
           'Do you also want to cancel reminders they already created?',
       confirmText: 'Cancel those too',
-      cancelText: 'Keep existing reminders',
+      cancelText: 'Keep reminders',
       destructive: true,
       icon: Icons.block_rounded,
     );

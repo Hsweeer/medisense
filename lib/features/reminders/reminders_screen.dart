@@ -449,18 +449,6 @@ class _ReminderCard extends StatelessWidget {
                   ),
                   SizedBox(width: 8.w),
                   _MiniAction(
-                    label: 'Snooze 10 min',
-                    color: AppColors.warning,
-                    onTap: () {
-                      prov.snooze(r);
-                      showToast(
-                        context,
-                        '${r.title} snoozed — rings again in 10 min',
-                      );
-                    },
-                  ),
-                  SizedBox(width: 8.w),
-                  _MiniAction(
                     label: 'Skip',
                     color: AppColors.muted,
                     onTap: () => prov.skip(r),

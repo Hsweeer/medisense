@@ -258,9 +258,12 @@ class ReminderProvider extends ChangeNotifier {
     r.status = DoseStatus.snoozed;
     r.snoozeLabel = 'rings again in $minutes min';
     r.lastStatusDate = DateTime.now();
+    r.enabled = true;
     _persist(r);
 
-    // Schedule a real alarm/notification 10 min from now
+    // Cancel the current recurring reminder and schedule a single snooze alarm
+    // instead of leaving both the original cadence and the snooze alarm active.
+    NotificationService.instance.cancelForReminder(r);
     NotificationService.instance.snoozeReminder(r, minutes: minutes);
 
     notifyListeners();
@@ -282,6 +285,10 @@ class ReminderProvider extends ChangeNotifier {
     // native alarms, while signed-in users continue using Firestore.
     if (!_firestoreService.isLoggedIn) {
       r.id ??= 'guest-${DateTime.now().microsecondsSinceEpoch}';
+      if (_containsEquivalentReminder(r)) {
+        debugPrint('[ReminderProvider] Skipping guest duplicate reminder: ${r.title} @ ${r.time}');
+        return;
+      }
       reminders.insert(0, r);
       NotificationService.instance.scheduleReminder(r);
       notifyListeners();
@@ -289,45 +296,75 @@ class ReminderProvider extends ChangeNotifier {
     }
 
     final saved = await _firestoreService.createReminder(r);
-    if (saved != null) {
-      reminders.insert(0, saved); // Insert at top (newest)
-      NotificationService.instance.scheduleReminder(saved);
-      notifyListeners();
+    if (saved == null) return;
+
+    final alreadyPresent = _containsEquivalentReminder(saved);
+    if (alreadyPresent) {
+      debugPrint('[ReminderProvider] Reminder already present locally: ${saved.title} @ ${saved.time}');
+      return;
     }
+
+    reminders.insert(0, saved); // Insert at top (newest)
+    NotificationService.instance.scheduleReminder(saved);
+    notifyListeners();
   }
 
   /// Used by MedAI after scanning a prescription — returns how many landed.
   /// Adds multiple reminders but skips duplicates (same title & time).
   Future<int> addAll(List<Reminder> newOnes) async {
     int count = 0;
+    final seen = <String>{};
+
     for (final r in newOnes) {
-      // Simple duplicate guard: same normalized title and same time
-      if (_isDuplicate(r)) {
+      final key = _dedupeKey(r);
+      if (seen.contains(key) || _isDuplicate(r)) {
         debugPrint('[ReminderProvider] Skipping duplicate reminder: ${r.title} @ ${r.time}');
         continue;
       }
+      seen.add(key);
 
       final saved = await _firestoreService.createReminder(r);
-      if (saved != null) {
-        reminders.insert(0, saved); // Insert at top
-        NotificationService.instance.scheduleReminder(saved);
-        count++;
+      if (saved == null) continue;
+
+      if (_containsEquivalentReminder(saved)) {
+        debugPrint('[ReminderProvider] Already present locally, skip: ${saved.title} @ ${saved.time}');
+        continue;
       }
+
+      reminders.insert(0, saved); // Insert at top
+      NotificationService.instance.scheduleReminder(saved);
+      count++;
     }
     notifyListeners();
     return count;
   }
 
+  bool _containsEquivalentReminder(Reminder r) {
+    final key = _dedupeKey(r);
+    return reminders.any((existing) {
+      if (existing.id != null && r.id != null && existing.id == r.id) return true;
+      return _dedupeKey(existing) == key;
+    });
+  }
+
   bool _isDuplicate(Reminder r) {
     final normTitle = _normalizeTitle(r.title);
+    final normTime = _normalizeTime(r.time);
     return reminders.any((existing) {
+      if (existing.id != null && r.id != null && existing.id == r.id) return true;
       if (!existing.enabled) return false;
-      if (existing.time != r.time) return false;
+      if (_normalizeTime(existing.time) != normTime) return false;
       return _normalizeTitle(existing.title) == normTitle;
     });
   }
 
-  String _normalizeTitle(String t) => t.toLowerCase().trim().replaceAll(RegExp(r"[^a-z0-9 ]"), '');
+  String _normalizeTitle(String t) =>
+      t.toLowerCase().trim().replaceAll(RegExp(r"[^a-z0-9 ]"), '').replaceAll(RegExp(r"\s+"), ' ');
+
+  String _normalizeTime(String t) =>
+      t.trim().toLowerCase().replaceAll(RegExp(r"\s+"), ' ');
+
+  String _dedupeKey(Reminder r) => '${_normalizeTitle(r.title)}|${_normalizeTime(r.time)}';
 
   /// Update a reminder: save to Firestore, reschedule alarm, and update UI.
   Future<void> update(

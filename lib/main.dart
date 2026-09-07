@@ -81,11 +81,6 @@ class _MediSenseAppState extends State<MediSenseApp> {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
-      await NotificationService.instance.initialize();
-      // Initialize FCM token management (register tokens on login)
-      await FcmTokenService.instance.initialize();
-      // Starts caregiver/SOS watcher if still needed
-      CaregiverAlertWatcher.instance.start();
     } catch (e) {
       final message = e.toString();
       final isPermissionIssue =
@@ -102,8 +97,31 @@ class _MediSenseAppState extends State<MediSenseApp> {
       }
     }
 
+    // Mark app initialized early so splash doesn't hang while optional
+    // services finish their work. These services will continue initializing
+    // in the background and log errors rather than blocking the UI.
     if (mounted) setState(() => _initialized = true);
     _setupListeners();
+
+    // Start non-critical services asynchronously so they don't block UI
+    unawaited(
+      NotificationService.instance.initialize().catchError((e) {
+        debugPrint('[Bootstrap] NotificationService init failed: $e');
+      }),
+    );
+
+    unawaited(
+      FcmTokenService.instance.initialize().catchError((e) {
+        debugPrint('[Bootstrap] FcmTokenService init failed: $e');
+      }),
+    );
+
+    // Starts caregiver/SOS watcher if still needed (non-blocking)
+    try {
+      CaregiverAlertWatcher.instance.start();
+    } catch (e) {
+      debugPrint('[Bootstrap] CaregiverAlertWatcher.start failed: $e');
+    }
 
     // Prefetch location and nearby facilities so Nearby / SOS don't show
     // placeholder data and load live results as soon as possible.

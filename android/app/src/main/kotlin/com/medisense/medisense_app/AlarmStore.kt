@@ -91,6 +91,20 @@ object AlarmStore {
         prefs(context).edit().remove(keyFor(alarmId)).apply()
     }
 
+    fun setReminderCancelled(context: Context, reminderId: String, cancelled: Boolean) {
+        prefs(context).edit()
+            .putBoolean("cancelled_$reminderId", cancelled)
+            .apply()
+    }
+
+    fun isReminderCancelled(context: Context, reminderId: String): Boolean {
+        return prefs(context).getBoolean("cancelled_$reminderId", false)
+    }
+
+    fun clearReminderCancelled(context: Context, reminderId: String) {
+        prefs(context).edit().remove("cancelled_$reminderId").apply()
+    }
+
     /** Removes every stored alarm belonging to [reminderId]. */
     fun removeAllForReminder(context: Context, reminderId: String) {
         val all = all(context).filter { it.reminderId == reminderId }
