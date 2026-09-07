@@ -812,6 +812,13 @@ class AppDialog {
                         ),
                         shape: BoxShape.circle,
                         border: Border.all(color: color.withValues(alpha: .15)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withValues(alpha: .18),
+                            blurRadius: 18.r,
+                            offset: Offset(0, 8.h),
+                          ),
+                        ],
                       ),
                       child: Icon(icon, color: color, size: 30.sp),
                     ),
@@ -824,9 +831,50 @@ class AppDialog {
                     SizedBox(height: 14.h),
                     Row(
                       children: [
-                        Expanded(child: OutlinedButton(onPressed: () => Navigator.of(ctx).pop(false), style: OutlinedButton.styleFrom(foregroundColor: AppColors.ink, side: BorderSide(color: AppColors.line, width: 1.2.w), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)), padding: EdgeInsets.symmetric(vertical: 14.h), textStyle: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)), child: Text(cancelText))),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.ink,
+                              side: BorderSide(color: AppColors.line, width: 1.2.w),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)),
+                              padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 6.w),
+                            ),
+                            // FittedBox shrinks a long label to fit on one
+                            // line instead of wrapping into an awkward,
+                            // unevenly-tall second line next to the other
+                            // button.
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                cancelText,
+                                maxLines: 1,
+                                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ),
                         SizedBox(width: 12.w),
-                        Expanded(child: FilledButton(onPressed: () => Navigator.of(ctx).pop(true), style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)), padding: EdgeInsets.symmetric(vertical: 14.h), textStyle: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)), child: Text(confirmText))),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: color,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)),
+                              padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 6.w),
+                            ),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                confirmText,
+                                maxLines: 1,
+                                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ],

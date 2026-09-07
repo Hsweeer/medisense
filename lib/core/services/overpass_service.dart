@@ -134,7 +134,21 @@ class OverpassService {
     ];
   }
 
-  static const _requestTimeout = Duration(seconds: 30);
+  // BUG FIX: this was previously 10s while the query below tells the
+  // Overpass server itself to keep trying for up to 25s ([timeout:25]).
+  // That mismatch meant the client was aborting requests before the
+  // server's own stated budget was even used up — exactly what was
+  // showing up in the field as "all three endpoints time out" every
+  // single time, especially over slower/longer network paths (e.g. a
+  // request routed to a European Overpass mirror from South Asia), where
+  // 10-18s for a combined hospital+pharmacy regex query is completely
+  // normal, not a sign the endpoint is actually down. The client should
+  // never give up sooner than the timeout it told the server to honor —
+  // 22s here gives the query's own 20s server-side budget (see
+  // _buildQuery) a full, fair chance plus a small margin for network
+  // round-trip, while still keeping the worst case (all 3 endpoints
+  // genuinely dead) at a tolerable ~66s instead of the original 90s.
+  static const _requestTimeout = Duration(seconds: 22);
 
   // As of ~April 2026, overpass-api.de (the primary endpoint) started
   // returning 406 Not Acceptable for requests without a proper
@@ -246,7 +260,7 @@ class OverpassService {
       clauses.writeln('  way["healthcare"~"^pharmacy\$",i]$around;');
     }
 
-    return '[out:json][timeout:25];\n(\n$clauses);\nout center;\n';
+    return '[out:json][timeout:20];\n(\n$clauses);\nout center;\n';
   }
 
   List<Facility> _parseResponse(String body, LatLng userPosition) {
