@@ -411,14 +411,27 @@ class _ResultViewState extends State<_ResultView> {
           ],
         ),
         SizedBox(height: 8.h),
-        // One clearly-structured card per medicine — a heading (name +
-        // dose), then its details as separate labeled rows, instead of
-        // one long monospace text block the old design used.
-        for (var i = 0; i < meds.length; i++) ...[
-          _MedicineCard(index: i + 1, medicine: meds[i]),
-          SizedBox(height: 10.h),
-        ],
-        SizedBox(height: 8.h),
+        // Plain monospace summary box — matches the original prescription
+        // summary look (single Rx-style text block instead of per-medicine
+        // cards).
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(16.r),
+          decoration: BoxDecoration(
+            color: AppColors.soft,
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(color: AppColors.primary.withValues(alpha: .12)),
+          ),
+          child: SelectableText(
+            widget.summary,
+            style: GoogleFonts.robotoMono(
+              fontSize: 12.5.sp,
+              height: 1.6,
+              color: AppColors.inkSoft,
+            ),
+          ),
+        ),
+        SizedBox(height: 16.h),
         Container(
           padding: EdgeInsets.all(12.r),
           decoration: BoxDecoration(
@@ -530,181 +543,3 @@ const _monthNames = [
 /// package — it isn't declared as a dependency in this project yet.
 String _formatDate(DateTime date) =>
     '${_monthNames[date.month]} ${date.day}, ${date.year}';
-
-/// One medicine's card in the result list — a clear heading (name +
-/// dose + a low-confidence flag when relevant), then its schedule,
-/// duration, and instructions as separate labeled detail rows.
-class _MedicineCard extends StatelessWidget {
-  const _MedicineCard({required this.index, required this.medicine});
-
-  final int index;
-  final ParsedMedicine medicine;
-
-  String _frequencyLabel(BuildContext context) {
-    final times = medicine.times.map((t) => t.format(context)).join(', ');
-    final perDay = medicine.timesPerDay;
-    final freq = perDay <= 1 ? 'Once daily' : '$perDay× daily';
-    return times.isEmpty ? freq : '$freq ($times)';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final lowConfidence = medicine.confidence.toLowerCase() != 'high';
-
-    return MCard(
-      padding: EdgeInsets.all(14.r),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 26.r,
-                height: 26.r,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.soft,
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Text(
-                  '$index',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primaryDark,
-                  ),
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      medicine.name,
-                      style: TextStyle(
-                        fontSize: 14.5.sp,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    if (medicine.dose.trim().isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(top: 2.h),
-                        child: Text(
-                          medicine.dose,
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            color: AppColors.muted,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          _DetailRow(
-            icon: Icons.schedule_rounded,
-            label: 'Frequency',
-            value: _frequencyLabel(context),
-          ),
-          if (medicine.durationDays != null) ...[
-            SizedBox(height: 8.h),
-            _DetailRow(
-              icon: Icons.event_repeat_rounded,
-              label: 'Duration',
-              value: '${medicine.durationDays} days',
-            ),
-          ],
-          if (medicine.instructions.trim().isNotEmpty) ...[
-            SizedBox(height: 8.h),
-            _DetailRow(
-              icon: Icons.notes_rounded,
-              label: 'Instructions',
-              value: medicine.instructions,
-            ),
-          ],
-          if (lowConfidence) ...[
-            SizedBox(height: 10.h),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
-              decoration: BoxDecoration(
-                color: AppColors.warningSoft,
-                borderRadius: BorderRadius.circular(9.r),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    size: 14.sp,
-                    color: AppColors.warning,
-                  ),
-                  SizedBox(width: 6.w),
-                  Expanded(
-                    child: Text(
-                      'Low confidence — please verify against the '
-                      'original prescription.',
-                      style: TextStyle(
-                        fontSize: 11.sp,
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 15.sp, color: AppColors.primary),
-        SizedBox(width: 8.w),
-        SizedBox(
-          width: 78.w,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11.5.sp,
-              fontWeight: FontWeight.w700,
-              color: AppColors.muted,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 12.5.sp,
-              color: AppColors.inkSoft,
-              height: 1.35,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

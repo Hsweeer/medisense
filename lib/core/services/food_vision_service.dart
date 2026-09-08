@@ -71,6 +71,41 @@ class FoodVisionService {
     return previous.then((_) => task()).whenComplete(completer.complete);
   }
 
+  // Tracks, per model, the point in time we already know it's pointless
+  // to call Groq again. Groq's preview vision model doesn't always send
+  // rate-limit reset headers on its 429s — when it doesn't, the retry
+  // loop below has no precise wait time and can only guess with a short
+  // exponential backoff (a few seconds), even though the underlying
+  // limit is a 60-second window. That meant a scan could burn through
+  // all 6 attempts (~15s) and fail, and then a *second* scan started
+  // moments later would repeat the exact same doomed 15s cycle against
+  // a quota that was still empty — wasting the user's time twice and
+  // sending Groq more requests while it's already rejecting everything.
+  // Instead: once we learn (from a header, or from exhausting attempts
+  // with no header info at all) roughly when a model's quota should be
+  // usable again, remember it here. Any request for that same model
+  // made before that time fails immediately with a clear "wait Ns"
+  // message instead of hitting the network at all.
+  final Map<String, DateTime> _cooldownUntil = {};
+
+  Duration? _remainingCooldown(String model) {
+    final until = _cooldownUntil[model];
+    if (until == null) return null;
+    final remaining = until.difference(DateTime.now());
+    return remaining.isNegative ? null : remaining;
+  }
+
+  void _setCooldown(String model, Duration wait) {
+    final until = DateTime.now().add(wait);
+    final existing = _cooldownUntil[model];
+    // Never shorten a cooldown we already set from better information.
+    if (existing == null || until.isAfter(existing)) {
+      _cooldownUntil[model] = until;
+    }
+  }
+
+  void _clearCooldown(String model) => _cooldownUntil.remove(model);
+
   // Text-only requests (estimateNutrition — no image involved) don't need
   // the vision-capable model at all. Routing them there anyway meant
   // every single scan made TWO calls against the same tightly rate-
@@ -229,22 +264,68 @@ class FoodVisionService {
     return totalMs > 0 ? Duration(milliseconds: totalMs) : null;
   }
 
-  /// Reads whichever of Groq's rate-limit headers is present and
-  /// meaningful, preferring the token-bucket reset time specifically
-  /// (this app's limit is token-volume based, not request-count based),
-  /// then falling back to Retry-After, then the request-count reset.
+  /// Groq enforces a tokens-per-minute AND a requests-per-minute limit
+  /// independently, and sends reset headers for both on every 429 —
+  /// regardless of which one actually caused that particular rejection.
+  /// The previous version always trusted x-ratelimit-reset-tokens first
+  /// whenever it was present, which meant that when the *requests*
+  /// bucket was the one actually exhausted (needing real time — tens of
+  /// seconds — to refill), it instead grabbed the token bucket's mostly-
+  /// full, near-zero reset time (e.g. "86ms"), waited that long, retried,
+  /// and got 429'd again for the same reason. Repeated across the retry
+  /// budget, that burns all attempts in under two seconds without ever
+  /// actually waiting out the limit that's really blocking it.
+  ///
+  /// Fix: figure out which bucket(s) are actually at zero via the
+  /// `remaining` headers and use the reset time for those specifically.
+  /// If both are exhausted, wait for the longer of the two — retrying as
+  /// soon as one refills is pointless if the other is still blocking.
+  /// Retry-After (when Groq sends it) is authoritative for "how long to
+  /// wait before retrying at all," so it's treated as a floor.
   Duration? _serverReportedWait(http.Response response) {
     final tokenReset = _parseGroqResetDuration(
       response.headers['x-ratelimit-reset-tokens'],
     );
-    if (tokenReset != null) return tokenReset;
-
-    final retryAfter = _parseGroqResetDuration(response.headers['retry-after']);
-    if (retryAfter != null) return retryAfter;
-
-    return _parseGroqResetDuration(
+    final requestReset = _parseGroqResetDuration(
       response.headers['x-ratelimit-reset-requests'],
     );
+    final retryAfter = _parseGroqResetDuration(response.headers['retry-after']);
+
+    final remainingTokens = int.tryParse(
+      response.headers['x-ratelimit-remaining-tokens'] ?? '',
+    );
+    final remainingRequests = int.tryParse(
+      response.headers['x-ratelimit-remaining-requests'] ?? '',
+    );
+
+    Duration? candidate;
+    final tokensExhausted = remainingTokens == 0;
+    final requestsExhausted = remainingRequests == 0;
+
+    if (tokensExhausted && requestsExhausted) {
+      // Both buckets are empty — wait for whichever refills last.
+      candidate = _laterOf(tokenReset, requestReset);
+    } else if (tokensExhausted) {
+      candidate = tokenReset;
+    } else if (requestsExhausted) {
+      candidate = requestReset;
+    }
+
+    // If we couldn't tell which bucket triggered this (no `remaining`
+    // headers, or both non-zero — e.g. a burst/concurrency limit), fall
+    // back to the longer of whatever reset values are present rather
+    // than guessing the shorter one.
+    candidate ??= _laterOf(tokenReset, requestReset);
+
+    // Retry-After is a floor: never retry sooner than Groq explicitly
+    // told us to, even if a bucket reset looked shorter.
+    return _laterOf(candidate, retryAfter);
+  }
+
+  Duration? _laterOf(Duration? a, Duration? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a > b ? a : b;
   }
 
   bool _boolValue(dynamic value, bool fallback) {
@@ -316,6 +397,24 @@ class FoodVisionService {
 
     final model = modelOverride ?? _model;
 
+    // Fail fast if we already know, from a recent 429 against this exact
+    // model, that its quota isn't back yet — see _cooldownUntil above.
+    // This is what actually stops a second scan from repeating a doomed
+    // ~15s retry cycle: no network call at all until the cooldown clears.
+    final cooldown = _remainingCooldown(model);
+    if (cooldown != null) {
+      final seconds = (cooldown.inMilliseconds / 1000).ceil();
+      debugPrint(
+        '[FoodVisionService] skipping request — $model still cooling '
+        'down for ${seconds}s',
+      );
+      throw FoodScanException(
+        FoodScanErrorType.rateLimited,
+        'Food analysis is temporarily busy. Please try again in about '
+        '${seconds}s.',
+      );
+    }
+
     // qwen/qwen3.6-27b is currently served by Groq as a "preview" model
     // (their only vision-capable option after retiring the Llama vision
     // preview models), which carries much tighter rate limits than their
@@ -332,6 +431,12 @@ class FoodVisionService {
     const maxAttempts = 6;
     const maxBackoff = Duration(seconds: 5);
     final random = Random();
+    // Whether any attempt this call got a real reset time from Groq. If
+    // we exhaust every attempt without ever learning one, we don't know
+    // the real window — but the model's documented limit is per-minute,
+    // so we assume a conservative full 60s cooldown rather than letting
+    // the next scan repeat the same blind, doomed retry cycle.
+    var sawServerWait = false;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final response = await http
@@ -366,6 +471,13 @@ class FoodVisionService {
             // Capped at 20s so a single wait step never feels like the
             // app has frozen, even if the real reset window is longer.
             final serverWait = _serverReportedWait(response);
+            if (serverWait != null) {
+              sawServerWait = true;
+              // Let any request queued up behind this one (see
+              // _serialized) benefit from this real reset time too,
+              // instead of each one rediscovering it independently.
+              _setCooldown(model, serverWait);
+            }
             final jitter = Duration(milliseconds: random.nextInt(300));
             final exponential = Duration(
               milliseconds: min(
@@ -389,6 +501,13 @@ class FoodVisionService {
             );
             await Future.delayed(wait);
             continue;
+          }
+          // Exhausted every attempt. If Groq never told us a real reset
+          // time on any of them, assume the full documented per-minute
+          // window so the *next* scan fails fast instead of repeating
+          // this same ~15s blind cycle for nothing.
+          if (!sawServerWait) {
+            _setCooldown(model, const Duration(seconds: 60));
           }
           throw const FoodScanException(
             FoodScanErrorType.rateLimited,
@@ -458,6 +577,7 @@ class FoodVisionService {
             'Food analysis returned no result.',
           );
         }
+        _clearCooldown(model);
         return text;
       } on FoodScanException {
         rethrow;
