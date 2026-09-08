@@ -427,6 +427,7 @@ class _ResultViewState extends State<_ResultView> {
             style: GoogleFonts.robotoMono(
               fontSize: 12.5.sp,
               height: 1.6,
+              fontWeight: FontWeight.w600,
               color: AppColors.inkSoft,
             ),
           ),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -15,8 +17,7 @@ class PrescriptionHistoryScreen extends StatefulWidget {
       _PrescriptionHistoryScreenState();
 }
 
-class _PrescriptionHistoryScreenState
-    extends State<PrescriptionHistoryScreen> {
+class _PrescriptionHistoryScreenState extends State<PrescriptionHistoryScreen> {
   bool _enabled = true;
   bool _loading = true;
 
@@ -84,10 +85,49 @@ class _PrescriptionHistoryScreenState
     );
   }
 
+  /// A small square photo thumbnail for the entry's saved scan, or a
+  /// neutral placeholder icon when there's no photo path or the file no
+  /// longer exists on disk (e.g. it lived in a temp/cache directory that
+  /// got cleared).
+  Widget _thumbnail(PrescriptionHistoryEntry entry) {
+    final path = entry.photoUrl;
+    Widget placeholder = Container(
+      width: 48.r,
+      height: 48.r,
+      decoration: BoxDecoration(
+        color: AppColors.soft,
+        borderRadius: BorderRadius.circular(10.r),
+      ),
+      child: Icon(
+        Icons.receipt_long_rounded,
+        size: 22.sp,
+        color: AppColors.muted,
+      ),
+    );
+
+    if (path == null || path.isEmpty) return placeholder;
+
+    final file = File(path);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10.r),
+      child: Image.file(
+        file,
+        width: 48.r,
+        height: 48.r,
+        fit: BoxFit.cover,
+        // If the file was deleted/moved (e.g. it was a temp/cache path
+        // that got cleared), fall back to the placeholder instead of a
+        // broken-image icon.
+        errorBuilder: (context, error, stackTrace) => placeholder,
+      ),
+    );
+  }
+
   Widget _entryTile(PrescriptionHistoryEntry entry) {
     return Card(
       margin: EdgeInsets.only(bottom: 10.h),
       child: ListTile(
+        leading: _thumbnail(entry),
         title: Text(
           '${entry.medicineCount} medicine${entry.medicineCount == 1 ? '' : 's'}',
           style: const TextStyle(fontWeight: FontWeight.w700),
@@ -105,13 +145,37 @@ class _PrescriptionHistoryScreenState
   }
 
   void _showSummary(PrescriptionHistoryEntry entry) {
+    final path = entry.photoUrl;
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Prescription summary'),
         content: SingleChildScrollView(
-          child: SelectableText(entry.summary,
-              style: TextStyle(fontSize: 13.sp, height: 1.5)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (path != null && path.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12.r),
+                    child: Image.file(
+                      File(path),
+                      height: 160.h,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              SelectableText(
+                entry.summary,
+                style: TextStyle(fontSize: 13.sp, height: 1.5),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
