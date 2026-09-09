@@ -146,35 +146,47 @@ class _PrescriptionHistoryScreenState extends State<PrescriptionHistoryScreen> {
 
   void _showSummary(PrescriptionHistoryEntry entry) {
     final path = entry.photoUrl;
+    // Bounded dialog width — AlertDialog wraps its content in an
+    // IntrinsicWidth internally, and giving a child (like the image below)
+    // a `width: double.infinity` inside that causes a
+    // "input.isFinite is not true" layout crash. Using a fixed width here
+    // keeps every child's constraints finite.
+    final dialogWidth = MediaQuery.of(context).size.width * 0.8;
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Prescription summary'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (path != null && path.isNotEmpty)
-                Padding(
-                  padding: EdgeInsets.only(bottom: 12.h),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12.r),
-                    child: Image.file(
-                      File(path),
-                      height: 160.h,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const SizedBox.shrink(),
+        content: SizedBox(
+          width: dialogWidth,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (path != null && path.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 12.h),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12.r),
+                      child: SizedBox(
+                        width: dialogWidth,
+                        height: 160.h,
+                        child: Image.file(
+                          File(path),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const SizedBox.shrink(),
+                        ),
+                      ),
                     ),
                   ),
+                SelectableText(
+                  entry.summary,
+                  style: TextStyle(fontSize: 13.sp, height: 1.5),
                 ),
-              SelectableText(
-                entry.summary,
-                style: TextStyle(fontSize: 13.sp, height: 1.5),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
