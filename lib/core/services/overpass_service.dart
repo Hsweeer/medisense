@@ -1,5 +1,6 @@
 // lib/core/services/overpass_service.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -11,7 +12,12 @@ import '../../data/models/models.dart';
 
 class OverpassAllEndpointsFailedException implements Exception {
   @override
-  String toString() => 'All Overpass endpoints failed or timed out.';
+  String toString() =>
+      'All Overpass endpoints failed or timed out. This usually means the '
+      'device\'s current network cannot reach any of the free OSM mirrors '
+      '(e.g. a carrier/firewall blocking them), rather than the app itself '
+      'being broken — try a different network (Wi-Fi vs mobile data) if '
+      'this keeps happening.';
 }
 
 /// Very small subset parser for OSM `opening_hours` syntax, good enough to
@@ -121,16 +127,32 @@ class OverpassService {
       dotenv.env['OVERPASS_ENDPOINT_PRIMARY'],
       dotenv.env['OVERPASS_ENDPOINT_FALLBACK_1'],
       dotenv.env['OVERPASS_ENDPOINT_FALLBACK_2'],
+      dotenv.env['OVERPASS_ENDPOINT_FALLBACK_3'],
+      dotenv.env['OVERPASS_ENDPOINT_FALLBACK_4'],
     ].whereType<String>().where((e) => e.trim().isNotEmpty).toList();
 
     if (fromEnv.isNotEmpty) return fromEnv;
 
     // Safety net — same defaults as before, used only if .env is missing
     // or these specific keys weren't set.
+    //
+    // Expanded from 3 to 5 mirrors: field reports showed all three
+    // original mirrors (overpass-api.de, kumi.systems, private.coffee)
+    // timing out together even after fetchNearby started racing them in
+    // parallel — meaning the bottleneck isn't sequential-vs-parallel
+    // timing anymore, it's that all three happened to be
+    // slow/unreachable from that network at once (common with these
+    // small free community mirrors, especially over some South Asian
+    // ISPs/mobile carriers). Racing more independent mirrors at once
+    // costs nothing extra in wait time (they all run concurrently, still
+    // capped by the same _requestTimeout) but meaningfully raises the
+    // odds that at least one responds.
     return const [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.private.coffee/api/interpreter',
+      'https://overpass.openstreetmap.fr/api/interpreter',
+      'https://overpass.osm.ch/api/interpreter',
     ];
   }
 
@@ -146,8 +168,7 @@ class OverpassService {
   // never give up sooner than the timeout it told the server to honor —
   // 22s here gives the query's own 20s server-side budget (see
   // _buildQuery) a full, fair chance plus a small margin for network
-  // round-trip, while still keeping the worst case (all 3 endpoints
-  // genuinely dead) at a tolerable ~66s instead of the original 90s.
+  // round-trip.
   static const _requestTimeout = Duration(seconds: 22);
 
   // As of ~April 2026, overpass-api.de (the primary endpoint) started
@@ -186,34 +207,72 @@ class OverpassService {
       types: types,
     );
 
-    for (final endpoint in _endpoints) {
-      try {
-        final response = await http
-            .post(
-              Uri.parse(endpoint),
-              headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
-              body: {'data': query},
-            )
-            .timeout(_requestTimeout);
+    // BUG FIX: this used to try each endpoint one after another — a
+    // full 22s timeout on the first mirror, THEN 22s on the second,
+    // THEN 22s on the third, meaning the worst case (all three mirrors
+    // slow/overloaded, which is common for these free public Overpass
+    // instances — overpass-api.de in particular is a shared, often-
+    // overloaded free server) was up to ~66 seconds of waiting before
+    // the caller ever saw a result or an error. Since only ONE endpoint
+    // succeeding is actually needed, racing all three at once instead
+    // means: a fast endpoint's response is used immediately without
+    // waiting on the other two at all, and even the worst case (all
+    // three genuinely dead) drops to a single ~22s window instead of
+    // three stacked ones.
+    final completer = Completer<List<Facility>>();
+    final endpoints = _endpoints;
+    var remaining = endpoints.length;
 
-        if (response.statusCode == 200) {
-          return _parseResponse(response.body, userPosition);
-        }
-        // Log the real reason instead of silently moving on — a 406/429/5xx
-        // here previously looked identical to a plain timeout, which made
-        // "why did every endpoint fail" impossible to diagnose from the
-        // caller side.
-        debugPrint(
-          '[OverpassService] $endpoint returned ${response.statusCode}: '
-          '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
-        );
-      } catch (e) {
-        debugPrint('[OverpassService] $endpoint threw: $e');
-        continue;
-      }
+    for (final endpoint in endpoints) {
+      unawaited(
+        _attemptEndpoint(endpoint, query, userPosition)
+            .then((facilities) {
+              if (!completer.isCompleted) {
+                completer.complete(facilities);
+              }
+            })
+            .catchError((Object e) {
+              remaining--;
+              if (remaining == 0 && !completer.isCompleted) {
+                completer.completeError(OverpassAllEndpointsFailedException());
+              }
+            }),
+      );
     }
 
-    throw OverpassAllEndpointsFailedException();
+    return completer.future;
+  }
+
+  Future<List<Facility>> _attemptEndpoint(
+    String endpoint,
+    String query,
+    LatLng userPosition,
+  ) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse(endpoint),
+            headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
+            body: {'data': query},
+          )
+          .timeout(_requestTimeout);
+
+      if (response.statusCode == 200) {
+        return _parseResponse(response.body, userPosition);
+      }
+      // Log the real reason instead of silently moving on — a 406/429/5xx
+      // here previously looked identical to a plain timeout, which made
+      // "why did every endpoint fail" impossible to diagnose from the
+      // caller side.
+      debugPrint(
+        '[OverpassService] $endpoint returned ${response.statusCode}: '
+        '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
+      );
+      throw Exception('HTTP ${response.statusCode}');
+    } catch (e) {
+      debugPrint('[OverpassService] $endpoint threw: $e');
+      rethrow;
+    }
   }
 
   String _buildQuery({

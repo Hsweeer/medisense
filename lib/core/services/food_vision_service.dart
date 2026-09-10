@@ -267,19 +267,16 @@ class FoodVisionService {
   /// Groq enforces a tokens-per-minute AND a requests-per-minute limit
   /// independently, and sends reset headers for both on every 429 —
   /// regardless of which one actually caused that particular rejection.
-  /// The previous version always trusted x-ratelimit-reset-tokens first
-  /// whenever it was present, which meant that when the *requests*
-  /// bucket was the one actually exhausted (needing real time — tens of
-  /// seconds — to refill), it instead grabbed the token bucket's mostly-
-  /// full, near-zero reset time (e.g. "86ms"), waited that long, retried,
-  /// and got 429'd again for the same reason. Repeated across the retry
-  /// budget, that burns all attempts in under two seconds without ever
-  /// actually waiting out the limit that's really blocking it.
+  /// Trusting whichever reset header showed up first (or always
+  /// preferring one over the other) meant that when the *other* bucket
+  /// was the one actually exhausted, the reported reset value could be
+  /// misleadingly small — waiting that long and retrying just gets
+  /// 429'd again for the same reason.
   ///
-  /// Fix: figure out which bucket(s) are actually at zero via the
-  /// `remaining` headers and use the reset time for those specifically.
-  /// If both are exhausted, wait for the longer of the two — retrying as
-  /// soon as one refills is pointless if the other is still blocking.
+  /// This figures out which bucket(s) are actually at zero via the
+  /// `remaining` headers and uses the reset time for those specifically.
+  /// If both are exhausted, it waits for the longer of the two — retrying
+  /// as soon as one refills is pointless if the other is still blocking.
   /// Retry-After (when Groq sends it) is authoritative for "how long to
   /// wait before retrying at all," so it's treated as a floor.
   Duration? _serverReportedWait(http.Response response) {
@@ -464,12 +461,25 @@ class FoodVisionService {
         }
         if (response.statusCode == 429) {
           if (attempt < maxAttempts) {
-            // Prefer Groq's own precise reset-time headers when present
-            // — this is the actual fix: previously this always fell
-            // through to the blind exponential guess because the old
-            // parser couldn't read Groq's "7.66s"-style duration format.
-            // Capped at 20s so a single wait step never feels like the
-            // app has frozen, even if the real reset window is longer.
+            // NOTE: Groq's reported reset-time headers on this preview
+            // model have repeatedly been observed to be far too small in
+            // practice — e.g. 225ms, then 165ms, then 95ms across
+            // consecutive attempts on the *same* call, each one honored
+            // exactly and each one still getting 429'd again. If those
+            // numbers were the real wait needed, the second attempt
+            // would have succeeded. They're evidently a token-bucket's
+            // continuous refill granularity, not a reliable "wait this
+            // long and you're clear" signal for this endpoint. Trusting
+            // them literally just means retrying faster than the model
+            // can actually clear, burning attempts for nothing.
+            //
+            // So: treat the server-reported wait as a *floor*, not the
+            // answer — always wait at least as long as our own
+            // exponential schedule too, whichever of the two is larger.
+            // This still lets a genuinely large server-reported wait (a
+            // real multi-second reset) take priority when it's bigger
+            // than the exponential step, while refusing to be fooled by
+            // suspiciously tiny reported values.
             final serverWait = _serverReportedWait(response);
             if (serverWait != null) {
               sawServerWait = true;
@@ -485,18 +495,19 @@ class FoodVisionService {
                 maxBackoff.inMilliseconds,
               ),
             );
-            final wait = serverWait != null
-                ? Duration(
-                        milliseconds: min(
-                          serverWait.inMilliseconds,
-                          const Duration(seconds: 20).inMilliseconds,
-                        ),
-                      ) +
-                      jitter
-                : exponential + jitter;
+            final cappedServerWait = serverWait == null
+                ? null
+                : Duration(
+                    milliseconds: min(
+                      serverWait.inMilliseconds,
+                      const Duration(seconds: 20).inMilliseconds,
+                    ),
+                  );
+            final baseWait = _laterOf(cappedServerWait, exponential)!;
+            final wait = baseWait + jitter;
             debugPrint(
               '[FoodVisionService] rate limited (attempt $attempt/$maxAttempts) '
-              '— ${serverWait != null ? "Groq reported" : "guessing"} '
+              '— ${serverWait != null ? "Groq reported ${serverWait.inMilliseconds}ms, using" : "guessing"} '
               '${wait.inMilliseconds}ms',
             );
             await Future.delayed(wait);

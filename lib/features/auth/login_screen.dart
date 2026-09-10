@@ -1,6 +1,7 @@
 // PATH: lib/features/auth/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -110,7 +111,9 @@ class _LoginScreenState extends State<LoginScreen> {
           onTap: () => FocusScope.of(context).unfocus(),
           child: Scaffold(
             // Soft teal wash behind everything — matches the ambient
-            // gradient in the reference design instead of a flat paper bg.
+            // gradient in the reference design. The decorative
+            // heartbeat/shield/dot artwork that used to sit on top of
+            // this has been removed; only the color wash itself remains.
             body: Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -119,316 +122,299 @@ class _LoginScreenState extends State<LoginScreen> {
                   colors: [Color(0xFFEAF5F2), Color(0xFFDCEEEA)],
                 ),
               ),
-              child: Stack(
-                children: [
-                  // Ambient background art scattered across the FULL
-                  // screen: a horizontal heartbeat trace top-left, a
-                  // large shield + cross cluster top-right, a dot grid
-                  // lower-left, and two soft wave blobs anchored to the
-                  // bottom corners. Never intercepts touches.
-                  const Positioned.fill(
-                    child: IgnorePointer(child: _AmbientBackground()),
+              child: SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20.w,
+                    vertical: 4.h,
                   ),
-                  SafeArea(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 20.w,
-                        vertical: 4.h,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Brand block — sits directly on the gradient
+                      // background, outside the card.
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: _LanguageChip(
+                          onTap: () => _showLanguagePicker(context),
+                        ),
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Brand block — sits directly on the gradient
-                          // background, outside the card.
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: _LanguageChip(
-                              onTap: () => _showLanguagePicker(context),
+                      SizedBox(height: 24.h),
+                      Center(child: LogoMark(size: 58.r)),
+                      SizedBox(height: 8.h),
+                      Center(
+                        child: RichText(
+                          text: TextSpan(
+                            style: GoogleFonts.sora(
+                              fontSize: 22.sp,
+                              fontWeight: FontWeight.w800,
                             ),
+                            children: [
+                              TextSpan(
+                                text: 'Medi',
+                                style: TextStyle(color: AppColors.ink),
+                              ),
+                              TextSpan(
+                                text: 'Sense',
+                                style: TextStyle(color: AppColors.primary),
+                              ),
+                            ],
                           ),
-                          SizedBox(height: 24.h),
-                          Center(child: LogoMark(size: 58.r)),
-                          SizedBox(height: 8.h),
-                          Center(
-                            child: RichText(
-                              text: TextSpan(
+                        ),
+                      ),
+                      SizedBox(height: 3.h),
+                      Center(
+                        child: Text(
+                          'Your Health. Our Priority.',
+                          style: TextStyle(
+                            fontSize: 11.5.sp,
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 12.h),
+                      // Floating white card — sign-in form only.
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.fromLTRB(
+                          20.w,
+                          18.h,
+                          20.w,
+                          16.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(
+                                alpha: .10,
+                              ),
+                              blurRadius: 24.r,
+                              offset: Offset(0, 10.h),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Center(
+                              child: Text(
+                                'Welcome back!',
                                 style: GoogleFonts.sora(
-                                  fontSize: 22.sp,
+                                  fontSize: 18.sp,
                                   fontWeight: FontWeight.w800,
+                                  color: AppColors.ink,
                                 ),
-                                children: [
-                                  TextSpan(
-                                    text: 'Medi',
-                                    style: TextStyle(color: AppColors.ink),
-                                  ),
-                                  TextSpan(
-                                    text: 'Sense',
-                                    style: TextStyle(color: AppColors.primary),
-                                  ),
-                                ],
                               ),
                             ),
+                            SizedBox(height: 3.h),
+                            Center(
+                              child: Text(
+                                'Sign in to continue to your account',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: AppColors.muted,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 14.h),
+                            TextField(
+                              controller: _email,
+                              keyboardType: TextInputType.emailAddress,
+                              style: TextStyle(fontSize: 14.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Email address',
+                                hintStyle: TextStyle(fontSize: 13.sp),
+                                prefixIcon: Icon(
+                                  Icons.mail_outline_rounded,
+                                  color: AppColors.primary,
+                                  size: 19.sp,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            TextField(
+                              controller: _password,
+                              obscureText: _obscure,
+                              style: TextStyle(fontSize: 14.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Password',
+                                hintStyle: TextStyle(fontSize: 13.sp),
+                                prefixIcon: Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: AppColors.primary,
+                                  size: 19.sp,
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscure
+                                        ? Icons.visibility_off_rounded
+                                        : Icons.visibility_rounded,
+                                    color: AppColors.muted,
+                                    size: 19.sp,
+                                  ),
+                                  onPressed: () =>
+                                      setState(() => _obscure = !_obscure),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: GestureDetector(
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ForgotPasswordScreen(),
+                                  ),
+                                ),
+                                child: Text(
+                                  'Forgot password?',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            PrimaryButton(
+                              label: 'Sign in',
+                              icon: Icons.arrow_forward_rounded,
+                              onPressed: _continue,
+                            ),
+                            const TextDivider(text: 'OR'),
+                            SocialButton(
+                              label: 'Continue with Google',
+                              // Real vector Google brand icon instead of a
+                              // network-fetched image, which was slow and
+                              // fell back to a plain "G" whenever offline
+                              // or the URL failed to load.
+                              iconWidget: const FaIcon(
+                                FontAwesomeIcons.google,
+                                color: Color(0xFF4285F4),
+                                size: 18,
+                              ),
+                              onPressed: _continueWithGoogle,
+                            ),
+                            SizedBox(height: 8.h),
+                            SocialButton(
+                              label: 'Continue with Apple',
+                              iconWidget: const FaIcon(
+                                FontAwesomeIcons.apple,
+                                color: Colors.black,
+                                size: 20,
+                              ),
+                              onPressed: _continueWithApple,
+                            ),
+                            SizedBox(height: 10.h),
+                            Center(
+                              child: SizedBox(
+                                width: 200.w,
+                                child: SecondaryButton(
+                                  label: 'Continue as Guest',
+                                  icon: Icons.visibility_outlined,
+                                  onPressed: _continueAsGuest,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 12.h),
+                      // Sign-up link + footer — back outside the card,
+                      // directly on the gradient background.
+                      Center(
+                        child: GestureDetector(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SignupScreen(),
+                            ),
                           ),
-                          SizedBox(height: 3.h),
-                          Center(
-                            child: Text(
-                              'Your Health. Our Priority.',
+                          child: Text.rich(
+                            TextSpan(
+                              text: "New here? ",
                               style: TextStyle(
-                                fontSize: 11.5.sp,
+                                fontSize: 12.5.sp,
                                 color: AppColors.muted,
-                                fontWeight: FontWeight.w500,
                               ),
-                            ),
-                          ),
-                          SizedBox(height: 12.h),
-                          // Floating white card — sign-in form only.
-                          Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.fromLTRB(
-                              20.w,
-                              18.h,
-                              20.w,
-                              16.h,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(24.r),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withValues(
-                                    alpha: .10,
-                                  ),
-                                  blurRadius: 24.r,
-                                  offset: Offset(0, 10.h),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Center(
-                                  child: Text(
-                                    'Welcome back!',
-                                    style: GoogleFonts.sora(
-                                      fontSize: 18.sp,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.ink,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 3.h),
-                                Center(
-                                  child: Text(
-                                    'Sign in to continue to your account',
-                                    style: TextStyle(
-                                      fontSize: 12.sp,
-                                      color: AppColors.muted,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 14.h),
-                                TextField(
-                                  controller: _email,
-                                  keyboardType: TextInputType.emailAddress,
-                                  style: TextStyle(fontSize: 14.sp),
-                                  decoration: InputDecoration(
-                                    hintText: 'Email address',
-                                    hintStyle: TextStyle(fontSize: 13.sp),
-                                    prefixIcon: Icon(
-                                      Icons.mail_outline_rounded,
-                                      color: AppColors.primary,
-                                      size: 19.sp,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 8.h),
-                                TextField(
-                                  controller: _password,
-                                  obscureText: _obscure,
-                                  style: TextStyle(fontSize: 14.sp),
-                                  decoration: InputDecoration(
-                                    hintText: 'Password',
-                                    hintStyle: TextStyle(fontSize: 13.sp),
-                                    prefixIcon: Icon(
-                                      Icons.lock_outline_rounded,
-                                      color: AppColors.primary,
-                                      size: 19.sp,
-                                    ),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscure
-                                            ? Icons.visibility_off_rounded
-                                            : Icons.visibility_rounded,
-                                        color: AppColors.muted,
-                                        size: 19.sp,
-                                      ),
-                                      onPressed: () =>
-                                          setState(() => _obscure = !_obscure),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 4.h),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: GestureDetector(
-                                    onTap: () => Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const ForgotPasswordScreen(),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'Forgot password?',
-                                      style: TextStyle(
-                                        fontSize: 12.sp,
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 4.h),
-                                PrimaryButton(
-                                  label: 'Sign in',
-                                  icon: Icons.arrow_forward_rounded,
-                                  onPressed: _continue,
-                                ),
-                                const TextDivider(text: 'OR'),
-                                SocialButton(
-                                  label: 'Continue with Google',
-                                  iconWidget: Image.network(
-                                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_"G"_logo.svg/1200px-Google_"G"_logo.svg.png',
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, _, _) => Text(
-                                      'G',
-                                      style: GoogleFonts.sora(
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.blue,
-                                      ),
-                                    ),
-                                  ),
-                                  onPressed: _continueWithGoogle,
-                                ),
-                                SizedBox(height: 8.h),
-                                SocialButton(
-                                  label: 'Continue with Apple',
-                                  iconWidget: Image.network(
-                                    'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/1667px-Apple_logo_black.svg.png',
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, _, _) => const Icon(
-                                      Icons.phone_iphone_rounded,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                  onPressed: _continueWithApple,
-                                ),
-                                SizedBox(height: 10.h),
-                                Center(
-                                  child: SizedBox(
-                                    width: 200.w,
-                                    child: SecondaryButton(
-                                      label: 'Continue as Guest',
-                                      icon: Icons.visibility_outlined,
-                                      onPressed: _continueAsGuest,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: 12.h),
-                          // Sign-up link + footer — back outside the card,
-                          // directly on the gradient background.
-                          Center(
-                            child: GestureDetector(
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const SignupScreen(),
-                                ),
-                              ),
-                              child: Text.rich(
                                 TextSpan(
-                                  text: "New here? ",
+                                  text: 'Create an account',
                                   style: TextStyle(
                                     fontSize: 12.5.sp,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 10.h),
+                      Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.shield_outlined,
+                              size: 12.sp,
+                              color: AppColors.primary,
+                            ),
+                            SizedBox(width: 5.w),
+                            Flexible(
+                              child: Text.rich(
+                                TextSpan(
+                                  text: 'By continuing you agree to our ',
+                                  style: TextStyle(
+                                    fontSize: 10.sp,
                                     color: AppColors.muted,
                                   ),
                                   children: [
                                     TextSpan(
-                                      text: 'Create an account',
+                                      text: 'Terms',
                                       style: TextStyle(
-                                        fontSize: 12.5.sp,
+                                        fontSize: 10.sp,
                                         color: AppColors.primary,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
+                                    const TextSpan(text: ' and '),
+                                    TextSpan(
+                                      text: 'Privacy Policy',
+                                      style: TextStyle(
+                                        fontSize: 10.sp,
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const TextSpan(text: '.'),
                                   ],
                                 ),
                               ),
                             ),
-                          ),
-                          SizedBox(height: 10.h),
-                          Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.shield_outlined,
-                                  size: 12.sp,
-                                  color: AppColors.primary,
-                                ),
-                                SizedBox(width: 5.w),
-                                Flexible(
-                                  child: Text.rich(
-                                    TextSpan(
-                                      text: 'By continuing you agree to our ',
-                                      style: TextStyle(
-                                        fontSize: 10.sp,
-                                        color: AppColors.muted,
-                                      ),
-                                      children: [
-                                        TextSpan(
-                                          text: 'Terms',
-                                          style: TextStyle(
-                                            fontSize: 10.sp,
-                                            color: AppColors.primary,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const TextSpan(text: ' and '),
-                                        TextSpan(
-                                          text: 'Privacy Policy',
-                                          style: TextStyle(
-                                            fontSize: 10.sp,
-                                            color: AppColors.primary,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const TextSpan(text: '.'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: 2.h),
-                          Center(
-                            child: Text(
-                              'MediAI offers guidance, not a diagnosis.',
-                              style: TextStyle(
-                                fontSize: 9.5.sp,
-                                color: AppColors.muted,
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                      SizedBox(height: 2.h),
+                      Center(
+                        child: Text(
+                          'MediAI offers guidance, not a diagnosis.',
+                          style: TextStyle(
+                            fontSize: 9.5.sp,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -525,162 +511,4 @@ class _LanguagePickerSheet extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Ambient full-screen background art: a horizontal heartbeat trace along
-/// the top-left (roughly at logo height), a large shield-with-cross motif
-/// plus a scatter of small crosses top-right, a soft dot grid lower on
-/// the left edge, and two overlapping wave blobs anchored to the bottom
-/// corners. Everything here is low-opacity texture behind the content —
-/// the white card and brand block stay clean and undecorated.
-class _AmbientBackground extends StatelessWidget {
-  const _AmbientBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(painter: _AmbientPainter(), size: Size.infinite);
-  }
-}
-
-class _AmbientPainter extends CustomPainter {
-  void _drawCross(Canvas canvas, Paint paint, Offset center, double arm) {
-    canvas.drawLine(
-      Offset(center.dx - arm, center.dy),
-      Offset(center.dx + arm, center.dy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(center.dx, center.dy - arm),
-      Offset(center.dx, center.dy + arm),
-      paint,
-    );
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // --- Top-left horizontal heartbeat trace, roughly at logo height ---
-    final ecgPaint = Paint()
-      ..color = AppColors.primary.withValues(alpha: .22)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final ecgY = h * .135;
-    final ecgPath = Path()..moveTo(-4, ecgY);
-    ecgPath.lineTo(w * .07, ecgY);
-    ecgPath.lineTo(w * .10, ecgY - 30);
-    ecgPath.lineTo(w * .13, ecgY + 42);
-    ecgPath.lineTo(w * .16, ecgY - 24);
-    ecgPath.lineTo(w * .19, ecgY);
-    ecgPath.lineTo(w * .30, ecgY);
-    canvas.drawPath(ecgPath, ecgPaint);
-
-    // --- Top-right: large shield-with-cross + scattered small crosses --
-    final shieldOutline = Paint()
-      ..color = AppColors.primary.withValues(alpha: .10)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
-    final shieldFill = Paint()
-      ..color = AppColors.primary.withValues(alpha: .05);
-    final sc = Offset(w * .90, h * .11);
-    const sw = 70.0, sh = 92.0;
-    Path buildShield(Offset center, double halfW, double height) {
-      return Path()
-        ..moveTo(center.dx, center.dy - height / 2)
-        ..quadraticBezierTo(
-          center.dx + halfW,
-          center.dy - height / 2 + halfW * .35,
-          center.dx + halfW,
-          center.dy - height * .05,
-        )
-        ..quadraticBezierTo(
-          center.dx + halfW,
-          center.dy + height * .32,
-          center.dx,
-          center.dy + height / 2,
-        )
-        ..quadraticBezierTo(
-          center.dx - halfW,
-          center.dy + height * .32,
-          center.dx - halfW,
-          center.dy - height * .05,
-        )
-        ..quadraticBezierTo(
-          center.dx - halfW,
-          center.dy - height / 2 + halfW * .35,
-          center.dx,
-          center.dy - height / 2,
-        )
-        ..close();
-    }
-
-    final shieldPath = buildShield(sc, sw / 2, sh);
-    canvas.drawPath(shieldPath, shieldFill);
-    canvas.drawPath(shieldPath, shieldOutline);
-    // Cross inside the shield.
-    final shieldCrossPaint = Paint()
-      ..color = AppColors.primary.withValues(alpha: .14)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
-      ..strokeCap = StrokeCap.round;
-    _drawCross(canvas, shieldCrossPaint, sc, 16);
-
-    final crossPaint = Paint()
-      ..color = AppColors.primary.withValues(alpha: .18)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-    _drawCross(canvas, crossPaint, Offset(w * .72, h * .075), 12);
-    _drawCross(canvas, crossPaint, Offset(w * .78, h * .13), 9);
-    _drawCross(canvas, crossPaint, Offset(w * .68, h * .16), 7);
-    _drawCross(canvas, crossPaint, Offset(w * .84, h * .05), 8);
-    _drawCross(canvas, crossPaint, Offset(w * .60, h * .09), 6);
-
-    // --- Lower-left dot grid --------------------------------------------
-    final dotPaint = Paint()..color = AppColors.primary.withValues(alpha: .18);
-    for (int row = 0; row < 6; row++) {
-      for (int col = 0; col < 4; col++) {
-        final dx = w * .015 + col * 8;
-        final dy = h * .48 + row * 8;
-        canvas.drawCircle(Offset(dx, dy), 1.4, dotPaint);
-      }
-    }
-
-    // --- Bottom-left wave blob -------------------------------------------
-    final leftWavePaint = Paint()..color = AppColors.soft.withValues(alpha: .9);
-    final leftWavePath = Path()
-      ..moveTo(0, h * .84)
-      ..quadraticBezierTo(w * .12, h * .76, w * .22, h * .86)
-      ..quadraticBezierTo(w * .30, h * .93, w * .18, h)
-      ..lineTo(0, h)
-      ..close();
-    canvas.drawPath(leftWavePath, leftWavePaint);
-
-    // --- Bottom-right wave blob (larger, two-tone) -----------------------
-    final rightWavePaintSoft = Paint()
-      ..color = AppColors.soft.withValues(alpha: .95);
-    final rightWavePathSoft = Path()
-      ..moveTo(w * .55, h)
-      ..quadraticBezierTo(w * .70, h * .88, w * .85, h * .92)
-      ..quadraticBezierTo(w * .95, h * .95, w, h * .87)
-      ..lineTo(w, h)
-      ..close();
-    canvas.drawPath(rightWavePathSoft, rightWavePaintSoft);
-
-    final rightWavePaintDeep = Paint()
-      ..color = AppColors.primary.withValues(alpha: .14);
-    final rightWavePathDeep = Path()
-      ..moveTo(w * .68, h)
-      ..quadraticBezierTo(w * .80, h * .92, w * .92, h * .96)
-      ..quadraticBezierTo(w * .97, h * .97, w, h * .93)
-      ..lineTo(w, h)
-      ..close();
-    canvas.drawPath(rightWavePathDeep, rightWavePaintDeep);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

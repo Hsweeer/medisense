@@ -1,5 +1,7 @@
+// PATH: lib/features/auth/signup_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -43,11 +45,19 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
     if (!email.contains('@') || !email.contains('.')) {
-      showToast(context, 'Enter a valid email address', color: AppColors.danger);
+      showToast(
+        context,
+        'Enter a valid email address',
+        color: AppColors.danger,
+      );
       return;
     }
     if (password.length < 6) {
-      showToast(context, 'Password must be at least 6 characters', color: AppColors.danger);
+      showToast(
+        context,
+        'Password must be at least 6 characters',
+        color: AppColors.danger,
+      );
       return;
     }
     if (password != confirm) {
@@ -103,197 +113,284 @@ class _SignupScreenState extends State<SignupScreen> {
           behavior: HitTestBehavior.opaque,
           onTap: () => FocusScope.of(context).unfocus(),
           child: Scaffold(
-            appBar: AppBar(
-              leading: BackButton(
-                onPressed: isLoading ? null : () => Navigator.of(context).pop(),
+            // Same soft teal gradient wash as the login screen — no
+            // AppBar, the back arrow sits inline with the brand row
+            // below instead, matching the login screen's chip position.
+            body: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFEAF5F2), Color(0xFFDCEEEA)],
+                ),
               ),
-            ),
-            body: SafeArea(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(24.w, 4.h, 24.w, 24.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        LogoMark(size: 42.r),
-                        SizedBox(width: 10.w),
-                        Text('MediSense',
+              child: SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20.w,
+                    vertical: 4.h,
+                  ),
+                  // Plain Column, no scroll view — everything below is
+                  // sized to fit a single screen without scrolling.
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: isLoading
+                                ? null
+                                : () => Navigator.of(context).pop(),
+                            child: Container(
+                              width: 34.r,
+                              height: 34.r,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.primary.withValues(
+                                      alpha: .08,
+                                    ),
+                                    blurRadius: 10.r,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.arrow_back_rounded,
+                                size: 18.sp,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12.h),
+                      Center(child: LogoMark(size: 46.r)),
+                      SizedBox(height: 6.h),
+                      Center(
+                        child: RichText(
+                          text: TextSpan(
                             style: GoogleFonts.sora(
-                                fontSize: 20.sp, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                    SizedBox(height: 26.h),
-                    Text('Create your\naccount',
-                        style: GoogleFonts.sora(
-                            fontSize: 32.sp,
-                            fontWeight: FontWeight.w700,
-                            height: 1.15)),
-                    SizedBox(height: 8.h),
-                    Text(
-                      'Takes less than a minute. You\'ll land straight on your '
-                      'home dashboard once you\'re done.',
-                      style: TextStyle(fontSize: 14.5.sp, color: AppColors.muted),
-                    ),
-                    SizedBox(height: 26.h),
-                    Text('Full name',
-                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 8.h),
-                    TextField(
-                      controller: _name,
-                      textCapitalization: TextCapitalization.words,
-                      style: TextStyle(fontSize: 15.sp),
-                      decoration: InputDecoration(
-                        hintText: 'Jordan Blake',
-                        hintStyle: TextStyle(fontSize: 14.sp),
-                        prefixIcon: Icon(Icons.person_outline_rounded,
-                            color: AppColors.muted, size: 20.sp),
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('Email',
-                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 8.h),
-                    TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      style: TextStyle(fontSize: 15.sp),
-                      decoration: InputDecoration(
-                        hintText: 'you@example.com',
-                        hintStyle: TextStyle(fontSize: 14.sp),
-                        prefixIcon: Icon(Icons.mail_outline_rounded,
-                            color: AppColors.muted, size: 20.sp),
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('Password',
-                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 8.h),
-                    TextField(
-                      controller: _password,
-                      obscureText: _obscure,
-                      style: TextStyle(fontSize: 15.sp),
-                      decoration: InputDecoration(
-                        hintText: 'At least 6 characters',
-                        hintStyle: TextStyle(fontSize: 14.sp),
-                        prefixIcon: Icon(Icons.lock_outline_rounded,
-                            color: AppColors.muted, size: 20.sp),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscure
-                                ? Icons.visibility_off_rounded
-                                : Icons.visibility_rounded,
-                            color: AppColors.muted,
-                            size: 20.sp,
-                          ),
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Text('Confirm password',
-                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 8.h),
-                    TextField(
-                      controller: _confirm,
-                      obscureText: _obscureConfirm,
-                      style: TextStyle(fontSize: 15.sp),
-                      decoration: InputDecoration(
-                        hintText: 'Re-enter your password',
-                        hintStyle: TextStyle(fontSize: 14.sp),
-                        prefixIcon: Icon(Icons.lock_outline_rounded,
-                            color: AppColors.muted, size: 20.sp),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureConfirm
-                                ? Icons.visibility_off_rounded
-                                : Icons.visibility_rounded,
-                            color: AppColors.muted,
-                            size: 20.sp,
-                          ),
-                          onPressed: () =>
-                              setState(() => _obscureConfirm = !_obscureConfirm),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 22.h),
-                    PrimaryButton(
-                      label: 'Create account',
-                      icon: Icons.arrow_forward_rounded,
-                      onPressed: _createAccount,
-                    ),
-                    const TextDivider(text: 'OR'),
-                    SocialButton(
-                      label: 'Sign up with Google',
-                      iconWidget: Image.network(
-                        'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_"G"_logo.svg/1200px-Google_"G"_logo.svg.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => Text('G', 
-                          style: GoogleFonts.sora(fontWeight: FontWeight.w900, color: Colors.blue)),
-                      ),
-                      onPressed: _continueWithGoogle,
-                    ),
-                    SizedBox(height: 12.h),
-                    SocialButton(
-                      label: 'Sign up with Apple',
-                      iconWidget: Image.network(
-                        'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/1667px-Apple_logo_black.svg.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => const Icon(Icons.phone_iphone_rounded, color: Colors.black),
-                      ),
-                      onPressed: _continueWithApple,
-                    ),
-                    SizedBox(height: 24.h),
-                    Center(
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Text.rich(
-                          TextSpan(
-                            text: 'Already have an account? ',
-                            style: TextStyle(
-                                fontSize: 13.sp, color: AppColors.muted),
+                              fontSize: 19.sp,
+                              fontWeight: FontWeight.w800,
+                            ),
                             children: [
                               TextSpan(
-                                text: 'Sign in',
-                                style: TextStyle(
-                                    fontSize: 13.sp,
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w700),
+                                text: 'Medi',
+                                style: TextStyle(color: AppColors.ink),
+                              ),
+                              TextSpan(
+                                text: 'Sense',
+                                style: TextStyle(color: AppColors.primary),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    ),
-                    SizedBox(height: 16.h),
-                    Center(
-                      child: Text.rich(
-                        TextSpan(
-                          text: 'By creating an account you agree to our ',
-                          style: TextStyle(
-                              fontSize: 11.5.sp, color: AppColors.muted),
-                          children: [
-                            TextSpan(
-                                text: 'Terms',
-                                style: TextStyle(
-                                    fontSize: 11.5.sp,
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w600)),
-                            const TextSpan(text: ' and '),
-                            TextSpan(
-                                text: 'Privacy Policy',
-                                style: TextStyle(
-                                    fontSize: 11.5.sp,
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w600)),
-                            const TextSpan(
-                                text: '. MedAI offers guidance, not a diagnosis.'),
+                      SizedBox(height: 10.h),
+                      // Floating white card — sign-up form only, same
+                      // language as the login screen's card.
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 16.h),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: .10),
+                              blurRadius: 24.r,
+                              offset: Offset(0, 10.h),
+                            ),
                           ],
                         ),
-                        textAlign: TextAlign.center,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Center(
+                              child: Text(
+                                'Create your account',
+                                style: GoogleFonts.sora(
+                                  fontSize: 17.sp,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 10.h),
+                            TextField(
+                              controller: _name,
+                              textCapitalization: TextCapitalization.words,
+                              style: TextStyle(fontSize: 14.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Full name',
+                                hintStyle: TextStyle(fontSize: 13.sp),
+                                prefixIcon: Icon(
+                                  Icons.person_outline_rounded,
+                                  color: AppColors.primary,
+                                  size: 19.sp,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            TextField(
+                              controller: _email,
+                              keyboardType: TextInputType.emailAddress,
+                              style: TextStyle(fontSize: 14.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Email address',
+                                hintStyle: TextStyle(fontSize: 13.sp),
+                                prefixIcon: Icon(
+                                  Icons.mail_outline_rounded,
+                                  color: AppColors.primary,
+                                  size: 19.sp,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            TextField(
+                              controller: _password,
+                              obscureText: _obscure,
+                              style: TextStyle(fontSize: 14.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Password',
+                                hintStyle: TextStyle(fontSize: 13.sp),
+                                prefixIcon: Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: AppColors.primary,
+                                  size: 19.sp,
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscure
+                                        ? Icons.visibility_off_rounded
+                                        : Icons.visibility_rounded,
+                                    color: AppColors.muted,
+                                    size: 19.sp,
+                                  ),
+                                  onPressed: () =>
+                                      setState(() => _obscure = !_obscure),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            TextField(
+                              controller: _confirm,
+                              obscureText: _obscureConfirm,
+                              style: TextStyle(fontSize: 14.sp),
+                              decoration: InputDecoration(
+                                hintText: 'Confirm password',
+                                hintStyle: TextStyle(fontSize: 13.sp),
+                                prefixIcon: Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: AppColors.primary,
+                                  size: 19.sp,
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscureConfirm
+                                        ? Icons.visibility_off_rounded
+                                        : Icons.visibility_rounded,
+                                    color: AppColors.muted,
+                                    size: 19.sp,
+                                  ),
+                                  onPressed: () => setState(
+                                    () => _obscureConfirm = !_obscureConfirm,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 10.h),
+                            PrimaryButton(
+                              label: 'Create account',
+                              icon: Icons.arrow_forward_rounded,
+                              onPressed: _createAccount,
+                            ),
+                            const TextDivider(text: 'OR'),
+                            SocialButton(
+                              label: 'Sign up with Google',
+                              iconWidget: const FaIcon(
+                                FontAwesomeIcons.google,
+                                color: Color(0xFF4285F4),
+                                size: 18,
+                              ),
+                              onPressed: _continueWithGoogle,
+                            ),
+                            SizedBox(height: 8.h),
+                            SocialButton(
+                              label: 'Sign up with Apple',
+                              iconWidget: const FaIcon(
+                                FontAwesomeIcons.apple,
+                                color: Colors.black,
+                                size: 20,
+                              ),
+                              onPressed: _continueWithApple,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      SizedBox(height: 10.h),
+                      Center(
+                        child: GestureDetector(
+                          onTap: () => Navigator.of(context).pop(),
+                          child: Text.rich(
+                            TextSpan(
+                              text: 'Already have an account? ',
+                              style: TextStyle(
+                                fontSize: 12.5.sp,
+                                color: AppColors.muted,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: 'Sign in',
+                                  style: TextStyle(
+                                    fontSize: 12.5.sp,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 6.h),
+                      Center(
+                        child: Text.rich(
+                          TextSpan(
+                            text: 'By creating an account you agree to our ',
+                            style: TextStyle(
+                              fontSize: 9.5.sp,
+                              color: AppColors.muted,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: 'Terms',
+                                style: TextStyle(
+                                  fontSize: 9.5.sp,
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const TextSpan(text: ' and '),
+                              TextSpan(
+                                text: 'Privacy Policy',
+                                style: TextStyle(
+                                  fontSize: 9.5.sp,
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const TextSpan(text: '.'),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
