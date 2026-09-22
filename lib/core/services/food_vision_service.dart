@@ -10,6 +10,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as image_lib;
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/food_models.dart';
 
@@ -106,6 +107,43 @@ class FoodVisionService {
 
   void _clearCooldown(String model) => _cooldownUntil.remove(model);
 
+  // Groq's free tier also enforces a *daily* request cap per model (see
+  // console.groq.com → Settings → Limits) on top of the per-minute one —
+  // 1,000 requests/day for both qwen/qwen3.6-27b and openai/gpt-oss-20b
+  // as of when this was checked. Nothing below previously tracked that,
+  // so once the day's quota ran out the app would keep silently retrying
+  // and burning through the 6-attempt/backoff cycle on every single scan
+  // for the rest of the day, instead of failing fast with a clear
+  // message. This counts requests locally per model per UTC day so we
+  // can warn before even hitting the network once it's close to gone.
+  static const _dailyRequestCap = 1000;
+  static const _dailyCountKeyPrefix = 'food_vision_daily_count_';
+  static const _dailyDateKeyPrefix = 'food_vision_daily_date_';
+
+  String _utcDayKey() {
+    final now = DateTime.now().toUtc();
+    return '${now.year}-${now.month}-${now.day}';
+  }
+
+  Future<int> _todaysRequestCount(String model) async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _utcDayKey();
+    final storedDay = prefs.getString('$_dailyDateKeyPrefix$model');
+    if (storedDay != today) return 0; // New day (or never tracked) — fresh.
+    return prefs.getInt('$_dailyCountKeyPrefix$model') ?? 0;
+  }
+
+  Future<void> _recordRequest(String model) async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = _utcDayKey();
+    final storedDay = prefs.getString('$_dailyDateKeyPrefix$model');
+    final current = storedDay == today
+        ? (prefs.getInt('$_dailyCountKeyPrefix$model') ?? 0)
+        : 0;
+    await prefs.setString('$_dailyDateKeyPrefix$model', today);
+    await prefs.setInt('$_dailyCountKeyPrefix$model', current + 1);
+  }
+
   // Text-only requests (estimateNutrition — no image involved) don't need
   // the vision-capable model at all. Routing them there anyway meant
   // every single scan made TWO calls against the same tightly rate-
@@ -134,25 +172,37 @@ class FoodVisionService {
 
   Future<FoodIdentification> identifyBytes(List<int> bytes) async {
     final image = _prepareImage(bytes);
-    final content = await _request([
-      {
-        'type': 'text',
-        'text':
-            'Identify the main food in this photo. Ignore plates, tables, and background. '
-            'For multiple foods, name the main meal. Estimate the visible portion and weight. '
-            'Return ONLY JSON with foodName, category, estimatedPortion, estimatedWeightGrams, '
-            'confidence (0 to 1), and isFood (true or false). Do not use markdown.',
-      },
-      {
-        'type': 'image_url',
-        'image_url': {'url': 'data:${image.mimeType};base64,${image.base64}'},
-      },
-    ]);
+    final content = await _request(
+      [
+        {
+          'type': 'text',
+          'text':
+          'Identify the main food in this photo. Ignore plates, tables, and background. '
+              'For multiple foods, name the main meal. Estimate the visible portion and weight. '
+              'Return ONLY JSON with foodName, category, estimatedPortion, estimatedWeightGrams, '
+              'confidence (0 to 1), and isFood (true or false). Do not use markdown.',
+        },
+        {
+          'type': 'image_url',
+          'image_url': {
+            'url': 'data:${image.mimeType};base64,${image.base64}',
+          },
+        },
+      ],
+      // The reply is a handful of short JSON fields, but qwen/qwen3.6-27b
+      // is a "thinking" model that spends completion tokens on internal
+      // reasoning *before* it writes the JSON — too tight a cap here
+      // truncates it mid-thought (finish_reason "length") and leaves an
+      // empty/invalid content string instead of actually saving tokens.
+      // Groq's own docs example uses 1024 for this exact model, so this
+      // caps runaway completions without risking that failure mode.
+      maxTokens: 1024,
+    );
     final parsed = _parseObject(content);
     final isFood = _boolValue(parsed['isFood'], parsed['foodName'] != null);
     final confidence =
         _number(parsed['confidence']) ??
-        (_boolValue(parsed['confident'], false) ? 0.8 : 0.0);
+            (_boolValue(parsed['confident'], false) ? 0.8 : 0.0);
     final foodName = parsed['foodName']?.toString().trim() ?? '';
     if (!isFood || foodName.isEmpty) {
       throw const FoodScanException(
@@ -169,7 +219,7 @@ class FoodVisionService {
     return FoodIdentification(
       foodName: foodName,
       estimatedPortion:
-          parsed['estimatedPortion']?.toString().trim().isNotEmpty == true
+      parsed['estimatedPortion']?.toString().trim().isNotEmpty == true
           ? parsed['estimatedPortion'].toString().trim()
           : '1 serving',
       estimatedWeightGrams: _number(parsed['estimatedWeightGrams']),
@@ -184,7 +234,7 @@ class FoodVisionService {
         {
           'type': 'text',
           'text':
-              'Estimate nutrition for "${food.foodName}", portion: ${food.estimatedPortion}'
+          'Estimate nutrition for "${food.foodName}", portion: ${food.estimatedPortion}'
               '${food.estimatedWeightGrams != null ? ' (~${food.estimatedWeightGrams!.round()}g)' : ''}. '
               'Return ONLY JSON with calories (number), carbsG (number), fatG (number), '
               'proteinG (number), dietaryStatus ("halal", "haram", or "unknown"), and '
@@ -194,6 +244,10 @@ class FoodVisionService {
       // No image in this request — use the production text model instead
       // of the scarce vision-only one (see _textModel above).
       modelOverride: _textModel,
+      // gpt-oss-20b is also a reasoning model — same truncation risk as
+      // the vision call above, so give it the same safety margin rather
+      // than a tight cap that risks an empty response.
+      maxTokens: 1024,
     );
     final parsed = _parseObject(content);
     final calories = _number(parsed['calories']);
@@ -348,22 +402,22 @@ class FoodVisionService {
       );
     }
     // Vision-model token cost scales with image resolution, and Groq's
-    // free-tier for this model caps out at just 8,000 tokens/minute (see
-    // the retry comments above) — a 1600px-wide image was eating a large
-    // enough share of that budget that even one or two scans in the same
-    // minute could exhaust it, and once exhausted, no amount of client-
-    // side retrying helps until the next 60-second window rolls over.
-    // 1024px is still comfortably enough resolution for a phone photo of
-    // a plate of food to be recognized correctly, while meaningfully
-    // cutting the tokens each request actually costs — the real lever
-    // here, since the limit is per-minute token volume, not request
-    // count.
-    final resized = decoded.width > 1024
-        ? image_lib.copyResize(decoded, width: 1024)
+    // free-tier for this model caps out at exactly 8,000 tokens/minute
+    // (confirmed on console.groq.com → Settings → Limits) — a
+    // 1600px-wide image was eating a large enough share of that budget
+    // that even one or two scans in the same minute could exhaust it,
+    // and once exhausted, no amount of client-side retrying helps until
+    // the next 60-second window rolls over. 640px at quality 60 is still
+    // comfortably enough resolution for a phone photo of a plate of food
+    // to be recognized correctly, while cutting the tokens each request
+    // costs well below what 768px/quality 65 used — the real lever here,
+    // since the limit is per-minute token *volume*, not request count.
+    final resized = decoded.width > 640
+        ? image_lib.copyResize(decoded, width: 640)
         : decoded;
     return _PreparedImage(
       base64: base64Encode(
-        Uint8List.fromList(image_lib.encodeJpg(resized, quality: 80)),
+        Uint8List.fromList(image_lib.encodeJpg(resized, quality: 60)),
       ),
       mimeType: 'image/jpeg',
     );
@@ -372,18 +426,24 @@ class FoodVisionService {
   /// Public entry point every caller uses — queues through [_serialized]
   /// so overlapping scans don't compete for the same tight quota.
   Future<String> _request(
-    List<Map<String, dynamic>> content, {
-    String? modelOverride,
-  }) {
+      List<Map<String, dynamic>> content, {
+        String? modelOverride,
+        int? maxTokens,
+      }) {
     return _serialized(
-      () => _requestUnserialized(content, modelOverride: modelOverride),
+          () => _requestUnserialized(
+        content,
+        modelOverride: modelOverride,
+        maxTokens: maxTokens,
+      ),
     );
   }
 
   Future<String> _requestUnserialized(
-    List<Map<String, dynamic>> content, {
-    String? modelOverride,
-  }) async {
+      List<Map<String, dynamic>> content, {
+        String? modelOverride,
+        int? maxTokens,
+      }) async {
     final apiKey = dotenv.env['GROQ_API_KEY']?.trim() ?? '';
     if (apiKey.isEmpty) {
       throw const FoodScanException(
@@ -403,12 +463,30 @@ class FoodVisionService {
       final seconds = (cooldown.inMilliseconds / 1000).ceil();
       debugPrint(
         '[FoodVisionService] skipping request — $model still cooling '
-        'down for ${seconds}s',
+            'down for ${seconds}s',
       );
       throw FoodScanException(
         FoodScanErrorType.rateLimited,
         'Food analysis is temporarily busy. Please try again in about '
-        '${seconds}s.',
+            '${seconds}s.',
+      );
+    }
+
+    // Groq's free tier for this model also caps at 1,000 requests/day —
+    // separate from, and on top of, the per-minute limit above. Catching
+    // that here means the *last* scan of the day fails with a clear
+    // "come back tomorrow" message instead of the app silently retrying
+    // 6 times against a quota that has no chance of refilling for hours.
+    final usedToday = await _todaysRequestCount(model);
+    if (usedToday >= _dailyRequestCap) {
+      debugPrint(
+        '[FoodVisionService] daily cap reached for $model '
+            '($usedToday/$_dailyRequestCap)',
+      );
+      throw const FoodScanException(
+        FoodScanErrorType.rateLimited,
+        "Today's food analysis limit has been reached. Please try again "
+            'tomorrow.',
       );
     }
 
@@ -438,20 +516,26 @@ class FoodVisionService {
       try {
         final response = await http
             .post(
-              Uri.parse(_endpoint),
-              headers: {
-                'Authorization': 'Bearer $apiKey',
-                'Content-Type': 'application/json',
-              },
-              body: jsonEncode({
-                'model': model,
-                'response_format': {'type': 'json_object'},
-                'messages': [
-                  {'role': 'user', 'content': content},
-                ],
-              }),
-            )
+          Uri.parse(_endpoint),
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'model': model,
+            'response_format': {'type': 'json_object'},
+            if (maxTokens != null) 'max_completion_tokens': maxTokens,
+            'messages': [
+              {'role': 'user', 'content': content},
+            ],
+          }),
+        )
             .timeout(const Duration(seconds: 30));
+
+        // Every attempt against this model — successful or not — counts
+        // against Groq's daily cap, so record it regardless of outcome
+        // rather than only on success.
+        unawaited(_recordRequest(model));
 
         if (response.statusCode == 401 || response.statusCode == 403) {
           throw const FoodScanException(
@@ -498,17 +582,17 @@ class FoodVisionService {
             final cappedServerWait = serverWait == null
                 ? null
                 : Duration(
-                    milliseconds: min(
-                      serverWait.inMilliseconds,
-                      const Duration(seconds: 20).inMilliseconds,
-                    ),
-                  );
+              milliseconds: min(
+                serverWait.inMilliseconds,
+                const Duration(seconds: 20).inMilliseconds,
+              ),
+            );
             final baseWait = _laterOf(cappedServerWait, exponential)!;
             final wait = baseWait + jitter;
             debugPrint(
               '[FoodVisionService] rate limited (attempt $attempt/$maxAttempts) '
-              '— ${serverWait != null ? "Groq reported ${serverWait.inMilliseconds}ms, using" : "guessing"} '
-              '${wait.inMilliseconds}ms',
+                  '— ${serverWait != null ? "Groq reported ${serverWait.inMilliseconds}ms, using" : "guessing"} '
+                  '${wait.inMilliseconds}ms',
             );
             await Future.delayed(wait);
             continue;
@@ -547,10 +631,10 @@ class FoodVisionService {
                     maxBackoff.inMilliseconds,
                   ),
                 ) +
-                jitter;
+                    jitter;
             debugPrint(
               '[FoodVisionService] server error ${response.statusCode} '
-              '(attempt $attempt/$maxAttempts) — retrying in ${wait.inMilliseconds}ms',
+                  '(attempt $attempt/$maxAttempts) — retrying in ${wait.inMilliseconds}ms',
             );
             await Future.delayed(wait);
             continue;
@@ -627,9 +711,9 @@ class FoodVisionService {
   Map<String, dynamic> _parseObject(String text) {
     final clean = text
         .replaceAll(
-          RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
-          '',
-        )
+      RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+      '',
+    )
         .replaceAll(RegExp(r'```(?:json)?', caseSensitive: false), '')
         .replaceAll('```', '')
         .trim();
@@ -643,7 +727,7 @@ class FoodVisionService {
     }
     try {
       return jsonDecode(clean.substring(start, end + 1))
-          as Map<String, dynamic>;
+      as Map<String, dynamic>;
     } catch (_) {
       throw const FoodScanException(
         FoodScanErrorType.invalidResponse,

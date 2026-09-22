@@ -262,7 +262,7 @@ class MainActivity : FlutterActivity() {
                     displayTime = "",
                     hour = 0,
                     minute = 0,
-                    repeatType = "snooze",
+                    repeatType = AlarmScheduler.ONE_SHOT_REPEAT_TYPE,
                     weekday = 0,
                     soundRawResName = soundRawResName
                 )

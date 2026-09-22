@@ -246,21 +246,26 @@ class AlarmRingingService : Service(), TextToSpeech.OnInitListener {
 
     private fun snooze() {
         if (currentReminderId.isBlank()) return
-        val snoozeAt = System.currentTimeMillis() + SNOOZE_MINUTES * 60 * 1000L
-        val cal = java.util.Calendar.getInstance().apply { timeInMillis = snoozeAt }
+        // Delegate to the single shared implementation of "snooze N minutes
+        // from now" (see AlarmScheduler.snooze) — this used to build a
+        // future hour/minute by hand and go through the general recurring
+        // AlarmScheduler.schedule() path instead, which (a) rounded down
+        // to the minute, firing up to ~59s early, and (b) persisted this
+        // one-shot into AlarmStore where a reboot before it fired would
+        // have resurrected it a full day late instead of just dropping it.
         val entry = AlarmStore.AlarmEntry(
             alarmId = AlarmScheduler.snoozeIdFor(currentReminderId),
             reminderId = currentReminderId,
             title = currentTitle,
             dose = currentDose,
             displayTime = currentDisplayTime,
-            hour = cal.get(java.util.Calendar.HOUR_OF_DAY),
-            minute = cal.get(java.util.Calendar.MINUTE),
-            repeatType = "once",
+            hour = 0,
+            minute = 0,
+            repeatType = AlarmScheduler.ONE_SHOT_REPEAT_TYPE,
             weekday = 0,
             soundRawResName = currentSoundRawResName,
         )
-        AlarmScheduler.schedule(this, entry)
+        AlarmScheduler.snooze(this, entry, SNOOZE_MINUTES)
     }
 
     private fun stopRinging() {

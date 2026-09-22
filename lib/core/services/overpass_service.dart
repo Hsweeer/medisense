@@ -14,10 +14,21 @@ class OverpassAllEndpointsFailedException implements Exception {
   @override
   String toString() =>
       'All Overpass endpoints failed or timed out. This usually means the '
-      'device\'s current network cannot reach any of the free OSM mirrors '
-      '(e.g. a carrier/firewall blocking them), rather than the app itself '
-      'being broken — try a different network (Wi-Fi vs mobile data) if '
-      'this keeps happening.';
+          'device\'s current network cannot reach any of the free OSM mirrors '
+          '(e.g. a carrier/firewall blocking them), rather than the app itself '
+          'being broken — try a different network (Wi-Fi vs mobile data) if '
+          'this keeps happening.';
+}
+
+/// Result of racing every mirror for one [FacilityType]'s query — carries
+/// whether that specific type's fetch failed outright, so [fetchNearby]
+/// can tell "this type failed" apart from "this type genuinely has zero
+/// results nearby" and only raise [OverpassAllEndpointsFailedException]
+/// when every requested type failed.
+class _TypeFetchResult {
+  const _TypeFetchResult(this.facilities, {required this.failed});
+  final List<Facility> facilities;
+  final bool failed;
 }
 
 /// Very small subset parser for OSM `opening_hours` syntax, good enough to
@@ -147,12 +158,20 @@ class OverpassService {
     // costs nothing extra in wait time (they all run concurrently, still
     // capped by the same _requestTimeout) but meaningfully raises the
     // odds that at least one responds.
+    //
+    // overpass.osm.ch removed: field logs showed it consistently
+    // returning an HTML/XML error page instead of JSON on every single
+    // attempt (FormatException: "Unexpected character" parsing "<?xml
+    // ...") — this mirror doesn't actually serve this app's [out:json]
+    // requests at all, so keeping it in the race just burns a request
+    // slot for a guaranteed failure. maps.mail.ru's mirror added in its
+    // place as a genuinely independent fifth option.
     return const [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.private.coffee/api/interpreter',
       'https://overpass.openstreetmap.fr/api/interpreter',
-      'https://overpass.osm.ch/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
     ];
   }
 
@@ -200,11 +219,98 @@ class OverpassService {
       FacilityType.pharmacy,
     },
   }) async {
+    // Each requested type gets its OWN Overpass request instead of one
+    // combined query. Previously a single query unioned every hospital
+    // AND pharmacy clause together, sharing one server-side [timeout:20]
+    // budget. Hospital tags (3 simple exact-match clauses) resolve fast
+    // and finish first; pharmacy tags (6 clauses — amenity, three shop
+    // synonyms, healthcare — needed precisely because South Asian
+    // "chemist" shops are tagged so inconsistently) are meaningfully more
+    // expensive to evaluate and run *after* the hospital clauses in the
+    // union block. On an overloaded free mirror, that combined query can
+    // hit its internal timeout partway through the pharmacy clauses —
+    // Overpass doesn't error out when that happens, it just returns
+    // whatever it had gathered so far with a "remark" field noting the
+    // timeout, which looked identical to "genuinely zero pharmacies
+    // nearby" from here. Splitting into two independent requests gives
+    // each type its own full, uncontended budget, and means one type
+    // timing out no longer silently erases the other's results.
+    final results = await Future.wait(
+      types.map(
+            (type) => _fetchOneType(
+          type: type,
+          radiusMeters: radiusMeters,
+          latitude: latitude,
+          longitude: longitude,
+          userPosition: userPosition,
+        ),
+      ),
+    );
+
+    // Only treat this as a total failure (triggering the cached-list
+    // fallback in NearbyScreen) if EVERY requested type failed. If
+    // hospitals came back fine but pharmacies genuinely couldn't be
+    // fetched from any mirror, showing the hospitals we do have beats
+    // discarding them just because pharmacies also failed.
+    if (results.every((r) => r.failed) && results.isNotEmpty) {
+      throw OverpassAllEndpointsFailedException();
+    }
+
+    return results.expand((r) => r.facilities).toList();
+  }
+
+  /// Races every configured mirror for a single facility [type]'s query —
+  /// same racing strategy as before, just scoped to one type so a heavy
+  /// pharmacy query can't eat into a fast hospital query's shared budget.
+  ///
+  /// Automatically retries the whole race up to [_maxAutoRetries] times
+  /// (short delay between attempts) before giving up. Field logs showed
+  /// the dominant failure modes here are *transient*, not structural —
+  /// overpass-api.de returning 429 (rate limited) or 504 (gateway
+  /// timeout) because it's a shared, heavily-used free public server —
+  /// and a moment later the exact same request often succeeds. Without
+  /// this, a transient rate-limit meant the whole screen came back empty
+  /// and the person had to notice and manually tap refresh themselves;
+  /// this now absorbs that automatically, so a manual retry is only ever
+  /// needed if the network is *persistently* unreachable.
+  Future<_TypeFetchResult> _fetchOneType({
+    required FacilityType type,
+    required double radiusMeters,
+    required double latitude,
+    required double longitude,
+    required LatLng userPosition,
+  }) async {
+    for (var attempt = 0; attempt <= _maxAutoRetries; attempt++) {
+      final result = await _fetchOneTypeOnce(
+        type: type,
+        radiusMeters: radiusMeters,
+        latitude: latitude,
+        longitude: longitude,
+        userPosition: userPosition,
+      );
+      if (!result.failed) return result;
+      if (attempt < _maxAutoRetries) {
+        await Future.delayed(_autoRetryDelay);
+      }
+    }
+    return const _TypeFetchResult([], failed: true);
+  }
+
+  static const _maxAutoRetries = 2;
+  static const _autoRetryDelay = Duration(seconds: 3);
+
+  Future<_TypeFetchResult> _fetchOneTypeOnce({
+    required FacilityType type,
+    required double radiusMeters,
+    required double latitude,
+    required double longitude,
+    required LatLng userPosition,
+  }) async {
     final query = _buildQuery(
       radiusMeters: radiusMeters,
       latitude: latitude,
       longitude: longitude,
-      types: types,
+      types: {type},
     );
 
     // BUG FIX: this used to try each endpoint one after another — a
@@ -227,34 +333,38 @@ class OverpassService {
       unawaited(
         _attemptEndpoint(endpoint, query, userPosition)
             .then((facilities) {
-              if (!completer.isCompleted) {
-                completer.complete(facilities);
-              }
-            })
+          if (!completer.isCompleted) {
+            completer.complete(facilities);
+          }
+        })
             .catchError((Object e) {
-              remaining--;
-              if (remaining == 0 && !completer.isCompleted) {
-                completer.completeError(OverpassAllEndpointsFailedException());
-              }
-            }),
+          remaining--;
+          if (remaining == 0 && !completer.isCompleted) {
+            completer.completeError(OverpassAllEndpointsFailedException());
+          }
+        }),
       );
     }
 
-    return completer.future;
+    try {
+      return _TypeFetchResult(await completer.future, failed: false);
+    } catch (_) {
+      return const _TypeFetchResult([], failed: true);
+    }
   }
 
   Future<List<Facility>> _attemptEndpoint(
-    String endpoint,
-    String query,
-    LatLng userPosition,
-  ) async {
+      String endpoint,
+      String query,
+      LatLng userPosition,
+      ) async {
     try {
       final response = await http
           .post(
-            Uri.parse(endpoint),
-            headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
-            body: {'data': query},
-          )
+        Uri.parse(endpoint),
+        headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
+        body: {'data': query},
+      )
           .timeout(_requestTimeout);
 
       if (response.statusCode == 200) {
@@ -266,7 +376,7 @@ class OverpassService {
       // caller side.
       debugPrint(
         '[OverpassService] $endpoint returned ${response.statusCode}: '
-        '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
+            '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
       );
       throw Exception('HTTP ${response.statusCode}');
     } catch (e) {
@@ -326,6 +436,19 @@ class OverpassService {
     final decoded = jsonDecode(body) as Map<String, dynamic>;
     final elements = (decoded['elements'] as List?) ?? const [];
 
+    // Overpass returns HTTP 200 even when it hit its own internal
+    // [timeout:N] budget partway through — it just adds a "remark"
+    // describing that instead of erroring, and includes whatever partial
+    // data it had gathered before cutting off. That previously looked
+    // identical to "this query genuinely found nothing" from here. Now
+    // that each facility type is its own request (see fetchNearby), this
+    // should be rarer, but logging it means a truncated result is visible
+    // in the field instead of silently read as "zero nearby".
+    final remark = decoded['remark'] as String?;
+    if (remark != null && remark.trim().isNotEmpty) {
+      debugPrint('[OverpassService] server remark (possible partial/truncated result): $remark');
+    }
+
     final facilities = <Facility>[];
     for (final raw in elements) {
       final facility = _fromOverpassElement(
@@ -343,16 +466,16 @@ class OverpassService {
         .length;
     debugPrint(
       '[OverpassService] raw elements: ${elements.length} | '
-      'parsed hospitals: $hospitalCount | parsed pharmacies: $pharmacyCount',
+          'parsed hospitals: $hospitalCount | parsed pharmacies: $pharmacyCount',
     );
 
     return facilities;
   }
 
   Facility? _fromOverpassElement(
-    Map<String, dynamic> element,
-    LatLng userPosition,
-  ) {
+      Map<String, dynamic> element,
+      LatLng userPosition,
+      ) {
     final tags = (element['tags'] as Map?)?.cast<String, dynamic>() ?? const {};
 
     // Lowercase before comparing — the Overpass query now matches tag
@@ -379,10 +502,10 @@ class OverpassService {
 
     final double? lat =
         (element['lat'] as num?)?.toDouble() ??
-        ((element['center'] as Map?)?['lat'] as num?)?.toDouble();
+            ((element['center'] as Map?)?['lat'] as num?)?.toDouble();
     final double? lon =
         (element['lon'] as num?)?.toDouble() ??
-        ((element['center'] as Map?)?['lon'] as num?)?.toDouble();
+            ((element['center'] as Map?)?['lon'] as num?)?.toDouble();
     if (lat == null || lon == null) return null;
 
     final position = LatLng(lat, lon);
@@ -436,7 +559,7 @@ class OverpassService {
           position.latitude,
           position.longitude,
         ) /
-        1609.344;
+            1609.344;
 
     return Facility(
       name: name,

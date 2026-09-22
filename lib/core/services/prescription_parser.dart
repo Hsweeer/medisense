@@ -103,6 +103,85 @@ int? extractDurationDays(String text) {
   );
 }
 
+/// Everything on a prescription that isn't a medicine — patient/doctor
+/// details, diagnosis, and any advice that applies to the whole
+/// prescription rather than one item. Parsed from the same Gemini JSON
+/// [getMedsFromOcr] reads the medicines from, so the two always agree
+/// about what was actually on the page.
+class PrescriptionMetadata {
+  const PrescriptionMetadata({
+    this.patientName,
+    this.patientAge,
+    this.doctorName,
+    this.clinicName,
+    this.date,
+    this.diagnosis,
+    this.generalAdvice,
+    this.followUp,
+  });
+
+  static const empty = PrescriptionMetadata();
+
+  final String? patientName;
+  final String? patientAge;
+  final String? doctorName;
+  final String? clinicName;
+  final String? date;
+  final String? diagnosis;
+  final String? generalAdvice;
+  final String? followUp;
+
+  bool get hasAnyDetails =>
+      _clean(patientName) != null ||
+          _clean(patientAge) != null ||
+          _clean(doctorName) != null ||
+          _clean(clinicName) != null ||
+          _clean(date) != null ||
+          _clean(diagnosis) != null;
+
+  bool get hasNotes => _clean(generalAdvice) != null || _clean(followUp) != null;
+}
+
+/// A field is only worth showing if it's non-empty and the model didn't
+/// just echo back a literal "null"/"n/a" placeholder instead of leaving
+/// the JSON value actually null.
+String? _clean(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty) return null;
+  final lower = trimmed.toLowerCase();
+  if (lower == 'null' || lower == 'n/a' || lower == 'none' || lower == 'unknown') {
+    return null;
+  }
+  return trimmed;
+}
+
+/// Parses the patient/doctor/diagnosis/advice fields Gemini returns
+/// alongside the medications array. Best-effort and silent on failure —
+/// this is supplementary information, so a malformed or legacy (pre-
+/// metadata) JSON payload should still let [getMedsFromOcr] work exactly
+/// as before rather than throwing.
+PrescriptionMetadata extractPrescriptionMetadata(String ocrText) {
+  if (ocrText.trim().isEmpty) return PrescriptionMetadata.empty;
+  try {
+    final String cleanJson =
+    ocrText.replaceAll('```json', '').replaceAll('```', '').trim();
+    final data = jsonDecode(cleanJson);
+    if (data is! Map) return PrescriptionMetadata.empty;
+    return PrescriptionMetadata(
+      patientName: data['patientName']?.toString(),
+      patientAge: data['patientAge']?.toString(),
+      doctorName: data['doctorName']?.toString(),
+      clinicName: data['clinicName']?.toString(),
+      date: data['date']?.toString(),
+      diagnosis: data['diagnosis']?.toString(),
+      generalAdvice: data['generalAdvice']?.toString(),
+      followUp: data['followUp']?.toString(),
+    );
+  } catch (_) {
+    return PrescriptionMetadata.empty;
+  }
+}
+
 /// Helper to get medicine list from a ChatMessage. Handles both new Gemini JSON
 /// and old raw text fallback formats.
 List<ParsedMedicine> getMedsFromOcr(String ocrText) {
@@ -181,19 +260,54 @@ List<TimeOfDay> defaultTimesFor(int timesPerDay) {
 /// from the parsed medicines — used in the chat card, the review screen,
 /// and saved into the user's prescription history so it reads well weeks
 /// later without needing the original photo.
-String buildProfessionalSummary(List<ParsedMedicine> meds, {DateTime? scannedAt}) {
+///
+/// [metadata] carries everything on the page that isn't a medicine —
+/// patient/doctor details, diagnosis, general advice, follow-up — so the
+/// summary reads like an actual clinical record instead of just a bare
+/// medicine list. It's optional (and every field within it is optional)
+/// because older saved history entries, or a prescription that genuinely
+/// didn't have that information printed on it, won't have it.
+String buildProfessionalSummary(
+    List<ParsedMedicine> meds, {
+      DateTime? scannedAt,
+      PrescriptionMetadata? metadata,
+    }) {
   final valid = meds.where((m) => m.name.trim().isNotEmpty).toList();
-  if (valid.isEmpty) {
+  final meta = metadata ?? PrescriptionMetadata.empty;
+  if (valid.isEmpty && !meta.hasAnyDetails) {
     return 'No medicines could be confidently read from this prescription.';
   }
 
   final date = scannedAt ?? DateTime.now();
-  final dateLabel =
+  final fallbackDateLabel =
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  // Prefer the date actually printed on the prescription over today's
+  // date (when we scanned it) — they're frequently different days.
+  final dateLabel = _clean(meta.date) ?? fallbackDateLabel;
 
   final buffer = StringBuffer();
   buffer.writeln('PRESCRIPTION SUMMARY — $dateLabel');
-  buffer.writeln('${valid.length} medicine${valid.length == 1 ? '' : 's'} identified');
+
+  // Patient / doctor / clinic / diagnosis header block — only the lines
+  // that were actually present on the page are shown, so this never pads
+  // itself out with empty "Patient: —" placeholders.
+  final patientLine = [
+    if (_clean(meta.patientName) != null) meta.patientName!.trim(),
+    if (_clean(meta.patientAge) != null) meta.patientAge!.trim(),
+  ].join(', ');
+  if (patientLine.isNotEmpty) buffer.writeln('Patient: $patientLine');
+  if (_clean(meta.doctorName) != null) {
+    buffer.writeln('Doctor: ${meta.doctorName!.trim()}');
+  }
+  if (_clean(meta.clinicName) != null) {
+    buffer.writeln('Clinic: ${meta.clinicName!.trim()}');
+  }
+  if (_clean(meta.diagnosis) != null) {
+    buffer.writeln('Diagnosis: ${meta.diagnosis!.trim()}');
+  }
+
+  buffer.writeln(
+      '${valid.length} medicine${valid.length == 1 ? '' : 's'} identified');
   buffer.writeln();
 
   for (var i = 0; i < valid.length; i++) {
@@ -216,6 +330,20 @@ String buildProfessionalSummary(List<ParsedMedicine> meds, {DateTime? scannedAt}
     buffer.writeln();
   }
 
+  // General advice / follow-up apply to the whole prescription, not one
+  // medicine — shown as their own section after the medicine list, the
+  // way a real Rx summary separates "take these" from "also do this".
+  if (meta.hasNotes) {
+    buffer.writeln('NOTES');
+    if (_clean(meta.generalAdvice) != null) {
+      buffer.writeln('   • ${meta.generalAdvice!.trim()}');
+    }
+    if (_clean(meta.followUp) != null) {
+      buffer.writeln('   • Follow-up: ${meta.followUp!.trim()}');
+    }
+    buffer.writeln();
+  }
+
   buffer.write('This summary is generated from a scanned image and may contain '
       'reading errors — always confirm with your prescribing doctor or pharmacist '
       'before relying on it.');
@@ -231,8 +359,26 @@ String formatTimeOfDay(TimeOfDay t) {
   return '$hour:$minute $period';
 }
 
-final RegExp _doseUnit =
-RegExp(r'(\d+(?:\.\d+)?)\s?(mg|mcg|ml|g|iu|gm|tab)\b', caseSensitive: false);
+// Matches the amount-to-take part of a dose line: a number followed by
+// either a strength unit (mg/ml/g/IU) or a quantity/measure word — the
+// latter in English, Roman Urdu, and Urdu script, since Pakistani
+// prescriptions frequently give the quantity ("1 tablet", "2 goli", "ایک
+// چمچ") instead of, or alongside, the strength. This is only the
+// last-resort heuristic fallback used when the AI didn't return clean
+// JSON; the primary Gemini pass already understands all these forms
+// natively and additionally combines strength + quantity when both are
+// written (see the prompt in gemini_service.dart).
+final RegExp _doseUnit = RegExp(
+  r'(\d+(?:\.\d+)?)\s?'
+  r'(mg|mcg|ml|cc|g|iu|gm'
+  r'|tabs?|tablets?'
+  r'|caps?|capsules?'
+  r'|goli(?:yan)?'
+  r'|cham+ach'
+  r'|drops?|boond|qatray?'
+  r'|گولی(?:اں)?|چمچ|قطرے?|قطرہ)\b',
+  caseSensitive: false,
+);
 
 // Frequency shorthand across English, Roman Urdu, and Urdu script — this is
 // only the last-resort heuristic fallback used when the AI didn't return
@@ -262,8 +408,9 @@ List<ParsedMedicine> parsePrescriptionText(String raw) {
   final List<ParsedMedicine> meds = <ParsedMedicine>[];
 
   for (final line in lines) {
-    final doseMatch = _doseUnit.firstMatch(line);
-    if (doseMatch == null) continue;
+    final matches = _doseUnit.allMatches(line).toList();
+    if (matches.isEmpty) continue;
+    final doseMatch = matches.first;
 
     // Capture name: search before the dose unit
     String name = line.substring(0, doseMatch.start).trim();
@@ -272,7 +419,13 @@ List<ParsedMedicine> parsePrescriptionText(String raw) {
 
     if (name.isEmpty || name.length < 2) continue;
 
-    final String dose = doseMatch.group(0)!.replaceAll(RegExp(r'\s+'), ' ');
+    // A line can carry BOTH the strength ("500mg") and a separate
+    // quantity/measure ("2 tablets", "1 chamach") — combine every match
+    // on the line instead of only the first, so neither part is silently
+    // dropped from the reminder that gets saved.
+    final String dose = matches
+        .map((m) => m.group(0)!.replaceAll(RegExp(r'\s+'), ' ').trim())
+        .join(' — ');
 
     int timesPerDay = 1;
     for (final entry in _freqPatterns.entries) {

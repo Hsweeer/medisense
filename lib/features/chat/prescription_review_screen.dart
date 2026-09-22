@@ -258,7 +258,8 @@ class _PrescriptionReviewScreenState extends State<PrescriptionReviewScreen> {
                 _SectionLabel('PRESCRIPTION SUMMARY'),
                 SizedBox(height: 10.h),
                 _SummaryPanel(
-                    meds: _meds.where((m) => m.name.trim().isNotEmpty).toList()),
+                    meds: _meds.where((m) => m.name.trim().isNotEmpty).toList(),
+                    ocrText: widget.ocrText),
               ],
               if (widget.ocrText.trim().isNotEmpty) ...[
                 SizedBox(height: 22.h),
@@ -705,12 +706,16 @@ class _AddMedicineButton extends StatelessWidget {
 }
 
 class _SummaryPanel extends StatelessWidget {
-  const _SummaryPanel({required this.meds});
+  const _SummaryPanel({required this.meds, required this.ocrText});
   final List<ParsedMedicine> meds;
+  final String ocrText;
 
   @override
   Widget build(BuildContext context) {
-    final summary = buildProfessionalSummary(meds);
+    final summary = buildProfessionalSummary(
+      meds,
+      metadata: extractPrescriptionMetadata(ocrText),
+    );
     return MCard(
       color: AppColors.paper,
       child: Row(

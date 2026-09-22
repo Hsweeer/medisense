@@ -158,28 +158,62 @@ class GeminiService {
                     "prescriptions are frequently bilingual: English medicine/brand names with "
                     "Urdu dosage instructions, either in Urdu script or Roman Urdu. "
                     "INPUT: You are provided with an image of a prescription and a literal transcription of it: \"$rawTranscription\". "
-                    "TASK: Extract EVERY medicine mentioned, in whichever language(s) it was written. Use the transcription and image together to verify names. "
+                    "TASK: Extract the COMPLETE prescription, not just the medicine list — every "
+                    "medicine mentioned in whichever language(s) it was written, AND every other "
+                    "piece of information written on the page (patient details, doctor/clinic "
+                    "details, date, diagnosis, and any general advice or follow-up instructions). "
+                    "Use the transcription and image together to verify everything. "
                     "RULES: "
                     "1. Never invent a value that isn't supported by the image or transcription. "
-                    "2. Leave dose, frequency, or instructions blank rather than guessing. "
-                    "3. For every item, set \"confidence\" to \"low\" if the handwriting is ambiguous or the name is a best guess. "
+                    "2. Leave any field blank/null rather than guessing — a field that genuinely "
+                    "isn't written on the prescription should be left empty, not filled with a "
+                    "plausible-sounding guess. "
+                    "3. For every medicine, set \"confidence\" to \"low\" if the handwriting is "
+                    "ambiguous or the name is a best guess. "
                     "4. Recognize frequency shorthand in ALL of these forms and convert to a numeric timesPerDay: "
                     "English/Latin (1+0+1, OD, BD/BID, TDS/TID, QID, \"once a day\", \"twice daily\", \"three times a day\"); "
                     "Urdu script (روزانہ ایک بار = once daily, دن میں دو بار = twice a day, دن میں تین بار = three times a day, "
                     "صبح و شام = morning & evening = 2, صبح، دوپہر، شام = morning/noon/evening = 3); "
                     "Roman Urdu (din mein aik bar, din mein 2 bar / do bar, din mein 3 bar / teen bar, subah shaam). "
-                    "5. Write the \"instructions\" field in the SAME language the prescription used for that "
-                    "instruction (don't force-translate to English) — e.g. keep \"کھانے کے بعد\" or \"khanay ke baad\" "
-                    "as written if that's how it appears, since the patient will read it back in that language. "
-                    "Common instruction meanings to recognize regardless of script: کھانے سے پہلے/khane se pehle = before food, "
-                    "کھانے کے بعد/khane ke baad = after food, خالی پیٹ/khali pait = empty stomach, سونے سے پہلے/sone se pehle = before bed. "
-                    "6. Also extract the course duration in days if written in any language, converting to days: "
+                    "5. Write every free-text field (\"instructions\", \"diagnosis\", \"generalAdvice\") in the "
+                    "SAME language the prescription used for it (don't force-translate to English) — e.g. keep "
+                    "\"کھانے کے بعد\" or \"khanay ke baad\" as written if that's how it appears, since the patient "
+                    "will read it back in that language. Common instruction meanings to recognize regardless of "
+                    "script: کھانے سے پہلے/khane se pehle = before food, کھانے کے بعد/khane ke baad = after food, "
+                    "خالی پیٹ/khali pait = empty stomach, سونے سے پہلے/sone se pehle = before bed. "
+                    "6. Also extract each medicine's course duration in days if written in any language, converting to days: "
                     "\"5 days\" = 5, \"x 7/7\" = 7, \"1 week\"/\"a week\" = 7, \"2 weeks\"/\"x 2/52\" = 14, "
                     "\"1 month\"/\"a month\"/\"1 mah\"/\"x 1/12\" = 30, \"2 months\"/\"2 mah\"/\"do mah\" = 60, "
                     "\"5 دن\" = 5, \"5 din\" = 5, \"ایک ہفتہ\" = 7, \"ایک ماہ\"/\"ایک مہینہ\" = 30, \"دو ماہ\" = 60. "
                     "Set \"durationDays\" to that number, or null if no duration is written — never guess a duration that isn't stated. "
-                    "OUTPUT: Return ONLY a valid JSON object: "
-                    "{\"transcription\": \"$rawTranscription\", \"medications\": "
+                    "7. \"patientName\": the patient's name if written anywhere on the prescription, else null. "
+                    "8. \"patientAge\": the patient's age/sex if written (e.g. \"34, F\"), else null. "
+                    "9. \"doctorName\": the prescribing doctor's name (often at the top, sometimes with "
+                    "qualifications like \"Dr.\" or \"MBBS\"), else null. "
+                    "10. \"clinicName\": the hospital/clinic/practice name printed on the letterhead, else null. "
+                    "11. \"date\": the date written on the prescription exactly as written, else null. "
+                    "12. \"diagnosis\": the condition/diagnosis if the doctor wrote one (e.g. \"Rx: Typhoid\", "
+                    "\"Dx:\", or a plain condition name), else null. "
+                    "13. \"generalAdvice\": any instructions that apply to the whole prescription rather than one "
+                    "medicine — diet/rest advice, warnings, tests ordered, etc. — joined into one string, else null. "
+                    "14. \"followUp\": any next-visit / follow-up date or instruction (e.g. \"review after 1 week\"), else null. "
+                    "15. \"dose\" must capture the FULL amount to take, not just the drug strength — "
+                    "include both the strength (mg/mcg/ml/g/IU) AND the quantity/measure to take, "
+                    "in whichever language it was written: tablet/capsule counts (\"2 tablets\", "
+                    "\"1 capsule\", \"2 goli\", \"aik tablet\", \"ایک گولی\", \"دو گولیاں\"), liquid "
+                    "spoon/drop measures (\"1 teaspoon\", \"chamach\", \"1 chamach\", \"ایک چمچ\", "
+                    "\"2 boond\"/\"2 قطرے\" = 2 drops), or volume (\"5ml\", \"10cc\"). If the "
+                    "prescription only wrote the strength (e.g. just \"500mg\") with no separate "
+                    "count, put the strength alone — never invent a quantity that wasn't written — "
+                    "but if BOTH a strength and a count/measure are written (as is common, e.g. "
+                    "\"Panadol 500mg — 1 tablet\" or \"Syrup — 2 چمچ\"), include both in \"dose\" "
+                    "rather than dropping the strength or the quantity. "
+                    "OUTPUT: Return ONLY a valid JSON object with this exact shape: "
+                    "{\"transcription\": \"$rawTranscription\", "
+                    "\"patientName\": \"...\", \"patientAge\": \"...\", \"doctorName\": \"...\", "
+                    "\"clinicName\": \"...\", \"date\": \"...\", \"diagnosis\": \"...\", "
+                    "\"generalAdvice\": \"...\", \"followUp\": \"...\", "
+                    "\"medications\": "
                     "[{\"name\": \"...\", \"dose\": \"...\", \"timesPerDay\": 2, \"durationDays\": 5, \"instructions\": \"...\", \"confidence\": \"high|low\"}]}"
               },
               {
@@ -196,6 +230,14 @@ class GeminiService {
           "temperature": 0.2,
           "topP": 0.9,
           "topK": 32,
+          // A prescription with several medicines PLUS the new
+          // patient/doctor/diagnosis/advice fields is noticeably longer
+          // JSON than the medicines-only shape this used to return.
+          // Without an explicit ceiling here Gemini's default could cut
+          // a longer response off mid-object, silently dropping whatever
+          // fields (and medicines) came after the cut — this gives it
+          // comfortable headroom instead.
+          "maxOutputTokens": 4096,
         }
       };
 

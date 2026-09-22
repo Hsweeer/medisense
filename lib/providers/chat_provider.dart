@@ -369,11 +369,12 @@ class ChatProvider extends ChangeNotifier {
       final jsonOutput = await GeminiService.readPrescription(processPath);
       typing = false;
       final meds = getMedsFromOcr(jsonOutput);
+      final metadata = extractPrescriptionMetadata(jsonOutput);
 
       // Same professional Rx-style summary used in chat, on the review
       // screen, and saved into the user's prescription history — all one
       // source of truth so they always match.
-      final summary = buildProfessionalSummary(meds);
+      final summary = buildProfessionalSummary(meds, metadata: metadata);
 
       await _reply(ChatMessage(
         role: ChatRole.ai,

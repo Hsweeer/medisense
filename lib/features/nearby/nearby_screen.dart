@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config/api_keys.dart';
 import '../../core/services/overpass_service.dart';
 import '../../core/services/facility_cache_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -252,8 +253,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                      'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                      urlTemplate: ApiKeys.cartoVoyagerTileUrlTemplate,
                       userAgentPackageName: 'com.medisense.medisense_app',
                     ),
                     MarkerLayer(

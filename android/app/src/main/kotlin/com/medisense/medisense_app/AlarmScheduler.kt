@@ -40,6 +40,16 @@ object AlarmScheduler {
     /** Reserved sub-id (see [idFor]) for a one-off snooze fire. */
     const val SNOOZE_SUB_ID = 8
 
+    // Single source of truth for the repeat-type string that marks a fired
+    // alarm as "one-shot, don't reschedule" (used by both snooze code paths
+    // below and checked in AlarmReceiver). Previously the ring-screen path
+    // wrote "once" while the Flutter-triggered path wrote "snooze" — since
+    // AlarmReceiver only ever recognized "once", a snooze armed from
+    // Flutter would, after firing, fall into the *recurring* branch instead
+    // of being cleaned up, re-arming itself with placeholder hour=0/minute=0
+    // (a bogus daily midnight alarm) rather than actually finishing.
+    const val ONE_SHOT_REPEAT_TYPE = "once"
+
     fun baseIdFor(reminderId: String): Int = (reminderId.hashCode() and 0x7FFFFFFF) % 100_000
 
     /**
@@ -55,7 +65,21 @@ object AlarmScheduler {
 
     fun snoozeIdFor(reminderId: String): Int = baseIdFor(reminderId) * 10 + SNOOZE_SUB_ID
 
-    /** Schedules a one-off alarm for [minutes] from now. */
+    /**
+     * Schedules a one-off alarm for [minutes] from now — used by both the
+     * ring-screen Snooze button (via [AlarmRingingService]) and the
+     * Flutter-triggered snooze channel (via MainActivity), so there's
+     * exactly one implementation of "what a snooze actually does" instead
+     * of two that can drift out of sync.
+     *
+     * Deliberately NOT saved to [AlarmStore]: this is a genuine one-shot.
+     * If the device reboots before it fires, losing a pending 10-minute
+     * snooze is the right behavior — re-arming it via the general
+     * [schedule] path on restore would recompute "next occurrence of this
+     * clock time", which after the original window has passed means
+     * *tomorrow* at that same time: a snooze silently turning into a
+     * day-late, one-off alarm at a near-random hour.
+     */
     fun snooze(context: Context, entry: AlarmStore.AlarmEntry, minutes: Int) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val triggerAt = System.currentTimeMillis() + (minutes * 60 * 1000)
@@ -68,7 +92,7 @@ object AlarmScheduler {
             putExtra(EXTRA_DISPLAY_TIME, entry.displayTime)
             putExtra(EXTRA_HOUR, entry.hour)
             putExtra(EXTRA_MINUTE, entry.minute)
-            putExtra(EXTRA_REPEAT_TYPE, "snooze")
+            putExtra(EXTRA_REPEAT_TYPE, ONE_SHOT_REPEAT_TYPE)
             putExtra(EXTRA_SOUND_RAW_RES_NAME, entry.soundRawResName)
         }
         val pendingIntent = PendingIntent.getBroadcast(

@@ -49,7 +49,7 @@ class AlarmReceiver : BroadcastReceiver() {
             context.startService(serviceIntent)
         }
 
-        if (repeatType == "once") {
+        if (repeatType == AlarmScheduler.ONE_SHOT_REPEAT_TYPE) {
             // A snooze fire — one-shot, does not repeat. Just clear its
             // bookkeeping; the original daily/weekly alarm this snooze came
             // from was untouched and is still scheduled separately.

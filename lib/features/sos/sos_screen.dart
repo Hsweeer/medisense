@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config/api_keys.dart';
 import '../../core/services/emergency_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_loading.dart';
@@ -607,8 +608,7 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
                       ),
                       children: [
                         TileLayer(
-                          urlTemplate:
-                              'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                          urlTemplate: ApiKeys.cartoVoyagerTileUrlTemplate,
                           userAgentPackageName: 'com.medisense.medisense_app',
                         ),
                         if (sos.currentRoutePoints.isNotEmpty)
@@ -721,7 +721,7 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
                 SizedBox(height: 8.h),
                 Text(
                   '${p.bloodType} · allergies: ${p.allergies.isEmpty ? "None" : p.allergies.join(", ")} · '
-                  '${p.conditions.isEmpty ? "No conditions" : p.conditions.join(", ")}',
+                      '${p.conditions.isEmpty ? "No conditions" : p.conditions.join(", ")}',
                   style: TextStyle(
                     fontSize: 12.5.sp,
                     height: 1.5,
@@ -815,12 +815,12 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
                     borderRadius: BorderRadius.circular(18.r),
                     boxShadow: sos.selectedHospital == h
                         ? [
-                            BoxShadow(
-                              color: AppColors.danger.withValues(alpha: .16),
-                              blurRadius: 16.r,
-                              offset: Offset(0, 6.h),
-                            ),
-                          ]
+                      BoxShadow(
+                        color: AppColors.danger.withValues(alpha: .16),
+                        blurRadius: 16.r,
+                        offset: Offset(0, 6.h),
+                      ),
+                    ]
                         : [],
                   ),
                   child: MCard(
@@ -1007,7 +1007,7 @@ class _ActiveSosViewState extends State<_ActiveSosView> {
     final dest = '${f.position.latitude},${f.position.longitude}';
     final uri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=$dest'
-      '&travelmode=driving',
+          '&travelmode=driving',
     );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }

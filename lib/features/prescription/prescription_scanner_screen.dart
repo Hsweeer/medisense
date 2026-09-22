@@ -80,7 +80,10 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
 
       final jsonOutput = await GeminiService.readPrescription(processPath);
       final meds = getMedsFromOcr(jsonOutput);
-      final summary = buildProfessionalSummary(meds);
+      final summary = buildProfessionalSummary(
+        meds,
+        metadata: extractPrescriptionMetadata(jsonOutput),
+      );
 
       // NOTE: saving to history now happens explicitly from the "Save
       // summary & photo" button on the result screen below — not
@@ -100,7 +103,7 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
       setState(() {
         _processing = false;
         _error =
-            "Scanning error. Please ensure the photo is clear and try again.";
+        "Scanning error. Please ensure the photo is clear and try again.";
       });
     }
   }
@@ -142,12 +145,12 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
               ? const _AnalyzingState()
               : _summary != null
               ? _ResultView(
-                  summary: _summary!,
-                  meds: _meds!,
-                  ocrJson: _ocrJson!,
-                  imagePath: _imagePath,
-                  onRescan: _rescan,
-                )
+            summary: _summary!,
+            meds: _meds!,
+            ocrJson: _ocrJson!,
+            imagePath: _imagePath,
+            onRescan: _rescan,
+          )
               : _IntroView(error: _error, onCapture: _capture),
         ),
       ),
@@ -196,8 +199,8 @@ class _IntroView extends StatelessWidget {
             SizedBox(height: 8.h),
             Text(
               'Snap a photo or pick one from your gallery and MedAI will '
-              'read the medicines, doses, and instructions — in English, '
-              'Urdu, or Roman Urdu.',
+                  'read the medicines, doses, and instructions — in English, '
+                  'Urdu, or Roman Urdu.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13.5.sp,
@@ -250,7 +253,7 @@ class _IntroView extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Lay the prescription flat on a well-lit surface and '
-                      'fit the whole page in frame for the clearest read.',
+                          'fit the whole page in frame for the clearest read.',
                       style: TextStyle(
                         fontSize: 12.sp,
                         height: 1.4,
@@ -388,7 +391,7 @@ class _ResultViewState extends State<_ResultView> {
                   SizedBox(height: 2.h),
                   Text(
                     '$dateLabel · ${meds.length} '
-                    '${meds.length == 1 ? 'medicine' : 'medicines'} identified',
+                        '${meds.length == 1 ? 'medicine' : 'medicines'} identified',
                     style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
                   ),
                 ],
@@ -450,8 +453,8 @@ class _ResultViewState extends State<_ResultView> {
               Expanded(
                 child: Text(
                   'This summary is generated from a scanned image and may '
-                  'contain reading errors — always confirm with your '
-                  'prescribing doctor or pharmacist before relying on it.',
+                      'contain reading errors — always confirm with your '
+                      'prescribing doctor or pharmacist before relying on it.',
                   style: TextStyle(
                     fontSize: 11.5.sp,
                     height: 1.4,
