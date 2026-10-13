@@ -64,12 +64,17 @@ class _NearbyScreenState extends State<NearbyScreen> {
     });
 
     try {
-      final results = await OverpassService.instance.fetchNearby(
+      final nearby = await OverpassService.instance.fetchNearby(
         latitude: center.latitude,
         longitude: center.longitude,
         userPosition: center,
         radiusMeters: 5000,
+        // Pharmacies are mapped more sparsely on OSM in South Asia —
+        // search a wider ring so chemist shops still show up.
+        pharmacyRadiusMeters: 10000,
       );
+
+      final results = nearby.facilities;
 
       if (results.isNotEmpty) {
         await FacilityCacheService.instance.save(
@@ -80,8 +85,33 @@ class _NearbyScreenState extends State<NearbyScreen> {
       }
 
       if (!mounted) return;
+
+      // Honest partial-failure note (hospitals OK, pharmacies timed out, etc.)
+      String? partialNote;
+      final pharmacyCount =
+          results.where((f) => f.type == FacilityType.pharmacy).length;
+      final hospitalCount =
+          results.where((f) => f.type == FacilityType.hospital).length;
+
+      if (nearby.pharmacyFailed && !nearby.hospitalFailed) {
+        partialNote = hospitalCount > 0
+            ? 'Hospitals loaded. Pharmacies temporarily unavailable — pull to refresh.'
+            : 'Pharmacies temporarily unavailable — pull to refresh.';
+      } else if (nearby.hospitalFailed && !nearby.pharmacyFailed) {
+        partialNote = pharmacyCount > 0
+            ? 'Pharmacies loaded. Hospitals temporarily unavailable — pull to refresh.'
+            : 'Hospitals temporarily unavailable — pull to refresh.';
+      } else if (!nearby.pharmacyFailed &&
+          pharmacyCount == 0 &&
+          hospitalCount > 0) {
+        // Query succeeded but OSM has no tagged pharmacies in range.
+        partialNote =
+        'No mapped pharmacies within 10 km. Try another area or check again later.';
+      }
+
       setState(() {
         _all = results;
+        _error = partialNote;
         _loading = false;
       });
     } on OverpassAllEndpointsFailedException {
@@ -125,8 +155,22 @@ class _NearbyScreenState extends State<NearbyScreen> {
   }
 
   Future<void> _call(Facility f) async {
-    final uri = Uri.parse('tel:${f.phone.replaceAll(RegExp(r'[^\d+]'), '')}');
-    await launchUrl(uri);
+    final cleaned = f.phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.isEmpty) {
+      if (mounted) {
+        showToast(
+          context,
+          'Phone number not listed for this place',
+          color: AppColors.muted,
+        );
+      }
+      return;
+    }
+    final uri = Uri.parse('tel:$cleaned');
+    final ok = await launchUrl(uri);
+    if (!ok && mounted) {
+      showToast(context, 'Could not start the call', color: AppColors.danger);
+    }
   }
 
   @override
@@ -392,13 +436,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
                               Row(
                                 children: [
                                   Icon(
-                                    f.isOpen
-                                        ? Icons.check_circle_rounded
-                                        : Icons.cancel_rounded,
+                                    _statusIcon(f),
                                     size: 12,
-                                    color: f.isOpen
-                                        ? AppColors.success
-                                        : AppColors.danger,
+                                    color: _statusColor(f),
                                   ),
                                   const SizedBox(width: 3),
                                   Flexible(
@@ -406,39 +446,45 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                       f.openLabel,
                                       style: TextStyle(
                                         fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: f.isOpen
-                                            ? AppColors.success
-                                            : AppColors.danger,
+                                        fontWeight: FontWeight.w700,
+                                        color: _statusColor(f),
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
                               ),
-                              if (f.phone.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.call_rounded,
-                                      size: 12,
-                                      color: AppColors.muted,
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Flexible(
-                                      child: Text(
-                                        f.phone,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppColors.muted,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                              // Always show a phone line — real number or "No phone listed".
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.call_rounded,
+                                    size: 12,
+                                    color: f.phone.isNotEmpty
+                                        ? AppColors.primary
+                                        : AppColors.muted,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Flexible(
+                                    child: Text(
+                                      f.phone.isNotEmpty
+                                          ? f.phone
+                                          : 'No phone listed',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: f.phone.isNotEmpty
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: f.phone.isNotEmpty
+                                            ? AppColors.inkSoft
+                                            : AppColors.muted,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ],
-                                ),
-                              ],
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -556,6 +602,28 @@ class _UserDot extends StatelessWidget {
   }
 }
 
+
+Color _statusColor(Facility f) {
+  final label = f.openLabel.toLowerCase();
+  if (label.contains('open')) return AppColors.success;
+  if (label.contains('closed')) return AppColors.danger;
+  return AppColors.muted;
+}
+
+Color _statusBg(Facility f) {
+  final label = f.openLabel.toLowerCase();
+  if (label.contains('open')) return AppColors.successSoft;
+  if (label.contains('closed')) return AppColors.dangerSoft;
+  return AppColors.paper;
+}
+
+IconData _statusIcon(Facility f) {
+  final label = f.openLabel.toLowerCase();
+  if (label.contains('open')) return Icons.check_circle_rounded;
+  if (label.contains('closed')) return Icons.cancel_rounded;
+  return Icons.schedule_rounded;
+}
+
 class _Pin extends StatelessWidget {
   const _Pin({required this.color, required this.icon, required this.selected});
 
@@ -660,12 +728,8 @@ class _FacilityDetail extends StatelessWidget {
                   ),
                 MChip(
                   facility.openLabel,
-                  background: facility.isOpen
-                      ? AppColors.successSoft
-                      : AppColors.dangerSoft,
-                  foreground: facility.isOpen
-                      ? AppColors.success
-                      : AppColors.danger,
+                  background: _statusBg(facility),
+                  foreground: _statusColor(facility),
                 ),
                 for (final t in facility.tags)
                   MChip(
@@ -673,6 +737,36 @@ class _FacilityDetail extends StatelessWidget {
                     background: AppColors.paper,
                     foreground: AppColors.muted,
                   ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Phone row — hospitals and pharmacies (same treatment).
+            Row(
+              children: [
+                Icon(
+                  Icons.call_rounded,
+                  size: 16,
+                  color: facility.phone.isNotEmpty
+                      ? accent
+                      : AppColors.muted,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    facility.phone.isNotEmpty
+                        ? facility.phone
+                        : 'No phone listed',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: facility.phone.isNotEmpty
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                      color: facility.phone.isNotEmpty
+                          ? AppColors.ink
+                          : AppColors.muted,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -694,18 +788,25 @@ class _FacilityDetail extends StatelessWidget {
                   child: SizedBox(
                     height: 58,
                     child: OutlinedButton.icon(
-                      onPressed: onCall,
+                      onPressed: facility.phone.isNotEmpty ? onCall : null,
                       style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: accent, width: 1.4),
-                        foregroundColor: accent,
+                        side: BorderSide(
+                          color: facility.phone.isNotEmpty
+                              ? accent
+                              : AppColors.line,
+                          width: 1.4,
+                        ),
+                        foregroundColor: facility.phone.isNotEmpty
+                            ? accent
+                            : AppColors.muted,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                       icon: const Icon(Icons.call_rounded, size: 18),
-                      label: const Text(
-                        'Call',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                      label: Text(
+                        facility.phone.isNotEmpty ? 'Call' : 'No phone',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),

@@ -17,6 +17,7 @@ class ReminderProvider extends ChangeNotifier {
       ReminderFirestoreService.instance;
   bool isLoading = false;
   bool _initialized = false;
+  bool _initializing = false;
   StreamSubscription<List<Reminder>>? _remindersSub;
 
   ReminderProvider() {
@@ -54,7 +55,27 @@ class ReminderProvider extends ChangeNotifier {
 
   /// Load reminders from Firestore on app startup.
   Future<void> _initializeReminders() async {
-    if (_initialized) return;
+    // BUG FIX: this guard used to only check `_initialized` — which is
+    // only set true at the very END of this function, after the first
+    // `await` (fetchReminders()). Firebase's authStateChanges() stream
+    // replays the CURRENT auth state immediately to any new listener, so
+    // when a user was already logged in at app startup, both the
+    // constructor's direct currentUser check AND that stream's first
+    // emission called this in the same frame. Since `_initialized` was
+    // still false for both at that point, BOTH calls passed the guard
+    // and ran their own full schedule loop concurrently — for a single
+    // reminder, that meant cancelForReminder()+scheduleReminder() firing
+    // multiple times each, visible in the field as several duplicate
+    // native cancelAlarm calls Android itself started rate-limiting
+    // ("Shedding cancel (dupe)... rate limit exceeded"). Worse, if a
+    // cancel from the slower of the two racing calls landed AFTER the
+    // other's schedule call, the reminder could end up fully cancelled
+    // with nothing left to re-arm it — the alarm silently never firing.
+    // `_initializing` is set synchronously here, before any `await`, so
+    // a second concurrent call sees it immediately and backs off,
+    // instead of only being caught by a flag that's set too late.
+    if (_initialized || _initializing) return;
+    _initializing = true;
     isLoading = true;
     notifyListeners();
 
@@ -89,6 +110,7 @@ class ReminderProvider extends ChangeNotifier {
     }
 
     _initialized = true;
+    _initializing = false;
     isLoading = false;
     notifyListeners();
 
@@ -149,14 +171,14 @@ class ReminderProvider extends ChangeNotifier {
       final existing = reminders[idx];
       final scheduleRelevantChange =
           existing.time != fresh.time ||
-          existing.schedule != fresh.schedule ||
-          existing.enabled != fresh.enabled ||
-          existing.dose != fresh.dose;
+              existing.schedule != fresh.schedule ||
+              existing.enabled != fresh.enabled ||
+              existing.dose != fresh.dose;
       final anyChange =
           scheduleRelevantChange ||
-          existing.status != fresh.status ||
-          existing.snoozeLabel != fresh.snoozeLabel ||
-          existing.instructions != fresh.instructions;
+              existing.status != fresh.status ||
+              existing.snoozeLabel != fresh.snoozeLabel ||
+              existing.instructions != fresh.instructions;
 
       if (anyChange) {
         reminders[idx] = fresh;
@@ -368,12 +390,12 @@ class ReminderProvider extends ChangeNotifier {
 
   /// Update a reminder: save to Firestore, reschedule alarm, and update UI.
   Future<void> update(
-    Reminder r, {
-    String? dose,
-    String? time,
-    String? schedule,
-    String? instructions,
-  }) async {
+      Reminder r, {
+        String? dose,
+        String? time,
+        String? schedule,
+        String? instructions,
+      }) async {
     if (dose != null && dose.isNotEmpty) r.dose = dose;
     if (time != null && time.isNotEmpty) r.time = time;
     if (schedule != null && schedule.isNotEmpty) r.schedule = schedule;

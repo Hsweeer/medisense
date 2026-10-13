@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/services/gemini_service.dart';
 import '../../core/services/image_cleaner_service.dart';
+import '../../core/services/prescription_export_service.dart';
 import '../../core/services/prescription_log_service.dart';
 import '../../core/services/prescription_parser.dart';
 import '../../core/theme/app_colors.dart';
@@ -85,11 +86,10 @@ class _PrescriptionScannerScreenState extends State<PrescriptionScannerScreen> {
         metadata: extractPrescriptionMetadata(jsonOutput),
       );
 
-      // NOTE: saving to history now happens explicitly from the "Save
-      // summary & photo" button on the result screen below — not
-      // silently here. That way the person can see and confirm exactly
-      // what gets saved (and it isn't lost if the save were to fail
-      // silently in the background before they ever see the result).
+      // History is NOT auto-saved here. The result screen shows a
+      // checkbox ("Save summary & photo to history"). When the user
+      // taps "Add reminders" with that checkbox on, history is saved
+      // right before navigating to the review screen.
       if (!mounted) return;
       setState(() {
         _processing = false;
@@ -312,14 +312,18 @@ class _ResultView extends StatefulWidget {
 }
 
 class _ResultViewState extends State<_ResultView> {
-  bool _saving = false;
-  bool _saved = false;
+  /// When checked, tapping "Add reminders" also saves summary + photo
+  /// to prescription history automatically (no separate Save button).
+  bool _saveToHistory = true;
+  bool _busy = false;
+  bool _historySaved = false;
 
   List<ParsedMedicine> get _validMeds =>
       widget.meds.where((m) => m.name.trim().isNotEmpty).toList();
 
-  Future<void> _save() async {
-    if (_saving || _saved) return;
+  Future<void> _persistHistoryIfNeeded() async {
+    if (!_saveToHistory || _historySaved) return;
+
     if (!await requireLogin(
       context,
       feature: 'save this prescription to your history',
@@ -327,31 +331,128 @@ class _ResultViewState extends State<_ResultView> {
       return;
     }
     if (!mounted) return;
-    setState(() => _saving = true);
+
     try {
       await PrescriptionLogService.instance.save(
         PrescriptionHistoryEntry(
           summary: widget.summary,
           medicineCount: _validMeds.length,
           scannedAt: DateTime.now(),
-          // Stored the same way skin-scan history keeps its photo — as
-          // the local file path, not uploaded to cloud storage. Good
-          // enough to redisplay on this device; won't follow the
-          // account to a different phone.
+          photoUrl: widget.imagePath,
+        ),
+      );
+      if (mounted) setState(() => _historySaved = true);
+    } catch (e) {
+      debugPrint('[PrescriptionScanner] history save failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't save to history — reminders still work."),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Save summary + photo to history without requiring reminders.
+  /// Useful for archiving old prescriptions.
+  Future<void> _onSaveToHistory() async {
+    if (_busy || _historySaved) return;
+    setState(() => _busy = true);
+    try {
+      if (!await requireLogin(
+        context,
+        feature: 'save this prescription to your history',
+      )) {
+        return;
+      }
+      if (!mounted) return;
+
+      await PrescriptionLogService.instance.save(
+        PrescriptionHistoryEntry(
+          summary: widget.summary,
+          medicineCount: _validMeds.length,
+          scannedAt: DateTime.now(),
           photoUrl: widget.imagePath,
         ),
       );
       if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _saved = true;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _saving = false);
+      setState(() => _historySaved = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't save — please try again.")),
+        const SnackBar(
+          content: Text('Saved to prescription history'),
+        ),
       );
+    } catch (e) {
+      debugPrint('[PrescriptionScanner] save to history failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't save — please try again.")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _onAddReminders() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _persistHistoryIfNeeded();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PrescriptionReviewScreen(
+            ocrText: widget.ocrJson,
+            initialMeds: widget.meds,
+            imagePath: widget.imagePath,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _onShare() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => _ShareSheet(
+          summary: widget.summary,
+          medicineCount: _validMeds.length,
+          imagePath: widget.imagePath,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _onPrintPdf() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await PrescriptionExportService.instance.printPdf(
+        summary: widget.summary,
+        medicineCount: _validMeds.length,
+        imagePath: widget.imagePath,
+      );
+    } catch (e) {
+      debugPrint('[PrescriptionScanner] print failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't open print — please try again."),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -406,17 +507,14 @@ class _ResultViewState extends State<_ResultView> {
               ),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: widget.summary));
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Summary copied')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Summary copied')),
+                );
               },
             ),
           ],
         ),
         SizedBox(height: 8.h),
-        // Plain monospace summary box — matches the original prescription
-        // summary look (single Rx-style text block instead of per-medicine
-        // cards).
         Container(
           width: double.infinity,
           padding: EdgeInsets.all(16.r),
@@ -425,14 +523,7 @@ class _ResultViewState extends State<_ResultView> {
             borderRadius: BorderRadius.circular(14.r),
             border: Border.all(color: AppColors.primary.withValues(alpha: .12)),
           ),
-          child: SelectableText(
-            widget.summary,
-            style: GoogleFonts.robotoMono(
-              fontSize: 12.5.sp,
-              height: 1.6,
-              color: AppColors.inkSoft,
-            ),
-          ),
+          child: _FormattedSummaryText(summary: widget.summary),
         ),
         SizedBox(height: 16.h),
         Container(
@@ -465,25 +556,132 @@ class _ResultViewState extends State<_ResultView> {
             ],
           ),
         ),
-        SizedBox(height: 20.h),
-        PrimaryButton(
-          label: 'Add reminders',
-          icon: Icons.alarm_add_rounded,
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => PrescriptionReviewScreen(
-                ocrText: widget.ocrJson,
-                initialMeds: widget.meds,
-                imagePath: widget.imagePath,
+
+        // ── Share / Print PDF actions ──────────────────────────────────
+        SizedBox(height: 18.h),
+        Row(
+          children: [
+            Expanded(
+              child: _ActionChip(
+                icon: Icons.share_rounded,
+                label: 'Share',
+                onTap: _busy ? null : _onShare,
+              ),
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: _ActionChip(
+                icon: Icons.picture_as_pdf_rounded,
+                label: 'PDF / Print',
+                onTap: _busy ? null : _onPrintPdf,
+              ),
+            ),
+          ],
+        ),
+
+        // ── Save-to-history checkbox (replaces old Save button) ────────
+        SizedBox(height: 16.h),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14.r),
+            onTap: _busy || _historySaved
+                ? null
+                : () => setState(() => _saveToHistory = !_saveToHistory),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+              decoration: BoxDecoration(
+                color: _historySaved
+                    ? AppColors.successSoft
+                    : (_saveToHistory ? AppColors.soft : AppColors.card),
+                borderRadius: BorderRadius.circular(14.r),
+                border: Border.all(
+                  color: _historySaved
+                      ? AppColors.success.withValues(alpha: .35)
+                      : (_saveToHistory
+                      ? AppColors.primary.withValues(alpha: .28)
+                      : AppColors.line),
+                ),
+              ),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 24.r,
+                    height: 24.r,
+                    decoration: BoxDecoration(
+                      color: _historySaved
+                          ? AppColors.success
+                          : (_saveToHistory
+                          ? AppColors.primary
+                          : Colors.transparent),
+                      borderRadius: BorderRadius.circular(7.r),
+                      border: Border.all(
+                        color: _historySaved
+                            ? AppColors.success
+                            : (_saveToHistory
+                            ? AppColors.primary
+                            : AppColors.muted.withValues(alpha: .45)),
+                        width: 1.8,
+                      ),
+                    ),
+                    child: (_saveToHistory || _historySaved)
+                        ? Icon(
+                      Icons.check_rounded,
+                      size: 16.sp,
+                      color: Colors.white,
+                    )
+                        : null,
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _historySaved
+                              ? 'Saved to your history'
+                              : 'Save summary & photo to history',
+                          style: TextStyle(
+                            fontSize: 13.5.sp,
+                            fontWeight: FontWeight.w700,
+                            color: _historySaved
+                                ? AppColors.success
+                                : AppColors.ink,
+                          ),
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          _historySaved
+                              ? 'Available under Profile → Prescription history (New / Old / All)'
+                              : 'Also save when you add reminders — or use the button below',
+                          style: TextStyle(
+                            fontSize: 11.5.sp,
+                            color: AppColors.muted,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
+
+        SizedBox(height: 18.h),
+        PrimaryButton(
+          label: _busy ? 'Please wait…' : 'Add reminders',
+          icon: Icons.alarm_add_rounded,
+          onPressed: _busy ? null : _onAddReminders,
+        ),
         SizedBox(height: 10.h),
-        if (_saved)
+        // Standalone save — for old prescriptions or archive-only, no reminders required.
+        if (_historySaved)
           Container(
             width: double.infinity,
-            padding: EdgeInsets.symmetric(vertical: 13.h),
+            padding: EdgeInsets.symmetric(vertical: 14.h),
             decoration: BoxDecoration(
               color: AppColors.successSoft,
               borderRadius: BorderRadius.circular(14.r),
@@ -491,16 +689,12 @@ class _ResultViewState extends State<_ResultView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 18.sp,
-                  color: AppColors.success,
-                ),
+                Icon(Icons.check_circle_rounded, size: 18.sp, color: AppColors.success),
                 SizedBox(width: 8.w),
                 Text(
-                  'Saved summary & photo to history',
+                  'Saved to history',
                   style: TextStyle(
-                    fontSize: 13.5.sp,
+                    fontSize: 14.sp,
                     fontWeight: FontWeight.w700,
                     color: AppColors.success,
                   ),
@@ -510,18 +704,319 @@ class _ResultViewState extends State<_ResultView> {
           )
         else
           SecondaryButton(
-            label: _saving ? 'Saving…' : 'Save summary & photo',
+            label: _busy ? 'Saving…' : 'Save to history only',
             icon: Icons.bookmark_add_outlined,
-            onPressed: _saving ? null : _save,
+            onPressed: _busy ? null : _onSaveToHistory,
           ),
         SizedBox(height: 10.h),
         OutlinedButton.icon(
-          onPressed: widget.onRescan,
+          onPressed: _busy ? null : widget.onRescan,
           icon: const Icon(Icons.replay_rounded),
           label: const Text('Scan another'),
         ),
         SizedBox(height: 6.h),
       ],
+    );
+  }
+}
+
+
+/// One-box summary: same single container, but headings/medicine titles
+/// render bold so the text is easier to scan. No extra cards or tabs.
+class _FormattedSummaryText extends StatelessWidget {
+  const _FormattedSummaryText({required this.summary});
+  final String summary;
+
+  static final _medLine = RegExp(r'^\d+\.\s');
+  static final _labelLine = RegExp(
+    r'^(Patient|Doctor|Clinic|Diagnosis|Frequency|Duration|Instructions)\s*:',
+    caseSensitive: false,
+  );
+
+  bool _isHeading(String line) {
+    final t = line.trim();
+    if (t.isEmpty) return false;
+    if (t.toUpperCase().startsWith('PRESCRIPTION SUMMARY')) return true;
+    if (t.toUpperCase() == 'NOTES' || t.toUpperCase().startsWith('NOTES ')) {
+      return true;
+    }
+    if (t.toUpperCase().startsWith('DISCLAIMER')) return true;
+    // "3 medicines identified"
+    if (RegExp(r'^\d+\s+medicines?\s+identified$', caseSensitive: false)
+        .hasMatch(t)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _isMedicineTitle(String line) => _medLine.hasMatch(line.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = summary.split('\n');
+    final base = TextStyle(
+      fontSize: 12.5.sp,
+      height: 1.65,
+      color: AppColors.inkSoft,
+      fontFamily: GoogleFonts.robotoMono().fontFamily,
+    );
+    final heading = base.copyWith(
+      fontWeight: FontWeight.w800,
+      color: AppColors.primaryDark,
+      fontSize: 13.sp,
+    );
+    final medTitle = base.copyWith(
+      fontWeight: FontWeight.w800,
+      color: AppColors.ink,
+    );
+    final labelStyle = base.copyWith(fontWeight: FontWeight.w700);
+
+    final spans = <TextSpan>[];
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final suffix = i < lines.length - 1 ? '\n' : '';
+
+      if (_isHeading(line)) {
+        spans.add(TextSpan(text: line + suffix, style: heading));
+        continue;
+      }
+      if (_isMedicineTitle(line)) {
+        spans.add(TextSpan(text: line + suffix, style: medTitle));
+        continue;
+      }
+
+      final m = _labelLine.firstMatch(line.trim());
+      if (m != null) {
+        final full = line.trim();
+        final label = m.group(0)!;
+        final rest = full.substring(label.length);
+        // preserve original leading spaces if any
+        final lead = line.substring(0, line.length - line.trimLeft().length);
+        spans.add(TextSpan(
+          children: [
+            TextSpan(text: lead + label, style: labelStyle),
+            TextSpan(text: rest + suffix, style: base),
+          ],
+        ));
+        continue;
+      }
+
+      spans.add(TextSpan(text: line + suffix, style: base));
+    }
+
+    return SelectableText.rich(
+      TextSpan(children: spans),
+    );
+  }
+}
+
+/// Compact outlined action used for Share / PDF row.
+class _ActionChip extends StatelessWidget {
+  const _ActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.card,
+      borderRadius: BorderRadius.circular(14.r),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14.r),
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: 13.h),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: .28),
+              width: 1.4,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18.sp, color: AppColors.primary),
+              SizedBox(width: 8.w),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet: Share as PDF (WhatsApp / Drive / …) or Share text + photo.
+class _ShareSheet extends StatelessWidget {
+  const _ShareSheet({
+    required this.summary,
+    required this.medicineCount,
+    required this.imagePath,
+  });
+
+  final String summary;
+  final int medicineCount;
+  final String? imagePath;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        margin: EdgeInsets.all(12.r),
+        padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 16.h),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22.r),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36.w,
+              height: 4.h,
+              decoration: BoxDecoration(
+                color: AppColors.line,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            SizedBox(height: 14.h),
+            Text(
+              'Share prescription',
+              style: GoogleFonts.sora(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            SizedBox(height: 6.h),
+            Text(
+              'WhatsApp, email, Drive, or any app',
+              style: TextStyle(fontSize: 12.sp, color: AppColors.muted),
+            ),
+            SizedBox(height: 16.h),
+            _ShareOption(
+              icon: Icons.picture_as_pdf_rounded,
+              title: 'Share as PDF',
+              subtitle: 'Professional document with summary & photo',
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await PrescriptionExportService.instance.sharePdf(
+                    summary: summary,
+                    medicineCount: medicineCount,
+                    imagePath: imagePath,
+                  );
+                } catch (e) {
+                  debugPrint('[PrescriptionScanner] share PDF failed: $e');
+                }
+              },
+            ),
+            SizedBox(height: 8.h),
+            _ShareOption(
+              icon: Icons.chat_rounded,
+              title: 'Share text & photo',
+              subtitle: 'Quick send to WhatsApp or Messages',
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await PrescriptionExportService.instance.shareTextAndPhoto(
+                    summary: summary,
+                    imagePath: imagePath,
+                  );
+                } catch (e) {
+                  debugPrint('[PrescriptionScanner] share text failed: $e');
+                }
+              },
+            ),
+            SizedBox(height: 6.h),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareOption extends StatelessWidget {
+  const _ShareOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.soft,
+      borderRadius: BorderRadius.circular(14.r),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14.r),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+          child: Row(
+            children: [
+              Container(
+                width: 42.r,
+                height: 42.r,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Icon(icon, color: AppColors.primary, size: 22.sp),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5.sp,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.muted,
+                size: 22.sp,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

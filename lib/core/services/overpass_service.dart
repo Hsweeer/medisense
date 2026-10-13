@@ -31,6 +31,23 @@ class _TypeFetchResult {
   final bool failed;
 }
 
+/// Public result of [OverpassService.fetchNearby] — facilities plus which
+/// types failed to load so the UI can show an honest partial-failure note
+/// (e.g. hospitals OK, pharmacies timed out).
+class NearbyFacilitiesResult {
+  const NearbyFacilitiesResult({
+    required this.facilities,
+    this.hospitalFailed = false,
+    this.pharmacyFailed = false,
+  });
+
+  final List<Facility> facilities;
+  final bool hospitalFailed;
+  final bool pharmacyFailed;
+
+  bool get anyPartialFailure => hospitalFailed || pharmacyFailed;
+}
+
 /// Very small subset parser for OSM `opening_hours` syntax, good enough to
 /// answer "is it open right now" for the common patterns actually seen in
 /// the field (e.g. "Mo-Fr 08:00-20:00; Sa 08:00-14:00", "24/7",
@@ -164,14 +181,24 @@ class OverpassService {
     // attempt (FormatException: "Unexpected character" parsing "<?xml
     // ...") — this mirror doesn't actually serve this app's [out:json]
     // requests at all, so keeping it in the race just burns a request
-    // slot for a guaranteed failure. maps.mail.ru's mirror added in its
-    // place as a genuinely independent fifth option.
+    // slot for a guaranteed failure.
+    //
+    // maps.mail.ru tried as a fifth mirror and then removed again: field
+    // logs showed it both timing out AND, on some attempts, throwing an
+    // unhandled `HandshakeException: CERTIFICATE_VERIFY_FAILED: Hostname
+    // mismatch` — its TLS certificate doesn't actually match the
+    // hostname being connected to for this path, which is a server-side
+    // misconfiguration on their end, not something fixable from here.
+    // Worse, that specific exception type escaped the per-endpoint
+    // catchError below (it surfaces from the underlying socket outside
+    // the awaited request chain), showing up as raw "Unhandled
+    // Exception" noise in the app's logs. Back to 4 mirrors that have
+    // actually proven reliable rather than chasing a fifth.
     return const [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.private.coffee/api/interpreter',
       'https://overpass.openstreetmap.fr/api/interpreter',
-      'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
     ];
   }
 
@@ -204,42 +231,31 @@ class OverpassService {
   static const _userAgent =
       'MediSense/1.0 (Flutter health app; contact: support@medisense.app)';
 
-  Future<List<Facility>> fetchNearby({
+  Future<NearbyFacilitiesResult> fetchNearby({
     required double latitude,
     required double longitude,
     required LatLng userPosition,
     double radiusMeters = 5000,
-    // Which facility types to actually query for. Defaults to both, same
-    // as before (Nearby screen's existing calls are unaffected). SOS
-    // passes {FacilityType.hospital} here — it only ever uses hospital
-    // results, so fetching and parsing pharmacy elements too was pure
-    // wasted time on every SOS trigger for no benefit.
+    /// Pharmacies use a wider search by default — local chemist shops are
+    /// mapped more sparsely than hospitals on OSM in South Asia.
+    double pharmacyRadiusMeters = 10000,
+    // Which facility types to actually query for. Defaults to both.
+    // SOS passes {FacilityType.hospital} only.
     Set<FacilityType> types = const {
       FacilityType.hospital,
       FacilityType.pharmacy,
     },
   }) async {
-    // Each requested type gets its OWN Overpass request instead of one
-    // combined query. Previously a single query unioned every hospital
-    // AND pharmacy clause together, sharing one server-side [timeout:20]
-    // budget. Hospital tags (3 simple exact-match clauses) resolve fast
-    // and finish first; pharmacy tags (6 clauses — amenity, three shop
-    // synonyms, healthcare — needed precisely because South Asian
-    // "chemist" shops are tagged so inconsistently) are meaningfully more
-    // expensive to evaluate and run *after* the hospital clauses in the
-    // union block. On an overloaded free mirror, that combined query can
-    // hit its internal timeout partway through the pharmacy clauses —
-    // Overpass doesn't error out when that happens, it just returns
-    // whatever it had gathered so far with a "remark" field noting the
-    // timeout, which looked identical to "genuinely zero pharmacies
-    // nearby" from here. Splitting into two independent requests gives
-    // each type its own full, uncontended budget, and means one type
-    // timing out no longer silently erases the other's results.
+    // Each type gets its OWN Overpass request so a heavy pharmacy query
+    // cannot starve the hospital query (or vice versa).
+    final typeList = types.toList();
     final results = await Future.wait(
-      types.map(
+      typeList.map(
             (type) => _fetchOneType(
           type: type,
-          radiusMeters: radiusMeters,
+          radiusMeters: type == FacilityType.pharmacy
+              ? pharmacyRadiusMeters
+              : radiusMeters,
           latitude: latitude,
           longitude: longitude,
           userPosition: userPosition,
@@ -247,16 +263,38 @@ class OverpassService {
       ),
     );
 
-    // Only treat this as a total failure (triggering the cached-list
-    // fallback in NearbyScreen) if EVERY requested type failed. If
-    // hospitals came back fine but pharmacies genuinely couldn't be
-    // fetched from any mirror, showing the hospitals we do have beats
-    // discarding them just because pharmacies also failed.
     if (results.every((r) => r.failed) && results.isNotEmpty) {
       throw OverpassAllEndpointsFailedException();
     }
 
-    return results.expand((r) => r.facilities).toList();
+    bool hospitalFailed = false;
+    bool pharmacyFailed = false;
+    final facilities = <Facility>[];
+    for (var i = 0; i < typeList.length; i++) {
+      final type = typeList[i];
+      final r = results[i];
+      if (r.failed) {
+        if (type == FacilityType.hospital) hospitalFailed = true;
+        if (type == FacilityType.pharmacy) pharmacyFailed = true;
+        debugPrint(
+          '[OverpassService] ${type.name} fetch failed after retries '
+              '(showing other types if available)',
+        );
+      } else {
+        facilities.addAll(r.facilities);
+      }
+    }
+
+    debugPrint(
+      '[OverpassService] total facilities: ${facilities.length} '
+          '(hospitalFailed=$hospitalFailed pharmacyFailed=$pharmacyFailed)',
+    );
+
+    return NearbyFacilitiesResult(
+      facilities: facilities,
+      hospitalFailed: hospitalFailed,
+      pharmacyFailed: pharmacyFailed,
+    );
   }
 
   /// Races every configured mirror for a single facility [type]'s query —
@@ -280,7 +318,10 @@ class OverpassService {
     required double longitude,
     required LatLng userPosition,
   }) async {
-    for (var attempt = 0; attempt <= _maxAutoRetries; attempt++) {
+    final maxRetries = type == FacilityType.pharmacy
+        ? _pharmacyMaxAutoRetries
+        : _maxAutoRetries;
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
       final result = await _fetchOneTypeOnce(
         type: type,
         radiusMeters: radiusMeters,
@@ -289,7 +330,7 @@ class OverpassService {
         userPosition: userPosition,
       );
       if (!result.failed) return result;
-      if (attempt < _maxAutoRetries) {
+      if (attempt < maxRetries) {
         await Future.delayed(_autoRetryDelay);
       }
     }
@@ -297,7 +338,8 @@ class OverpassService {
   }
 
   static const _maxAutoRetries = 2;
-  static const _autoRetryDelay = Duration(seconds: 3);
+  static const _pharmacyMaxAutoRetries = 3;
+  static const _autoRetryDelay = Duration(seconds: 2);
 
   Future<_TypeFetchResult> _fetchOneTypeOnce({
     required FacilityType type,
@@ -413,23 +455,32 @@ class OverpassService {
       clauses.writeln('  relation["amenity"~"^(hospital)\$",i]$around;');
     }
     if (types.contains(FacilityType.pharmacy)) {
-      clauses.writeln('  node["amenity"~"^(pharmacy)\$",i]$around;');
-      clauses.writeln('  way["amenity"~"^(pharmacy)\$",i]$around;');
-      clauses.writeln('  relation["amenity"~"^(pharmacy)\$",i]$around;');
+      // South Asian medical stores are tagged inconsistently on OSM —
+      // catch the common real-world variants, not only amenity=pharmacy.
+      clauses.writeln('  node["amenity"~"^(pharmacy|chemist)\$",i]$around;');
+      clauses.writeln('  way["amenity"~"^(pharmacy|chemist)\$",i]$around;');
+      clauses.writeln('  relation["amenity"~"^(pharmacy|chemist)\$",i]$around;');
       clauses.writeln(
-        '  node["shop"~"^(chemist|pharmacy|drugstore)\$",i]$around;',
+        '  node["shop"~"^(chemist|pharmacy|drugstore|medical_supply)\$",i]$around;',
       );
       clauses.writeln(
-        '  way["shop"~"^(chemist|pharmacy|drugstore)\$",i]$around;',
+        '  way["shop"~"^(chemist|pharmacy|drugstore|medical_supply)\$",i]$around;',
       );
       clauses.writeln(
-        '  relation["shop"~"^(chemist|pharmacy|drugstore)\$",i]$around;',
+        '  relation["shop"~"^(chemist|pharmacy|drugstore|medical_supply)\$",i]$around;',
       );
       clauses.writeln('  node["healthcare"~"^pharmacy\$",i]$around;');
       clauses.writeln('  way["healthcare"~"^pharmacy\$",i]$around;');
+      clauses.writeln('  relation["healthcare"~"^pharmacy\$",i]$around;');
     }
 
-    return '[out:json][timeout:20];\n(\n$clauses);\nout center;\n';
+    // Pharmacy queries are heavier (more clauses) — give them a slightly
+    // larger server-side budget so mirrors are less likely to truncate.
+    final timeout = types.contains(FacilityType.pharmacy) &&
+        !types.contains(FacilityType.hospital)
+        ? 25
+        : 20;
+    return '[out:json][timeout:$timeout];\n(\n$clauses);\nout center;\n';
   }
 
   List<Facility> _parseResponse(String body, LatLng userPosition) {
@@ -490,9 +541,11 @@ class OverpassService {
     if (amenity == 'hospital') {
       type = FacilityType.hospital;
     } else if (amenity == 'pharmacy' ||
+        amenity == 'chemist' ||
         shop == 'chemist' ||
         shop == 'pharmacy' ||
         shop == 'drugstore' ||
+        shop == 'medical_supply' ||
         healthcare == 'pharmacy') {
       type = FacilityType.pharmacy;
     } else {
@@ -523,26 +576,51 @@ class OverpassService {
 
     final String openLabel;
     final bool isOpenResolved;
+    // Same Open / Closed rules for hospitals AND pharmacies.
     if (openingHours != null && openingHours.trim().toLowerCase() == '24/7') {
-      openLabel = 'Open 24 hours';
+      openLabel = 'Open';
       isOpenResolved = true;
-    } else if (openNow != null) {
-      openLabel = openNow ? 'Open' : 'Closed';
-      isOpenResolved = openNow;
+    } else if (openNow == true) {
+      openLabel = 'Open';
+      isOpenResolved = true;
+    } else if (openNow == false) {
+      openLabel = 'Closed';
+      isOpenResolved = false;
     } else if (type == FacilityType.hospital) {
-      // OSM very often has no opening_hours tag on hospitals because they
-      // run around the clock (emergency dept never closes) and nobody
-      // bothers tagging it. Rather than showing a confusing "Hours not
-      // listed" for what is almost certainly a 24/7 facility, assume open
-      // and flag it as an assumption so the user isn't misled.
-      openLabel = 'Likely open 24/7';
+      // Most hospitals run emergency care around the clock even when
+      // opening_hours is missing on OSM.
+      openLabel = 'Open';
       isOpenResolved = true;
     } else {
-      openLabel = 'Hours not listed';
-      isOpenResolved = true;
+      // Pharmacy with no hours tagged — soft assumption from typical hours.
+      final hour = DateTime.now().hour;
+      if (hour >= 8 && hour < 22) {
+        openLabel = 'Open';
+        isOpenResolved = true;
+      } else {
+        openLabel = 'Closed';
+        isOpenResolved = false;
+      }
     }
 
-    final phone = (tags['phone'] ?? tags['contact:phone'] ?? '') as String;
+    // OSM stores phone under several keys; collect the first non-empty one.
+    String phone = '';
+    for (final key in [
+      'phone',
+      'contact:phone',
+      'contact:mobile',
+      'mobile',
+      'contact:whatsapp',
+      'telephone',
+    ]) {
+      final v = tags[key];
+      if (v == null) continue;
+      final s = v.toString().trim();
+      if (s.isNotEmpty) {
+        phone = s;
+        break;
+      }
+    }
 
     final address = _buildAddress(tags);
 

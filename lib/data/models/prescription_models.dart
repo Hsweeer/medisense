@@ -20,6 +20,32 @@ class PrescriptionHistoryEntry {
   final DateTime scannedAt;
   final String? photoUrl;
 
+  /// Recent scans (last 30 days) appear under History → New.
+  /// Older scans appear under History → Old.
+  static const recentWindow = Duration(days: 30);
+
+  bool get isNew {
+    final age = DateTime.now().difference(scannedAt);
+    return age <= recentWindow;
+  }
+
+  /// First non-empty lines of the summary for list previews.
+  String get preview {
+    final lines = summary
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (lines.isEmpty) return 'Prescription scan';
+    // Skip the title line if present; show the next useful line.
+    final start = lines.first.toUpperCase().startsWith('PRESCRIPTION')
+        ? (lines.length > 1 ? 1 : 0)
+        : 0;
+    final chunk = lines.skip(start).take(2).join(' · ');
+    if (chunk.length <= 90) return chunk;
+    return '${chunk.substring(0, 87)}…';
+  }
+
   Map<String, dynamic> toMap() => {
     'summary': summary,
     'medicineCount': medicineCount,

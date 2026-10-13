@@ -5,7 +5,8 @@ import 'package:http/http.dart' as http;
 import '../config/api_keys.dart';
 
 /// Professional AI vision service using direct REST calls.
-/// Optimized with a two-pass reading strategy for messy handwriting.
+/// Prescription reading uses a single vision pass for speed (previously
+/// two sequential API calls roughly doubled wait time).
 class GeminiService {
   GeminiService._();
 
@@ -135,15 +136,11 @@ class GeminiService {
     }
   }
 
-  /// Pass 2: Structure into Data
-  /// Uses both the original image and the raw transcription to produce structured JSON.
+  /// Single-pass prescription read — one Gemini call (was two sequential
+  /// calls: transcribe then structure). Same structured JSON output,
+  /// roughly half the wait time on a typical scan.
   static Future<String> readPrescription(String imagePath) async {
     try {
-      // 1. Get raw transcription first
-      final String rawTranscription = await transcribeRaw(imagePath);
-      debugPrint('[GeminiService] Raw Transcription: $rawTranscription');
-
-      // 2. Structure into JSON using image + transcription context
       final File imageFile = File(imagePath);
       final List<int> imageBytes = await imageFile.readAsBytes();
       final String base64Image = base64Encode(imageBytes);
@@ -157,14 +154,14 @@ class GeminiService {
                     "fully fluent in English, Urdu (اردو script), and Roman Urdu. Pakistani "
                     "prescriptions are frequently bilingual: English medicine/brand names with "
                     "Urdu dosage instructions, either in Urdu script or Roman Urdu. "
-                    "INPUT: You are provided with an image of a prescription and a literal transcription of it: \"$rawTranscription\". "
+                    "INPUT: You are provided with an image of a prescription. "
                     "TASK: Extract the COMPLETE prescription, not just the medicine list — every "
                     "medicine mentioned in whichever language(s) it was written, AND every other "
                     "piece of information written on the page (patient details, doctor/clinic "
                     "details, date, diagnosis, and any general advice or follow-up instructions). "
-                    "Use the transcription and image together to verify everything. "
+                    "Read the image carefully; do not invent text that is not visible. "
                     "RULES: "
-                    "1. Never invent a value that isn't supported by the image or transcription. "
+                    "1. Never invent a value that isn't supported by the image. "
                     "2. Leave any field blank/null rather than guessing — a field that genuinely "
                     "isn't written on the prescription should be left empty, not filled with a "
                     "plausible-sounding guess. "
@@ -209,7 +206,7 @@ class GeminiService {
                     "\"Panadol 500mg — 1 tablet\" or \"Syrup — 2 چمچ\"), include both in \"dose\" "
                     "rather than dropping the strength or the quantity. "
                     "OUTPUT: Return ONLY a valid JSON object with this exact shape: "
-                    "{\"transcription\": \"$rawTranscription\", "
+                    "{\"transcription\": \"\", "
                     "\"patientName\": \"...\", \"patientAge\": \"...\", \"doctorName\": \"...\", "
                     "\"clinicName\": \"...\", \"date\": \"...\", \"diagnosis\": \"...\", "
                     "\"generalAdvice\": \"...\", \"followUp\": \"...\", "
@@ -230,13 +227,6 @@ class GeminiService {
           "temperature": 0.2,
           "topP": 0.9,
           "topK": 32,
-          // A prescription with several medicines PLUS the new
-          // patient/doctor/diagnosis/advice fields is noticeably longer
-          // JSON than the medicines-only shape this used to return.
-          // Without an explicit ceiling here Gemini's default could cut
-          // a longer response off mid-object, silently dropping whatever
-          // fields (and medicines) came after the cut — this gives it
-          // comfortable headroom instead.
           "maxOutputTokens": 4096,
         }
       };
@@ -248,7 +238,7 @@ class GeminiService {
       ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
-        throw Exception('Structuring Pass Error ${response.statusCode}');
+        throw Exception('Prescription read error ${response.statusCode}');
       }
 
       final Map<String, dynamic> data = jsonDecode(response.body);

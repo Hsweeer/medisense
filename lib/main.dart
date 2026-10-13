@@ -85,7 +85,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
       final message = e.toString();
       final isPermissionIssue =
           message.contains('permission-denied') ||
-          message.contains('PERMISSION_DENIED');
+              message.contains('PERMISSION_DENIED');
       if (isPermissionIssue) {
         debugPrint(
           '[Bootstrap] Non-blocking Firebase permission issue during startup: $e',
@@ -135,17 +135,17 @@ class _MediSenseAppState extends State<MediSenseApp> {
         if (pos != null) {
           // Fetch nearby facilities and cache them for immediate use by
           // Nearby and SOS screens.
-          final results = await OverpassService.instance.fetchNearby(
+          final nearby = await OverpassService.instance.fetchNearby(
             latitude: pos.latitude,
             longitude: pos.longitude,
             userPosition: pos,
             radiusMeters: 5000,
           );
-          if (results.isNotEmpty) {
+          if (nearby.facilities.isNotEmpty) {
             await FacilityCacheService.instance.save(
               latitude: pos.latitude,
               longitude: pos.longitude,
-              facilities: results,
+              facilities: nearby.facilities,
             );
           }
         }
@@ -175,7 +175,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
           // Delay slightly to allow app bootstrapping
           Future.delayed(
             const Duration(milliseconds: 300),
-            () => _handleRemoteMessage(message),
+                () => _handleRemoteMessage(message),
           );
         }
       });
@@ -196,7 +196,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
       if (attempt < 5) {
         Future.delayed(
           const Duration(seconds: 1),
-          () => _notifyNativeReady(attempt: attempt + 1),
+              () => _notifyNativeReady(attempt: attempt + 1),
         );
       }
     }
@@ -242,7 +242,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
   void _handleRemoteMessage(RemoteMessage? message) {
     try {
       final Map<dynamic, dynamic> data =
-          (message?.data ?? {}) as Map<dynamic, dynamic>;
+      (message?.data ?? {}) as Map<dynamic, dynamic>;
       final title =
           message?.notification?.title ?? data['title'] ?? 'MediSense';
       final body = message?.notification?.body ?? data['body'] ?? '';
@@ -253,7 +253,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
           (data['screen'] == 'sos')) {
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/sos',
-          (r) => false,
+              (r) => false,
         );
         return;
       }
@@ -298,7 +298,7 @@ class _MediSenseAppState extends State<MediSenseApp> {
                     try {
                       navigatorKey.currentState?.pushAndRemoveUntil(
                         MaterialPageRoute(builder: (_) => const PatientShell()),
-                        (r) => false,
+                            (r) => false,
                       );
                     } catch (_) {}
                   }

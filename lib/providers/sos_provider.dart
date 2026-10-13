@@ -81,9 +81,9 @@ class SosProvider extends ChangeNotifier {
   }
 
   Future<void> trigger(
-    LatLng? location,
-    List<EmergencyContact> contacts,
-  ) async {
+      LatLng? location,
+      List<EmergencyContact> contacts,
+      ) async {
     _timer?.cancel();
     userLocation = location;
     errorMessage = null;
@@ -103,9 +103,9 @@ class SosProvider extends ChangeNotifier {
   }
 
   Future<void> triggerImmediate(
-    LatLng? location,
-    List<EmergencyContact> contacts,
-  ) async {
+      LatLng? location,
+      List<EmergencyContact> contacts,
+      ) async {
     _timer?.cancel();
     userLocation = location;
     errorMessage = null;
@@ -149,7 +149,7 @@ class SosProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('[SosProvider] resolve live location error: $e');
       errorMessage =
-          'Location unavailable right now. Please try again or call emergency services directly.';
+      'Location unavailable right now. Please try again or call emergency services directly.';
       return null;
     } finally {
       isLocating = false;
@@ -171,7 +171,7 @@ class SosProvider extends ChangeNotifier {
     if (userLocation == null) {
       phase = SosPhase.failed;
       errorMessage =
-          'Unable to determine your current location. Please enable location access and try again.';
+      'Unable to determine your current location. Please enable location access and try again.';
       notifyListeners();
       return;
     }
@@ -192,7 +192,7 @@ class SosProvider extends ChangeNotifier {
         Geolocator.getPositionStream(
           locationSettings: _liveTrackingSettings(),
         ).listen(
-          (pos) {
+              (pos) {
             userLocation = LatLng(pos.latitude, pos.longitude);
             _updateSessionLocation(userLocation!);
             if (selectedHospital != null) {
@@ -223,7 +223,7 @@ class SosProvider extends ChangeNotifier {
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'MediSense SOS is active',
           notificationText:
-              'Sharing your live location with responders and emergency contacts.',
+          'Sharing your live location with responders and emergency contacts.',
           notificationIcon: AndroidResource(
             name: 'ic_sos',
             defType: 'drawable',
@@ -246,10 +246,10 @@ class SosProvider extends ChangeNotifier {
           .collection('sos_sessions')
           .doc(sosSessionId)
           .update({
-            'currentLocation': {'lat': loc.latitude, 'lng': loc.longitude},
-            'locationUpdatedAt': FieldValue.serverTimestamp(),
-            'locationAccuracy': 10,
-          });
+        'currentLocation': {'lat': loc.latitude, 'lng': loc.longitude},
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+        'locationAccuracy': 10,
+      });
     } catch (e) {
       debugPrint('[SosProvider] location update error: $e');
     }
@@ -264,9 +264,9 @@ class SosProvider extends ChangeNotifier {
             .collection('tracking_sessions')
             .doc(trackingToken)
             .update({
-              'lastLocation': {'lat': loc.latitude, 'lng': loc.longitude},
-              'lastLocationUpdatedAt': FieldValue.serverTimestamp(),
-            });
+          'lastLocation': {'lat': loc.latitude, 'lng': loc.longitude},
+          'lastLocationUpdatedAt': FieldValue.serverTimestamp(),
+        });
       } catch (e) {
         debugPrint('[SosProvider] tracking session location update error: $e');
       }
@@ -294,8 +294,8 @@ class SosProvider extends ChangeNotifier {
       longitude: location.longitude,
     );
     final cachedHospitals = cached?.facilities
-            .where((f) => f.type == FacilityType.hospital)
-            .toList() ??
+        .where((f) => f.type == FacilityType.hospital)
+        .toList() ??
         [];
 
     if (cachedHospitals.isNotEmpty) {
@@ -308,19 +308,16 @@ class SosProvider extends ChangeNotifier {
     }
 
     try {
-      final results = await OverpassService.instance.fetchNearby(
+      final nearby = await OverpassService.instance.fetchNearby(
         latitude: location.latitude,
         longitude: location.longitude,
         userPosition: location,
         radiusMeters: 10000,
-        // SOS only ever uses hospital results — asking Overpass for
-        // pharmacies too (the default for the Nearby screen) meant a
-        // larger response and more parsing work on every single SOS
-        // trigger for data that was thrown away immediately after.
+        // SOS only ever uses hospital results.
         types: const {FacilityType.hospital},
       );
 
-      nearbyHospitals = results;
+      nearbyHospitals = nearby.facilities;
       if (nearbyHospitals.isNotEmpty) {
         selectHospital(nearbyHospitals.first);
         // Cache this real, live result so a later SOS with no connectivity
@@ -329,7 +326,7 @@ class SosProvider extends ChangeNotifier {
           FacilityCacheService.instance.save(
             latitude: location.latitude,
             longitude: location.longitude,
-            facilities: results,
+            facilities: nearby.facilities,
           ),
         );
       } else {
@@ -357,7 +354,7 @@ class SosProvider extends ChangeNotifier {
         cached?.facilities
             .where((f) => f.type == FacilityType.hospital)
             .toList() ??
-        [];
+            [];
 
     if (cachedHospitals.isNotEmpty) {
       nearbyHospitals = cachedHospitals;
@@ -377,35 +374,35 @@ class SosProvider extends ChangeNotifier {
       final docRef = await FirebaseFirestore.instance
           .collection('sos_sessions')
           .add({
-            'userId': uid,
-            'status': 'active',
-            'startedAt': FieldValue.serverTimestamp(),
-            'trackingToken': trackingToken,
-            'trackingUrl': 'medisense://sos/track?token=$trackingToken',
-            'currentLocation': {
-              'lat': userLocation!.latitude,
-              'lng': userLocation!.longitude,
-            },
-            'locationAccuracy': 10,
-            'locationUpdatedAt': FieldValue.serverTimestamp(),
-            'selectedHospital': selectedHospital == null
-                ? null
-                : {
-                    'name': selectedHospital!.name,
-                    'lat': selectedHospital!.position.latitude,
-                    'lng': selectedHospital!.position.longitude,
-                  },
-            'contacts': contacts
-                .where((c) => c.phone.trim().isNotEmpty)
-                .map(
-                  (c) => {
-                    'name': c.name,
-                    'phone': c.phone,
-                    'status': 'pending',
-                  },
-                )
-                .toList(),
-          });
+        'userId': uid,
+        'status': 'active',
+        'startedAt': FieldValue.serverTimestamp(),
+        'trackingToken': trackingToken,
+        'trackingUrl': 'medisense://sos/track?token=$trackingToken',
+        'currentLocation': {
+          'lat': userLocation!.latitude,
+          'lng': userLocation!.longitude,
+        },
+        'locationAccuracy': 10,
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+        'selectedHospital': selectedHospital == null
+            ? null
+            : {
+          'name': selectedHospital!.name,
+          'lat': selectedHospital!.position.latitude,
+          'lng': selectedHospital!.position.longitude,
+        },
+        'contacts': contacts
+            .where((c) => c.phone.trim().isNotEmpty)
+            .map(
+              (c) => {
+            'name': c.name,
+            'phone': c.phone,
+            'status': 'pending',
+          },
+        )
+            .toList(),
+      });
       sosSessionId = docRef.id;
       trackingUrl = 'medisense://sos/track?token=$trackingToken';
       await _attemptContactNotifications(contacts);
@@ -413,33 +410,33 @@ class SosProvider extends ChangeNotifier {
           .collection('tracking_sessions')
           .doc(trackingToken)
           .set({
-            'sessionId': sosSessionId,
-            'token': trackingToken,
-            // Required so the security rules can verify the SOS owner on
-            // create/update — see firestore.rules `tracking_sessions`.
-            'userId': uid,
-            'status': 'active',
-            'createdAt': FieldValue.serverTimestamp(),
-            'expiresAt': Timestamp.fromDate(
-              DateTime.now().add(const Duration(hours: 12)),
-            ),
-            'lastLocation': {
-              'lat': userLocation!.latitude,
-              'lng': userLocation!.longitude,
-            },
-          }, SetOptions(merge: true));
+        'sessionId': sosSessionId,
+        'token': trackingToken,
+        // Required so the security rules can verify the SOS owner on
+        // create/update — see firestore.rules `tracking_sessions`.
+        'userId': uid,
+        'status': 'active',
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(hours: 12)),
+        ),
+        'lastLocation': {
+          'lat': userLocation!.latitude,
+          'lng': userLocation!.longitude,
+        },
+      }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('[SosProvider] _createSosSession error: $e');
       phase = SosPhase.failed;
       errorMessage =
-          'SOS session could not be created. Please try again or call emergency services.';
+      'SOS session could not be created. Please try again or call emergency services.';
       notifyListeners();
     }
   }
 
   Future<void> _attemptContactNotifications(
-    List<EmergencyContact> contacts,
-  ) async {
+      List<EmergencyContact> contacts,
+      ) async {
     if (sosSessionId == null) return;
 
     final validContacts = contacts
@@ -452,11 +449,11 @@ class SosProvider extends ChangeNotifier {
           .collection('sos_sessions')
           .doc(sosSessionId)
           .update({
-            'contactNotificationStatus': 'failed',
-            'contactsNotifiedAt': null,
-            'contactsDeliverySummary':
-                'No valid emergency contact numbers found.',
-          });
+        'contactNotificationStatus': 'failed',
+        'contactsNotifiedAt': null,
+        'contactsDeliverySummary':
+        'No valid emergency contact numbers found.',
+      });
       notifyListeners();
       return;
     }
@@ -467,16 +464,16 @@ class SosProvider extends ChangeNotifier {
         .collection('sos_sessions')
         .doc(sosSessionId)
         .update({
-          'contactNotificationStatus': 'pending',
-          'contactsNotifiedAt': FieldValue.serverTimestamp(),
-          'contactsDeliverySummary':
-              'Notification attempts started for ${validContacts.length} contact(s).',
-          'contacts': validContacts
-              .map(
-                (c) => {'name': c.name, 'phone': c.phone, 'status': 'pending'},
-              )
-              .toList(),
-        });
+      'contactNotificationStatus': 'pending',
+      'contactsNotifiedAt': FieldValue.serverTimestamp(),
+      'contactsDeliverySummary':
+      'Notification attempts started for ${validContacts.length} contact(s).',
+      'contacts': validContacts
+          .map(
+            (c) => {'name': c.name, 'phone': c.phone, 'status': 'pending'},
+      )
+          .toList(),
+    });
 
     try {
       final result = await SosBackendService.instance.notifyContacts(
@@ -495,13 +492,13 @@ class SosProvider extends ChangeNotifier {
           .collection('sos_sessions')
           .doc(sosSessionId)
           .update({
-            'contactNotificationStatus': status,
-            'contactsNotifiedAt': status == 'sent' || status == 'delivered'
-                ? FieldValue.serverTimestamp()
-                : FieldValue.delete(),
-            'contactsDeliverySummary':
-                result['message'] ?? 'Emergency alerts sent to contacts.',
-          });
+        'contactNotificationStatus': status,
+        'contactsNotifiedAt': status == 'sent' || status == 'delivered'
+            ? FieldValue.serverTimestamp()
+            : FieldValue.delete(),
+        'contactsDeliverySummary':
+        result['message'] ?? 'Emergency alerts sent to contacts.',
+      });
     } catch (e) {
       debugPrint('[SosProvider] backend contact notification error: $e');
       contactNotificationStatus = 'failed';
@@ -510,10 +507,10 @@ class SosProvider extends ChangeNotifier {
           .collection('sos_sessions')
           .doc(sosSessionId)
           .update({
-            'contactNotificationStatus': 'failed',
-            'contactsDeliverySummary':
-                'Emergency contact notifications could not be sent.',
-          });
+        'contactNotificationStatus': 'failed',
+        'contactsDeliverySummary':
+        'Emergency contact notifications could not be sent.',
+      });
     }
 
     notifyListeners();
@@ -529,15 +526,15 @@ class SosProvider extends ChangeNotifier {
           .collection('sos_sessions')
           .doc(sosSessionId)
           .update({
-            'selectedHospital': {
-              'name': hospital.name,
-              'lat': hospital.position.latitude,
-              'lng': hospital.position.longitude,
-            },
-          })
+        'selectedHospital': {
+          'name': hospital.name,
+          'lat': hospital.position.latitude,
+          'lng': hospital.position.longitude,
+        },
+      })
           .catchError((e) {
-            debugPrint('[SosProvider] update selected hospital error: $e');
-          });
+        debugPrint('[SosProvider] update selected hospital error: $e');
+      });
     }
     notifyListeners();
   }
@@ -552,10 +549,10 @@ class SosProvider extends ChangeNotifier {
             .collection('sos_sessions')
             .doc(sosSessionId)
             .update({
-              'status': 'resolved',
-              'resolvedAt': FieldValue.serverTimestamp(),
-              'contactNotificationStatus': 'resolved',
-            });
+          'status': 'resolved',
+          'resolvedAt': FieldValue.serverTimestamp(),
+          'contactNotificationStatus': 'resolved',
+        });
       } catch (e) {
         debugPrint('[SosProvider] resolve session update error: $e');
       }
@@ -563,20 +560,20 @@ class SosProvider extends ChangeNotifier {
         // Same backend-first, direct-write-fallback pattern as cancel().
         final backendResult = await SosBackendService.instance
             .updateTrackingStatus(
-              trackingToken: trackingToken!,
-              status: 'resolved',
-              accessRestricted: true,
-            );
+          trackingToken: trackingToken!,
+          status: 'resolved',
+          accessRestricted: true,
+        );
         if (backendResult['status'] == 'failed') {
           try {
             await FirebaseFirestore.instance
                 .collection('tracking_sessions')
                 .doc(trackingToken)
                 .update({
-                  'status': 'resolved',
-                  'endedAt': FieldValue.serverTimestamp(),
-                  'accessRestricted': true,
-                });
+              'status': 'resolved',
+              'endedAt': FieldValue.serverTimestamp(),
+              'accessRestricted': true,
+            });
           } catch (e) {
             debugPrint('[SosProvider] resolve tracking fallback error: $e');
           }
@@ -613,11 +610,11 @@ class SosProvider extends ChangeNotifier {
             .collection('sos_sessions')
             .doc(sosSessionId)
             .update({
-              'status': 'cancelled',
-              'cancelledAt': FieldValue.serverTimestamp(),
-              'endedAt': FieldValue.serverTimestamp(),
-              'contactNotificationStatus': 'cancelled',
-            });
+          'status': 'cancelled',
+          'cancelledAt': FieldValue.serverTimestamp(),
+          'endedAt': FieldValue.serverTimestamp(),
+          'contactNotificationStatus': 'cancelled',
+        });
       } catch (e) {
         debugPrint('[SosProvider] cancel session update error: $e');
       }
@@ -628,20 +625,20 @@ class SosProvider extends ChangeNotifier {
         // open just because the Cloud Function was unreachable.
         final backendResult = await SosBackendService.instance
             .updateTrackingStatus(
-              trackingToken: trackingToken!,
-              status: 'cancelled',
-              accessRestricted: true,
-            );
+          trackingToken: trackingToken!,
+          status: 'cancelled',
+          accessRestricted: true,
+        );
         if (backendResult['status'] == 'failed') {
           try {
             await FirebaseFirestore.instance
                 .collection('tracking_sessions')
                 .doc(trackingToken)
                 .update({
-                  'status': 'cancelled',
-                  'endedAt': FieldValue.serverTimestamp(),
-                  'accessRestricted': true,
-                });
+              'status': 'cancelled',
+              'endedAt': FieldValue.serverTimestamp(),
+              'accessRestricted': true,
+            });
           } catch (e) {
             debugPrint('[SosProvider] cancel tracking fallback error: $e');
           }
